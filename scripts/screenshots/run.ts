@@ -13,13 +13,13 @@
  * bun run screenshots                  # all shots
  * bun run screenshots --only hero      # one shot (repeatable / comma-separated)
  * bun run screenshots --headed         # visible browser, for tuning shot definitions
- * bun run screenshots --force          # re-baseline: overwrite every image
+ * bun run screenshots --force          # overwrite every image, even a visually identical one
  * bun run screenshots --reuse-server   # photograph an already-running dev server (interactive only)
  * CHROMIUM_BIN=/path/to/chromium bun run screenshots
  * ```
  */
 
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { parseArgs } from "./lib/args";
 import { launchBrowser, newShotContext } from "./lib/browser";
@@ -80,10 +80,12 @@ const server = await ensureDevServer({
 /**
  * The capture lock, updated in place (docs/extending/contributing/docs.md#screenshots).
  *
- * Read-modify-write rather than rebuild, because `--only hero` is a legitimate way to run this and
- * a lock that forgot the other sixty images would fail `docs:images:check` on every partial run.
- * Entries for images the manifest no longer produces are dropped first: deleting a shot has to
- * delete its lock entry, or the gate goes red naming a picture nobody asked for.
+ * Read-modify-write rather than rebuild, because `--only hero` is a legitimate way to run this, and
+ * because the lane captures OVER a restored baseline: the sixty images a narrowed run does not
+ * retake have to keep their entries. Entries for images the manifest no longer produces are dropped
+ * first, and so is the PNG each one named. Nobody deletes a build output by hand, so a deleted
+ * shot's picture would otherwise ride along in every restored capture as bytes no lock entry
+ * records, which is exactly what `check-image-lock.ts --capture` refuses to publish.
  */
 const lockPath = relative(repoRoot, resolve(import.meta.dir, "capture.lock.json"));
 const manifestRel = relative(repoRoot, manifestPath);
@@ -95,6 +97,8 @@ for (const path of Object.keys(lock.images)) {
   const name = path.slice(path.lastIndexOf("/") + 1).replace(/\.png$/, "");
   if (!producible.has(name)) {
     delete lock.images[path];
+    await rm(resolve(repoRoot, path), { force: true });
+    console.log(`[lock] ${path} is no longer produced by the manifest; removed`);
   }
 }
 

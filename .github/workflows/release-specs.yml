@@ -26,7 +26,7 @@
 #
 # The pushed commit's head is the bot's, and the repository's Actions policy holds every run on a
 # bot-authored head (issue #307), so the step after the push approves them through the same script
-# the screenshots and schemas lanes use; `actions: write` is for that one endpoint.
+# the schemas lane uses; `actions: write` is for that one endpoint.
 name: Release specs
 
 on:
@@ -46,7 +46,7 @@ permissions:
   pull-requests: write
   actions: write
 
-# NOT `cancel-in-progress`, and no bot/human suffix, unlike the screenshots and schemas lanes: the
+# NOT `cancel-in-progress`, and no bot/human suffix, unlike the schemas lane: the
 # release pull request is authored by release-please's `GITHUB_TOKEN` push, so the run doing the
 # approving has `github.actor == 'github-actions[bot]'` too, and the run it approves would land in
 # the same group and cancel it mid-approval — leaving `Test` held and the pull request BLOCKED, the

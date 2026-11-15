@@ -8,7 +8,7 @@
 import { resolve } from "node:path";
 
 export interface RunOptions {
-  /** Overwrite every image regardless of the visual-diff check (a wholesale re-baseline). */
+  /** Overwrite every image regardless of the visual-diff check (a capture for publication). */
   force: boolean;
   /** Visible browser, for tuning shot definitions interactively. */
   headed: boolean;

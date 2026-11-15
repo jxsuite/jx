@@ -1,13 +1,15 @@
 /**
- * The shot decider narrows a lane whose failure mode is a bot commit on your branch, so the
- * expensive mistake is narrowing too far: a picture that moved and was never re-taken ships wrong
- * and no check will ever say so. Every test here that matters is therefore a test that it did NOT
- * narrow — unknown paths, missing anchors, an empty subset.
+ * The shot decider narrows a lane that reports which pictures a change moved, so the expensive
+ * mistake is narrowing too far: a picture that moved and was never re-taken is reported as
+ * unchanged and no check will ever say so. Every test here that matters is therefore a test that it
+ * did NOT narrow — unknown paths, missing anchors, an empty subset.
  */
 
 import { describe, expect, test } from "bun:test";
 
-import { assertAnchors, decide } from "./affected.ts";
+import { assertAnchors, decide, staleShots, withStale } from "./affected.ts";
+import { emptyLock, shotDefinitionHashes } from "../check-image-lock.ts";
+import type { CaptureLock, LockImage } from "../check-image-lock.ts";
 import { DEFAULT_MANIFEST, validateManifest } from "./lib/types.ts";
 import type { Manifest, Shot } from "./lib/types.ts";
 
@@ -163,5 +165,75 @@ describe("against the committed manifest", () => {
     const d = decide(["packages/starters/sites/saas/pages/index.md"], live);
     expect(d.mode).toBe("all");
     expect(d.reason).toContain("unclassified");
+  });
+});
+
+describe("withStale", () => {
+  const narrowed = decide(["packages/starters/sites/shop/pages/index.md"], FIXTURE);
+
+  test("a narrowed run also takes the shots the baseline does not hold", () => {
+    expect(narrowed.shots).toEqual(["gamma"]);
+    const widened = withStale(narrowed, ["alpha"], FIXTURE);
+    expect(widened.mode).toBe("subset");
+    expect(widened.shots).toEqual(["alpha", "gamma"]);
+    expect(widened.skipped).not.toContain("alpha");
+    expect(widened.reason).toContain("`alpha`");
+  });
+
+  test("nothing stale leaves the decision alone, and so does a shot already selected", () => {
+    expect(withStale(narrowed, [], FIXTURE)).toBe(narrowed);
+    expect(withStale(narrowed, ["gamma"], FIXTURE)).toBe(narrowed);
+  });
+
+  test("an empty selection becomes a subset rather than staying `none`", () => {
+    const none = decide(
+      ["packages/starters/sites/shop/pages/index.md"],
+      manifest([
+        shot("alpha", "packages/starters/sites/blog"),
+        shot("gamma", "packages/starters/sites/shop", true),
+      ]),
+    );
+    expect(none.mode).toBe("none");
+    const widened = withStale(none, ["alpha"], FIXTURE);
+    expect(widened.mode).toBe("subset");
+    expect(widened.shots).toEqual(["alpha"]);
+  });
+
+  test("a full run is already taking them", () => {
+    const all = decide(["packages/studio/src/shell.ts"], FIXTURE);
+    expect(withStale(all, ["alpha"], FIXTURE)).toBe(all);
+  });
+});
+
+describe("staleShots", () => {
+  const json = {
+    contract: 1,
+    shots: [{ name: "kept" }, { name: "edited", open: { view: "design" } }, { name: "new" }],
+  };
+  const hashes = shotDefinitionHashes(json);
+
+  function entry(shotName: string, definition: string): LockImage {
+    return {
+      bytes: 1,
+      capturedAt: "2026-01-15T09:30:00Z",
+      capturedBy: "screenshots@local",
+      definition,
+      height: 1,
+      runtime: { chromium: "151", fontset: "fc:abc", os: "debian-12" },
+      sha256: "a".repeat(64),
+      shot: shotName,
+      width: 1,
+    };
+  }
+
+  test("names the shot whose definition moved and the one never captured", () => {
+    const lock: CaptureLock = emptyLock();
+    lock.images["docs/images/kept.png"] = entry("kept", hashes.get("kept")!);
+    lock.images["docs/images/edited.png"] = entry("edited", "0".repeat(64));
+    expect(staleShots(json, lock)).toEqual(["edited", "new"]);
+  });
+
+  test("no baseline is nothing to be stale against", () => {
+    expect(staleShots(json, null)).toEqual([]);
   });
 });

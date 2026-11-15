@@ -90,3 +90,10 @@ packages/desktop/build-resources/embedded.provisionprofile
 # release builds one per platform in CI and publishes each as its own npm package.
 packages/compiler-binding/target/
 packages/compiler-binding/*.node
+
+# Screenshots — build outputs, never source. `bun run screenshots` writes the PNGs and the capture
+# lock that records them; the site build captures them at the tree it publishes
+# (.github/workflows/screenshots.yml, scripts/screenshots/README.md). They were committed once, and
+# every re-capture stored a whole new PNG: 741 MiB of an 868 MiB pack after four months.
+docs/images/
+scripts/screenshots/capture.lock.json

@@ -46,10 +46,13 @@ import type {
 } from "./types";
 
 /**
- * A re-render that's visually indistinguishable from the committed PNG keeps the old bytes, so the
- * checked-in screenshots don't churn in git on every run. This is for REVIEW PRESENTATION and is no
- * longer load-bearing for identity — the capture lock's `sha256` is (scripts/screenshots/README.md,
- * "Determinism").
+ * A re-render that's visually indistinguishable from the PNG already on disk keeps the old bytes.
+ * On disk is the baseline the lane restored, so this decides what the lane REPORTS as changed. It
+ * is for review presentation only: a capture for publication passes `force` and never consults it
+ * (scripts/screenshots/README.md, "Determinism").
+ *
+ * The measurements below date from when the pictures were committed, which is why they count
+ * commits and blobs. They are what the number was sized against.
  *
  * Sized against MEASUREMENT, not intuition — and RE-sized against a second one, because the first
  * measured the wrong thing. That sample was 21 rewrites across 24 `chore(screenshots)` commits, and
@@ -907,7 +910,7 @@ export interface ShotContext {
   repoRoot: string;
   serverUrl: string;
   studioPath: string;
-  /** Overwrite every image regardless of the visual-diff check (for a wholesale re-baseline). */
+  /** Overwrite every image regardless of the visual-diff check (a capture for publication). */
   force: boolean;
   /**
    * The absolute project root the shot actually opens.
@@ -974,7 +977,9 @@ async function visualDiff(page: Page, a: Buffer, b: Buffer): Promise<number> {
 
 /**
  * Write `buffer` to `outPath`, but skip the write when it's visually indistinguishable from the
- * existing PNG (unless `ctx.force`), so committed screenshots don't churn. Logs the outcome.
+ * existing PNG (unless `ctx.force`). The existing PNG is the baseline the lane restored, so a kept
+ * image is one the report leaves out; a publishing capture passes `force` and keeps nothing. Logs
+ * the outcome.
  */
 async function writeIfChanged(
   page: Page,

@@ -375,7 +375,7 @@ jobs:
       - run: bun run lint:typecheck
       # Docs: the derived reference pages are gitignored build outputs, so this WRITES them first
       # (docs:check does; every later docs gate reads the same set), then /docs frontmatter ↔
-      # specs/code/screenshots/nav must agree, and every referenced image must be in the lock.
+      # specs/code/screenshots/nav must agree, and every referenced image must be one a shot produces.
       - run: bun run docs:verify
       # Marketing copy + README: no unbacked claims, dead download links, or wrong
       # starter counts; LICENSE files present. See scripts/docs/check-site-claims.ts.

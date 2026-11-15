@@ -1,7 +1,8 @@
 /**
  * Approves the workflow runs the repository's Actions policy holds on a commit a lane just pushed,
- * so the `ci` required check can report on that head. Called by `.github/workflows/screenshots.yml`
- * right after its push step; generic enough for any lane that writes a `GITHUB_TOKEN` commit.
+ * so the `ci` required check can report on that head. Called by `.github/workflows/schemas.yml` and
+ * `.github/workflows/release-specs.yml` right after their push steps; generic enough for any lane
+ * that writes a `GITHUB_TOKEN` commit.
  *
  * THE PROBLEM IT CLOSES (issue #307). A lane's `GITHUB_TOKEN` push moves the PR head, and
  * `pull_request: synchronize` DOES fire for it — every workflow is queued on the new commit. But
@@ -19,13 +20,13 @@
  * is `completed` with any other conclusion has already run.
  *
  * EVERY held run on the head, not only `Test`. The runs worth worrying about are the lanes that
- * push, and each terminates on its own head by one of two DIFFERENT mechanisms — an actor refusal
- * or a fixed point — and a new pushing lane must bring one of them before this step may approve
- * it:
+ * push, and each must terminate on its own head — by an actor refusal (a job-level `if:` on
+ * `github.actor`, which stays `github-actions[bot]` through an approval) or by a fixed point — and
+ * a new pushing lane must bring one of the two before this step may approve it. Both lanes that
+ * push today use the fixed point. (`screenshots.yml` was the third and the one with the actor
+ * refusal; it pushes nothing now, since the pictures are build outputs, so approving its run costs
+ * a capture and writes nowhere.)
  *
- * - `screenshots.yml` DECLINES its own head: a job-level `if:` on `github.actor`, which stays
- *   `github-actions[bot]` through an approval (that only sets `triggering_actor`). On `3e6b589a`
- *   the approved Screenshots run concluded `skipped`.
  * - `schemas.yml` has NO actor refusal, on purpose (its header, item 3): it terminates on a FIXED
  *   POINT. The generators are deterministic, so the approved run regenerates the same bytes from
  *   the same tree and pushes nothing.
@@ -285,7 +286,7 @@ export function renderNote(outcome: Outcome, repo: string, sha: string): string 
         `${status > 0 ? ` (HTTP ${status}${message ? `: ${message}` : ""})` : ` (${message})`}`,
     ),
     ">",
-    "> Approving every held run is safe, by two different mechanisms: `screenshots.yml` declines its own head on `github.actor` (an approval leaves it alone), and `schemas.yml` and `release-specs.yml` regenerate deterministically, so on their own head they push nothing.",
+    "> Approving every held run is safe: `schemas.yml` and `release-specs.yml` regenerate deterministically, so on their own head they push nothing, and no other lane pushes at all.",
     "",
   ];
   return lines.join("\n");

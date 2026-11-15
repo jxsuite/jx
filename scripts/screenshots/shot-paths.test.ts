@@ -29,14 +29,12 @@ const NON_PROJECT = [
   // Every starter is in `new-project`'s picture regardless of `open.project`.
   "packages/starters/registry.json",
   "scripts/screenshots/**",
-  // The lane's own output — see the comment beside it in the workflow.
-  "!scripts/screenshots/capture.lock.json",
   "scripts/check-image-lock.ts",
   "scripts/lib/png.ts",
 ];
 
 interface Workflow {
-  on: { pull_request: { paths: string[] } };
+  on: { pull_request: { paths: string[] }; push: { paths: string[] } };
 }
 
 /* SAFETY: screenshots.yml is a committed workflow whose `on.pull_request.paths` list is the filter
@@ -65,24 +63,26 @@ describe("screenshots.yml paths", () => {
     expect({ extra, missing }).toEqual({ extra: [], missing: [] });
   });
 
-  test("the pipeline entries stay in the filter, and the lock stays out", () => {
+  test("the pipeline entries stay in the filter", () => {
     for (const path of NON_PROJECT) {
       expect(committed).toContain(path);
     }
-    // Order matters to GitHub: a negation only un-matches patterns listed BEFORE it.
-    expect(committed.indexOf("!scripts/screenshots/capture.lock.json")).toBeGreaterThan(
-      committed.indexOf("scripts/screenshots/**"),
-    );
   });
 
   test("the lane never lists its own outputs", () => {
-    // `docs/images/**` and the capture lock are what this lane WRITES. A `pull_request` filter is
-    // Evaluated against the whole PR diff, so listing either one arms the filter for the life of
-    // Any PR that receives a re-capture. `docs:images:check` owns hand-edited bytes instead.
+    // `docs/images/**` and the capture lock are what this lane WRITES. Both are gitignored build
+    // Outputs now, so neither can appear in a diff at all — which is the reason to keep them out
+    // Of the filter rather than a reason they could go back in.
     for (const path of committed) {
       expect(path.startsWith("docs/images")).toBe(false);
+      expect(path).not.toContain("capture.lock.json");
     }
-    expect(committed).not.toContain("scripts/screenshots/capture.lock.json");
+  });
+
+  test("the push that saves the baseline runs on exactly the pull request's filter", () => {
+    // A push that can move a picture and saves no baseline leaves every later report comparing
+    // Against a capture that is older than `main`.
+    expect(workflow.on.push.paths).toEqual(committed);
   });
 
   test("the workflow does not list itself", () => {

@@ -11,7 +11,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import { manifestImageNames } from "../check-image-lock";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
 
 import type { AllowEntry } from "./check-prose.ts";
@@ -23,7 +24,6 @@ const CLAIMS_PATH = join(ROOT, "scripts/docs/claims.json");
 const RELEASE_ASSETS_PATH = join(ROOT, "packages/desktop/release-assets.json");
 const REGISTRY_PATH = join(ROOT, "packages/starters/registry.json");
 const MANIFEST_PATH = join(ROOT, "scripts/screenshots/manifest.json");
-const SCREENSHOTS_DIR = join(ROOT, "docs/images");
 
 const violations: string[] = [];
 const fail = (file: string, message: string) => {
@@ -326,34 +326,32 @@ function checkStarterCount(): void {
   }
 }
 
-// ─── Screenshot refs on site pages ─────────────────────────────────────────────
+// ─── Screenshot refs on site pages and in the README ───────────────────────────
 
 // Site pages reference the screenshots through the docs content type's asset mount
-// (/content/docs/images/…), which is where the build republishes docs/images/.
+// (/content/docs/images/…), which is where the build republishes docs/images/. The README names
+// The same path on the published site, because the pictures are build outputs and no longer have
+// An address in the repository (`scripts/docs/publish-readme-images.ts` is what puts them there).
 const SCREENSHOT_RE = /\/content\/docs\/images\/([A-Za-z0-9_-]+)\.(?:png|webp|jpg|jpeg)/g;
 
 function checkScreenshots(): void {
   let manifestNames: Set<string>;
   try {
-    const manifest = readJson(MANIFEST_PATH);
-    if (!isJsonObject(manifest)) {
-      return; // Not a manifest → nothing to check.
-    }
-    const shots = Array.isArray(manifest.shots) ? manifest.shots : [];
-    manifestNames = new Set(
-      shots.flatMap((shot) => (isJsonObject(shot) && isString(shot.name) ? [shot.name] : [])),
-    );
+    // Every image a shot produces, not only the shots' own names: `git-commit` is a capture of the
+    // `git-panel` shot. This used to be papered over by also accepting any file that happened to
+    // Exist in docs/images/, which is not a question a checkout can answer any more.
+    manifestNames = manifestImageNames(readJson(MANIFEST_PATH));
   } catch {
     return; // No manifest → nothing to check.
   }
   for (const file of targetFiles()) {
-    if (!file.startsWith(SITE_PAGES)) {
+    if (file !== README && !file.startsWith(SITE_PAGES)) {
       continue;
     }
     const text = readFileSync(file, "utf8");
     for (const match of text.matchAll(SCREENSHOT_RE)) {
       const name = match[1]!;
-      if (!manifestNames.has(name) && !existsSync(join(SCREENSHOTS_DIR, `${name}.png`))) {
+      if (!manifestNames.has(name)) {
         fail(file, `references screenshot "${name}" not produced by the screenshots manifest.`);
       }
     }

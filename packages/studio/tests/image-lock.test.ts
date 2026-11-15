@@ -26,6 +26,7 @@ import {
   LOCK_VERSION,
   buildReport,
   captureOrigin,
+  capturedImageNames,
   captureRuntime,
   checkImageLock,
   chromiumMajor,
@@ -54,8 +55,11 @@ import {
   shortHash,
   shotDefinitionHashes,
   shotImageNames,
+  shotStatusFindings,
   shotsByDocsPage,
+  unreadImageFindings,
   withoutCode,
+  writeChangedImages,
   writeLock,
 } from "../../../scripts/check-image-lock";
 import type { CaptureLock, LockImage } from "../../../scripts/check-image-lock";
@@ -64,6 +68,11 @@ import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { RUNTIME } from "./shared-fixtures";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
+/**
+ * Two real Chromium captures, kept as fixtures: `docs/images` is a build output and is not in a
+ * checkout.
+ */
+const CAPTURES = join(import.meta.dir, "fixtures", "captures");
 
 function scratch(prefix: string): string {
   return mkdtempSync(join(tmpdir(), `jx-${prefix}-`));
@@ -246,7 +255,7 @@ describe("png", () => {
   });
 
   test("decodes a real Chromium capture", () => {
-    const bytes = new Uint8Array(readFileSync(join(REPO_ROOT, "docs/images/tab-strip.png")));
+    const bytes = new Uint8Array(readFileSync(join(CAPTURES, "tab-strip.png")));
     const size = readPngSize(bytes)!;
     const decoded = decodePng(bytes)!;
     expect(decoded).not.toBeNull();
@@ -697,7 +706,7 @@ describe("checkImageLock", () => {
 
   test("an uncaptured shot warns, and says so louder when a page already uses it", () => {
     const plain = checkImageLock({ disk: [], lock: emptyLock(), manifest });
-    expect(plain.warnings[0]).toContain("has never been captured");
+    expect(plain.warnings[0]).toContain("is not captured");
     const used = checkImageLock({
       disk: [],
       lock: emptyLock(),
@@ -862,29 +871,126 @@ describe("the report", () => {
   });
 
   test("buildReport says nothing changed, and never says a change is a failure", () => {
-    const quiet = buildReport({ after: before, before, refs: [] });
-    expect(quiet).toContain("No image changed");
+    const quiet = buildReport({ after: before, baseline: "main at 1a2b3c4", before, refs: [] });
+    expect(quiet).toContain("No image changed: all 2 match the baseline (main at 1a2b3c4).");
     const loud = buildReport({
       after,
-      afterSha: "bbb",
+      artifact: "screenshots-changed",
+      baseline: "main at 1a2b3c4",
       before,
-      beforeSha: "aaa",
       refs: [{ image: "docs/images/hero.png", name: "hero", page: "docs/studio/design.md" }],
-      repo: "jxsuite/jx",
     });
-    expect(loud.startsWith("<!-- jx-screenshots-report -->")).toBe(true);
-    expect(loud).toContain("**3 image(s) changed.**");
+    expect(loud.startsWith("### Screenshots")).toBe(true);
+    expect(loud).toContain("**3 image(s) differ from the baseline (main at 1a2b3c4).**");
     expect(loud).toContain("This is **not** a failure");
-    expect(loud).toContain("https://github.com/jxsuite/jx/blob/aaa/docs/images/hero.png?raw=true");
-    expect(loud).toContain("https://github.com/jxsuite/jx/blob/bbb/docs/images/hero.png?raw=true");
+    expect(loud).toContain("`screenshots-changed` artifact");
     expect(loud).toContain("docs/studio/design.md");
     expect(loud).toContain("_none_");
   });
 
-  test("without a repo there are no thumbnails, only the facts", () => {
+  test("the pictures are not in the repository, so the report addresses none", () => {
     const report = buildReport({ after, before, refs: [] });
     expect(report).not.toContain("<img");
+    expect(report).not.toContain("github.com");
     expect(report).toContain("| `hero` |");
+    expect(report).toContain("differ from the baseline.**");
+  });
+
+  test("with no baseline there is nothing to call changed", () => {
+    // The lane's first run, or its first after the cache aged out. Sixty-five rows reading "new"
+    // Would be a report nobody could find a real change in.
+    const report = buildReport({ after, before: null, refs: [] });
+    expect(report).toContain("Captured 2 image(s). No earlier capture was available");
+    expect(report).not.toContain("| `hero` |");
+  });
+
+  test("writeChangedImages lays the changed rows out before and after", () => {
+    const root = scratch("changed");
+    const was = join(root, "was");
+    const now = join(root, "now");
+    mkdirSync(was);
+    mkdirSync(now);
+    writeFileSync(join(was, "hero.png"), sample(0));
+    writeFileSync(join(was, "gone.png"), sample(0));
+    writeFileSync(join(now, "hero.png"), sample(0, 1));
+    writeFileSync(join(now, "new.png"), sample(0, 1));
+    writeFileSync(join(now, "same.png"), sample(0));
+    const rows = reportRows({ after, before, refs: [] });
+    const out = join(root, "out");
+    expect(writeChangedImages(rows, out, was, now)).toBe(4);
+    expect(readImagesOnDisk(join(out, "before")).map((image) => image.path)).toEqual([
+      `${out}/before/gone.png`,
+      `${out}/before/hero.png`,
+    ]);
+    expect(readImagesOnDisk(join(out, "after")).map((image) => image.path)).toEqual([
+      `${out}/after/hero.png`,
+      `${out}/after/new.png`,
+    ]);
+    // No baseline directory: only the after side exists to lay out.
+    expect(writeChangedImages(rows, join(root, "out2"), undefined, now)).toBe(2);
+  });
+});
+
+// ─── What the manifest alone can say ──────────────────────────────────────────
+
+describe("the manifest-only checks", () => {
+  // Parsed rather than written as a literal: a shot's follow-on segments live under `then`, and
+  // An object literal with that member is one the linter (rightly) reads as a thenable.
+  const manifest: { shots: JsonObject[] } = JSON.parse(`{
+    "shots": [
+      {
+        "capture": [{ "image": "git-panel" }, { "image": "git-commit" }],
+        "docs": ["studio/publish"],
+        "name": "git-panel",
+        "then": [{ "capture": [{ "image": "git-push" }] }]
+      },
+      {
+        "capture": [{ "image": "parked" }],
+        "name": "parked",
+        "status": { "reason": "xpath", "since": "abc123", "state": "quarantined" }
+      }
+    ]
+  }`);
+  const page = "docs/studio/publish.md";
+  const ref = (name: string) => ({ image: `docs/images/${name}.png`, name, page });
+
+  test("capturedImageNames is the files a capture writes, from capture and then", () => {
+    expect([...capturedImageNames(manifest.shots[0]!)]).toEqual([
+      "git-panel",
+      "git-commit",
+      "git-push",
+    ]);
+    // A shot's own name is not a file unless a capture says so.
+    expect([...capturedImageNames({ name: "bare" })]).toEqual([]);
+  });
+
+  test("an image no docs page reads is a violation naming the shot and what it declares", () => {
+    const findings = unreadImageFindings(manifest, [ref("git-panel"), ref("git-push")]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toContain('docs/images/git-commit.png is captured by shot "git-panel"');
+    expect(findings[0]).toContain('The shot declares "studio/publish"');
+  });
+
+  test("a quarantined shot's image must be unread, and no page scan means no finding", () => {
+    const all = ["git-panel", "git-commit", "git-push"].map((name) => ref(name));
+    expect(unreadImageFindings(manifest, all)).toEqual([]);
+    expect(unreadImageFindings(manifest, [])).toEqual([]);
+  });
+
+  test("shotStatusFindings reports a malformed status and notes a well-formed quarantine", () => {
+    const shots = readShots({
+      shots: [
+        { name: "a", status: { state: "flaky" } },
+        { name: "b", status: { state: "quarantined" } },
+        { name: "c", status: { reason: "r", since: "s", state: "quarantined" } },
+        { name: "d" },
+      ],
+    });
+    const { notes, violations } = shotStatusFindings(shots);
+    expect(violations).toHaveLength(2);
+    expect(violations[0]).toContain('"a" declares status.state "flaky"');
+    expect(violations[1]).toContain('"b" is quarantined without a reason');
+    expect(notes).toContain("quarantined: c — r (since s)");
   });
 });
 
@@ -892,9 +998,14 @@ describe("the report", () => {
 
 describe("the CLI", () => {
   test("parseArgs takes known flags with values and refuses anything else", () => {
-    expect(parseArgs(["--lock", "a.json", "--repo", "o/n"])).toEqual({
+    expect(parseArgs(["--lock", "a.json", "--baseline", "main at 1a2b3c4"])).toEqual({
+      baseline: "main at 1a2b3c4",
       lock: "a.json",
-      repo: "o/n",
+    });
+    // `--capture` is a switch: it takes no value and does not swallow the flag after it.
+    expect(parseArgs(["--capture", "--lock", "a.json"])).toEqual({
+      capture: "true",
+      lock: "a.json",
     });
     expect(parseArgs([])).toEqual({});
     expect(parseArgs(["--lock"])).toBeNull();
@@ -954,19 +1065,70 @@ describe("the CLI", () => {
     expect(code).toBe(0);
   });
 
-  test("exits 1 when a shot definition has moved", async () => {
+  test("a stale local capture is a warning on a checkout and a failure in the lane", async () => {
     const f = fixture({ definitionOf: () => "0".repeat(64) });
-    const code = await main([
+    const args = ["--manifest", f.manifestPath, "--lock", f.lockPath, "--images", f.images];
+    // The gate: a capture on disk is a build output somebody may not have refreshed.
+    expect(await main([...args, "--docs", f.docs])).toBe(0);
+    // The lane: the same capture is about to be published.
+    expect(await main([...args, "--docs", f.docs, "--capture"])).toBe(1);
+  });
+
+  test("a checkout with no capture at all passes the gate and fails the lane", async () => {
+    const f = fixture();
+    const absent = join(f.root, "absent");
+    const args = [
       "--manifest",
       f.manifestPath,
       "--lock",
-      f.lockPath,
+      join(absent, "capture.lock.json"),
       "--images",
-      f.images,
+      absent,
       "--docs",
       f.docs,
-    ]);
-    expect(code).toBe(1);
+    ];
+    expect(await main(args)).toBe(0);
+    expect(await main([...args, "--capture"])).toBe(1);
+  });
+
+  test("--capture passes a capture that is whole and current, and fails one with a hole", async () => {
+    const f = fixture();
+    const args = ["--lock", f.lockPath, "--images", f.images, "--docs", f.docs, "--capture"];
+    expect(await main(["--manifest", f.manifestPath, ...args])).toBe(0);
+    // A second shot the capture does not hold: a warning on a desk, a hole in a published site.
+    const wider = join(f.root, "wider.json");
+    writeFileSync(
+      wider,
+      JSON.stringify({
+        defaults: { theme: "dark" },
+        shots: [{ docs: ["page"], name: "hero" }, { name: "missing" }],
+      }),
+    );
+    expect(await main(["--manifest", wider, ...args])).toBe(1);
+  });
+
+  test("the gate fails on an image no page reads, with no capture on disk", async () => {
+    const f = fixture();
+    const absent = join(f.root, "absent");
+    const manifestPath = join(f.root, "unread.json");
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        shots: [{ capture: [{ image: "hero" }, { image: "orphan" }], name: "hero" }],
+      }),
+    );
+    expect(
+      await main([
+        "--manifest",
+        manifestPath,
+        "--lock",
+        join(absent, "capture.lock.json"),
+        "--images",
+        f.images,
+        "--docs",
+        f.docs,
+      ]),
+    ).toBe(1);
   });
 
   test("exits 2 on an unreadable manifest and on a bad invocation", async () => {
@@ -974,7 +1136,7 @@ describe("the CLI", () => {
     expect(await main(["--wat"])).toBe(2);
   });
 
-  test("--report writes the markdown the lane comments with", async () => {
+  test("--report writes the markdown the lane puts in its summary", async () => {
     const f = fixture();
     const out = join(f.root, "report.md");
     const code = await main([
@@ -988,15 +1150,59 @@ describe("the CLI", () => {
       f.docs,
       "--report",
       out,
-      "--repo",
-      "jxsuite/jx",
-      "--after-sha",
-      "bbb",
+      "--baseline",
+      "main at 1a2b3c4",
     ]);
     expect(code).toBe(0);
+    // No `--before-lock`: there was no baseline, and the report says so rather than listing
+    // Every image as new.
     const markdown = readFileSync(out, "utf8");
-    expect(markdown).toContain("<!-- jx-screenshots-report -->");
-    expect(markdown).toContain("| `hero` |");
+    expect(markdown).toContain("### Screenshots");
+    expect(markdown).toContain("Captured 1 image(s). No earlier capture was available");
+  });
+
+  test("--report --changed-dir lays out the pictures that moved", async () => {
+    const f = fixture();
+    const was = join(f.root, "was");
+    mkdirSync(was);
+    const old = sample(0, 1);
+    writeFileSync(join(was, "hero.png"), old);
+    const beforeLock = join(f.root, "before.lock.json");
+    const captured = describeImage(old, {
+      capturedAt: "2026-01-15T09:30:00Z",
+      capturedBy: "screenshots@local",
+      definition: "0".repeat(64),
+      runtime: RUNTIME,
+      shot: "hero",
+    });
+    writeFileSync(beforeLock, serializeLock(lockOf({ [`${f.images}/hero.png`]: captured })));
+    const changed = join(f.root, "changed");
+    const out = join(f.root, "report.md");
+    expect(
+      await main([
+        "--manifest",
+        f.manifestPath,
+        "--lock",
+        f.lockPath,
+        "--images",
+        f.images,
+        "--docs",
+        f.docs,
+        "--report",
+        out,
+        "--before-lock",
+        beforeLock,
+        "--before-images",
+        was,
+        "--changed-dir",
+        changed,
+        "--artifact",
+        "screenshots-changed",
+      ]),
+    ).toBe(0);
+    expect(readFileSync(out, "utf8")).toContain("**1 image(s) differ from the baseline.**");
+    expect(readFileSync(join(changed, "before", "hero.png"))).toEqual(Buffer.from(old));
+    expect(readFileSync(join(changed, "after", "hero.png"))).toEqual(Buffer.from(sample(0)));
   });
 
   test("--report against the previous lock reports no change", async () => {

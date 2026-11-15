@@ -81,7 +81,7 @@ Start from a blank project or one of 13 starters. Publishing is git-push-driven:
 Jx Studio is a desktop application for editing Jx projects, free and MIT licensed. [Jx Cloud](https://jxsuite.com/cloud) is the same editor hosted at studio.jxsuite.com: you sign in with GitHub and edit a repository in the browser, on a paid subscription with a free trial. Contributors working in this repository can also run Studio in the browser via the dev server.
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="Jx Studio editing the jxsuite.com homepage: layers panel, live canvas, and element inspector" width="800">
+  <img src="https://jxsuite.com/content/docs/images/hero.png" alt="Jx Studio editing the jxsuite.com homepage: layers panel, live canvas, and element inspector" width="800">
 </p>
 
 Four modes over the same files: **Manage** (project explorer, content models, media), **Edit** (inline WYSIWYG authoring that saves as Markdown), **Design** (canvas, breakpoints, CSS inspector, tokens), and **Script** (state, data, events, and a Monaco editor for functions). Git is built in: stage, diff, commit, branch, and push without leaving the app. Multiple people can co-edit one project in real time against a shared backend.
