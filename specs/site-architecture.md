@@ -1448,6 +1448,8 @@ The rewrite is deliberately conservative. A value is remapped only when it:
 - is relative — not `/…`, not `scheme:…`, not `#…`, and carries no `${…}` template;
 - resolves against the entry's own directory to a **file that exists**, inside the collection directory.
 
+One absolute form is remapped as well: the asset's own published address, the project's `url` followed by the collection's mount path (`https://example.com/content/blog/images/diagram.png`), when the file it names is on disk in that collection (parser.md §9.2). It is for a collection whose assets are not committed beside its entries, where no relative path would show a reader of the source the picture. With the file on disk the build optimizes and copies it as it does a relative reference; without it the address is left as written and loads from the published site.
+
 Anything else is left exactly as authored, so existing project-root-relative paths keep their meaning. A relative `src` that resolves to nothing is reported as a warning naming the entry. The raw markdown `body` is never rewritten — it is the round-trip source Studio writes back to disk — and `href` links are out of scope: links between entries are routes, not assets.
 
 #### Editors that open an entry standalone
