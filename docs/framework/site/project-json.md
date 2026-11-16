@@ -101,7 +101,7 @@ Enabled extensions add sections of their own alongside these. The first-party on
 }
 ```
 
-A page's own `$head` appends to (and, for singletons like `<title>`, overrides) the site-level entries. The full merge order is covered in [SEO and metadata](/docs/framework/site/seo).
+A page's own `$head` appends to the site-level entries, and replaces one with the same identity, such as a second `<meta name="description">`. The page title is not a head entry: it is the page's `title` property. The full merge order is covered in [SEO and metadata](/docs/framework/site/seo).
 
 ## Breakpoints and style tokens
 

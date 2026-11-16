@@ -21,20 +21,15 @@ A minimal layout registers its chrome components via `$elements` (paths relative
 ```json
 {
   "$elements": [{ "$ref": "../components/site-header.json" }],
-  "tagName": "html",
+  "tagName": "div",
   "children": [
-    {
-      "tagName": "body",
-      "children": [
-        { "tagName": "site-header" },
-        { "tagName": "main", "children": [{ "tagName": "slot" }] }
-      ]
-    }
+    { "tagName": "site-header" },
+    { "tagName": "main", "children": [{ "tagName": "slot" }] }
   ]
 }
 ```
 
-A layout doesn't have to own `<html>`. jxsuite.com's docs layout is a flex `<div>` with a sidebar; the compiler still wraps the result in a full HTML document with the merged `<head>`.
+A layout is body content. The compiler writes the full HTML document around it, with `<html lang>`, the merged `<head>` and `<body>`, so a layout's root is an ordinary element such as a `div`, never `html`, `head` or `body`. jxsuite.com's docs layout is a flex `<div>` with a sidebar. Head material a layout needs, such as a shared stylesheet, goes in its own `$head`.
 
 ## Declaring a layout
 
@@ -58,7 +53,7 @@ Layouts can define several regions by naming their slots:
 
 ```json
 {
-  "tagName": "body",
+  "tagName": "div",
   "children": [
     {
       "tagName": "aside",
@@ -115,7 +110,7 @@ Compiling a page against its layout produces one document:
 - **`$media`, `style`, `attributes`**: merged the same way, page over layout.
 - **`$script`**: not merged. A layout's [script](/docs/framework/concepts/functions#a-module-inside-the-document) and a page's stay two modules, in a build and in Live Preview, so each can export a function of the same name, and a `#client` entry calls the script of the file it is written in.
 - **`$elements`**: in a build, every level counts. The page's, each layout's and the project's entries are all registered, and each `$ref` is relative to the file that declares it.
-- **`$head`**: merged site → layout → page, later entries winning for singletons like `<title>`; see [SEO and metadata](/docs/framework/site/seo).
+- **`$head`**: merged site, then layout, then page, a later entry replacing an earlier one with the same identity; see [SEO and metadata](/docs/framework/site/seo). The page's `<title>` comes from its `title` property, not from a `$head` entry.
 
 Layouts also receive the compiler-injected contexts: `$page` (`title`, `url`, `params`) and `$site` (`name`, `url`, plus site state). See [the project file](/docs/framework/site/project-json).
 
