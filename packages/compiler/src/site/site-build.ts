@@ -97,6 +97,7 @@ import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-m
 import type { PagePagination } from "@jxsuite/site/pagination";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
+import { joinChildren } from "../child-separator.ts";
 import { compile, compileSiteServer } from "../compiler.ts";
 import type { CompileOptions } from "../compiler.ts";
 import { compileElement } from "../targets/compile-element.ts";
@@ -2966,9 +2967,10 @@ function expandComponents(
     const slotId =
       !shadow && !isStatic && definitionHasSlot(def.children) ? nextSlotId(context) : null;
     const slotContent = shadow
-      ? (Array.isArray(children) ? children : [])
-          .map((c: StaticChild) => renderSlotted(c))
-          .join("\n")
+      ? joinChildren(
+          (Array.isArray(children) ? children : []).map((c: StaticChild) => renderSlotted(c)),
+          { separator: "\n" },
+        )
       : null;
     const innerHTML = preRenderComponentHtml(
       def,

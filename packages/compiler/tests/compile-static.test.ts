@@ -60,12 +60,38 @@ describe("compileStaticPage", () => {
     );
   });
 
-  test("children outside <pre> keep the readability indent", () => {
+  test("block siblings outside <pre> keep the readability indent", () => {
     const doc: JxDocument = {
-      children: [{ tagName: "p", children: [{ tagName: "b", textContent: "a" }, "b"] }],
+      children: [
+        { tagName: "p", textContent: "a" },
+        { tagName: "p", textContent: "b" },
+      ],
     };
     const { html } = compileStaticPage(doc, baseOpts);
-    expect(html).toContain("<p><b>a</b>\n  b</p>");
+    expect(html).toContain("<p>a</p>\n  <p>b</p>");
+  });
+
+  test("inline siblings and text are joined with nothing between them", () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          tagName: "p",
+          children: [
+            { tagName: "a", attributes: { href: "/x/" }, textContent: "link" },
+            ".",
+            { tagName: "code", textContent: "x" },
+            ",",
+            " ",
+            { tagName: "em", textContent: "y" },
+            { tagName: "strong", textContent: "z" },
+          ],
+        },
+      ],
+    };
+    const { html } = compileStaticPage(doc, baseOpts);
+    expect(html).toContain(
+      '<p><a href="/x/">link</a>.<code>x</code>, <em>y</em><strong>z</strong></p>',
+    );
   });
 
   test("includes meta charset and viewport", () => {

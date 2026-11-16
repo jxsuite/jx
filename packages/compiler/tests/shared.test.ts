@@ -1570,7 +1570,7 @@ describe("renderStaticNode", () => {
       ],
       tagName: "div",
     };
-    expect(renderStaticNode(node, null, fillOf([]))).toBe("<div>A fallback\n<i>B</i></div>");
+    expect(renderStaticNode(node, null, fillOf([]))).toBe("<div>A fallback<i>B</i></div>");
   });
 
   test("an id brackets each placed group, named, and not a fallback", () => {
@@ -1586,7 +1586,7 @@ describe("renderStaticNode", () => {
       7,
     );
     expect(renderStaticNode(node, null, fill)).toBe(
-      '<div><!--jx-slot 7 head%20line--><h1 slot="head line">T</h1><!--/jx-slot 7-->\nfallback</div>',
+      '<div><!--jx-slot 7 head%20line--><h1 slot="head line">T</h1><!--/jx-slot 7-->fallback</div>',
     );
   });
 

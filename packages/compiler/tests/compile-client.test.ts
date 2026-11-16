@@ -52,8 +52,8 @@ describe("compileClient", () => {
     expect(html).toContain(
       "<pre><code><span>const</span><span> x = 1;</span>\n<span>return x;</span></code></pre>",
     );
-    // Ordinary elements still get the indent.
-    expect(html).toContain("<p><b>a</b>\n  b</p>");
+    // Block siblings still get the indent; inline siblings and text sit flush (compiler.md §8.1).
+    expect(html).toContain("</pre>\n  <p><b>a</b>b</p>");
   });
 
   test("compiles counter example to pre-rendered HTML with bindings", () => {

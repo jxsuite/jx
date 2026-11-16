@@ -25,6 +25,7 @@ code:
   - packages/compiler/src/targets/compile-static.ts
   - packages/compiler/src/targets/compile-client.ts
   - packages/compiler/src/shared.ts
+  - packages/compiler/src/child-separator.ts
 ---
 
 # How compilation works
@@ -117,7 +118,9 @@ An external class with `timing: "client"` ships as its own module under `/assets
 
 Two more outputs sit alongside these tiers: a class document (`"$prototype": "Class"`, conventionally a `.class.json` file) handed to the compiler directly compiles to an ES class module, and `timing: "server"` entries compile into the site-wide worker, which needs `build.adapter`: without one the build stops with an error naming each entry.
 
-Across all three tiers the emitter indents nested children so the generated HTML stays readable, except inside `pre`, `textarea`, and the rest of the tags browsers render with `white-space: pre`. There, and everywhere below them (`white-space` inherits), children are concatenated with no separator, because indentation between elements would be content rather than formatting. This is what keeps a syntax-highlighted code block, one `<span>` per token, rendering as the code you wrote.
+Across all three tiers the emitter indents nested children so the generated HTML stays readable, but only where the indent cannot be seen: between two block-level siblings (`<p>`, `<li>`, `<section>` and the rest of the display-block set, plus `<br>`). Between two inline-level siblings, or beside a text node, it writes nothing. A newline there is a space the page renders, so Markdown such as `[link](/x/).` or `` `code`, `` builds as `<a href="/x/">link</a>.` and `<code>code</code>,` and reads "link." and "code,", not "link ." and "code ,". The text you wrote is never changed. Two text children sit next to each other with nothing between them, as they do in the DOM, and a space between two inline siblings is one you write yourself, as a `" "` text child. A tag the compiler does not know, a custom element included, counts as inline.
+
+Inside `pre`, `textarea`, and the rest of the tags browsers render with `white-space: pre`, and everywhere below them (`white-space` inherits), children are concatenated with no separator at all, because indentation between elements would be content rather than formatting. This is what keeps a syntax-highlighted code block, one `<span>` per token, rendering as the code you wrote.
 
 ## Where the runtime comes from
 
