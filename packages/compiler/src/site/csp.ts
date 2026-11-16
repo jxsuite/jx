@@ -199,6 +199,103 @@ export function normalizeCspConfig(security: HeadersConfig["security"]): CspConf
 }
 
 /**
+ * The directive a browser consults when a fetch directive is absent, nearest first. Only fetch
+ * directives fall back at all: `frame-ancestors`, `base-uri`, `form-action` and the reporting
+ * directives do not, and giving them `default-src`'s sources would invent a policy the author never
+ * wrote.
+ */
+const FALLBACKS = new Map<string, string[]>([
+  ["child-src", ["default-src"]],
+  ["connect-src", ["default-src"]],
+  ["font-src", ["default-src"]],
+  ["frame-src", ["child-src", "default-src"]],
+  ["img-src", ["default-src"]],
+  ["manifest-src", ["default-src"]],
+  ["media-src", ["default-src"]],
+  ["object-src", ["default-src"]],
+  ["prefetch-src", ["default-src"]],
+  ["script-src", ["default-src"]],
+  ["script-src-attr", ["script-src", "default-src"]],
+  ["script-src-elem", ["script-src", "default-src"]],
+  ["style-src", ["default-src"]],
+  ["style-src-attr", ["style-src", "default-src"]],
+  ["style-src-elem", ["style-src", "default-src"]],
+  ["worker-src", ["child-src", "script-src", "default-src"]],
+]);
+
+/** A `sources` entry as source expressions: a string may carry several, space separated. */
+function sourceTokens(value: string | string[]): string[] {
+  return (Array.isArray(value) ? value : [value])
+    .flatMap((entry) => entry.split(/\s+/))
+    .filter(Boolean);
+}
+
+/**
+ * What is wrong with `config.sources`, as build errors. A source containing `;` or `,` would end
+ * the directive early and smuggle in another, so it is refused rather than emitted. A directive
+ * named in both `sources` and `directives` is refused too: the replacement is wholesale, so the
+ * sources would be silently dropped or silently kept, and either reads as the other.
+ */
+export function cspConfigErrors(config: CspConfig): string[] {
+  const errors: string[] = [];
+  const replaced = new Set(Object.keys(config.directives ?? {}).map((name) => name.toLowerCase()));
+  for (const [name, value] of Object.entries(config.sources ?? {})) {
+    const path = `build.headers.security.csp.sources["${name}"]`;
+    if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(name)) {
+      errors.push(`${path}: not a CSP directive name.`);
+    }
+    if (replaced.has(name.toLowerCase())) {
+      errors.push(
+        `${path}: csp.directives also sets "${name}" and replaces it wholesale, so put the ` +
+          "sources in that string, or remove one of the two.",
+      );
+    }
+    for (const token of sourceTokens(value)) {
+      if (/[;,]/.test(token)) {
+        errors.push(`${path}: "${token}" contains ";" or "," and would split the directive.`);
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * Append `config.sources` to the computed directives, in place.
+ *
+ * A source already in the directive is skipped, comparing exactly because a hash is case-sensitive.
+ * `'none'` is dropped when anything is added: next to another source a browser ignores it, so
+ * keeping it would only make the policy read as stricter than it is.
+ */
+function appendSources(directives: Record<string, string | false>, config: CspConfig): void {
+  const replaced = new Set(Object.keys(config.directives ?? {}).map((name) => name.toLowerCase()));
+  for (const [rawName, value] of Object.entries(config.sources ?? {})) {
+    const name = rawName.toLowerCase();
+    const added = sourceTokens(value);
+    if (replaced.has(name) || added.length === 0) {
+      continue;
+    }
+    let base = directives[name];
+    if (base === undefined || base === false) {
+      base = "";
+      for (const fallback of FALLBACKS.get(name) ?? []) {
+        const inherited = directives[fallback];
+        if (inherited !== undefined && inherited !== false) {
+          base = inherited;
+          break;
+        }
+      }
+    }
+    const merged = base.split(/\s+/).filter(Boolean);
+    for (const token of added) {
+      if (!merged.includes(token)) {
+        merged.push(token);
+      }
+    }
+    directives[name] = merged.filter((token) => token !== "'none'").join(" ");
+  }
+}
+
+/**
  * Build the policy. Returns the headers to add, which is more than one when reporting is on:
  * `report-to` names an endpoint group that `Reporting-Endpoints` has to define.
  *
@@ -245,6 +342,11 @@ export function buildCspHeaders(
   for (const [name, value] of Object.entries<string | false>(config.directives ?? {})) {
     directives[name] = value;
   }
+  /*
+   * After the overrides, so a fallback reads the `default-src` the author actually set. A directive
+   * in `directives` is skipped: `cspConfigErrors` already refused the pair.
+   */
+  appendSources(directives, config);
 
   const policy = Object.entries(directives)
     .filter(([, value]) => value !== false && value !== "")

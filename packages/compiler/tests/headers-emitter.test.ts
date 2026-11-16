@@ -18,7 +18,7 @@ import {
   writeHeaders,
   writeNoJekyll,
 } from "../src/site/headers-emitter.ts";
-import { collectCspSources, emptyCspSources } from "../src/site/csp.ts";
+import { collectCspSources, emptyCspSources, hashOf } from "../src/site/csp.ts";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
 type Build = ProjectConfig["build"];
@@ -75,6 +75,57 @@ describe("the Content-Security-Policy", () => {
   it("is a build error when no page was scanned", () => {
     const { errors } = buildHeaderRules({ headers: { security: { csp: true } } });
     expect(errors[0]).toContain("no page was scanned");
+  });
+
+  /*
+   * What a site that needs Cloudflare Turnstile and Web Analytics writes, and the policy it must
+   * get: the generated hash and the collected origins stay, the runtime-only origins are added, and
+   * `frame-ancestors` is tightened to match `X-Frame-Options: DENY`.
+   */
+  it("adds runtime-only origins to the derived policy", () => {
+    const html = "<script>go()</script>";
+    const hash = hashOf("go()");
+    const build: Build = {
+      headers: {
+        security: {
+          csp: {
+            directives: { "frame-ancestors": "'none'" },
+            sources: {
+              "frame-src": ["https://challenges.cloudflare.com"],
+              "script-src": [
+                "https://challenges.cloudflare.com",
+                "https://static.cloudflareinsights.com",
+              ],
+            },
+          },
+        },
+      },
+    };
+    const value = cspFor(build, html);
+    expect(value).toContain(
+      `script-src 'self' ${hash} https://challenges.cloudflare.com https://static.cloudflareinsights.com`,
+    );
+    expect(value).toContain("frame-src 'self' https://challenges.cloudflare.com");
+    expect(value).toContain("frame-ancestors 'none'");
+    expect(buildHeaderRules(build, sourcesFor(html)).errors).toEqual([]);
+  });
+
+  it("is a build error to name a directive in both sources and directives", () => {
+    const { errors } = buildHeaderRules(
+      {
+        headers: {
+          security: {
+            csp: {
+              directives: { "script-src": "'self'" },
+              sources: { "script-src": "https://a.example" },
+            },
+          },
+        },
+      },
+      emptyCspSources(),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("csp.sources");
   });
 });
 
