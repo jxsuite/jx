@@ -504,11 +504,11 @@ export function resolveMetaField(
 /**
  * Resolve `<title>`: the page's `title` property, then the site's `name`, then `"Jx Site"`.
  *
- * A layout never supplies one, at any depth: `compilePage` reads the page's own `title`, and
- * `_pageTitle` is a carrier for the PAGE's title through layout distribution, not a layout value of
- * its own (site-architecture.md §5.4). A `<title>` entry inside any `$head` does not supply one
- * either — the merger overwrites the `title` key from its context after the layers are folded in,
- * which is what {@link seoWarnings}' `head-title-ignored` exists to say out loud.
+ * A layout never supplies one, at any depth: `compilePage` reads the page's own `title`
+ * (`readPageFacts`), never a layout's (site-architecture.md §5.4). A `<title>` entry inside any
+ * `$head` does not supply one either — the merger overwrites the `title` key from its context after
+ * the layers are folded in, which is what {@link seoWarnings}' `head-title-ignored` exists to say
+ * out loud.
  *
  * @param {string} pageTitle
  * @param {string} [siteName]

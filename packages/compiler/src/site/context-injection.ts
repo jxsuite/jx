@@ -12,6 +12,7 @@
 import { dirname, relative, resolve } from "node:path";
 import { injectContext as injectContextWith } from "@jxsuite/site/context";
 import type { ImportRebaser, SiteRoute, TranslationMember } from "@jxsuite/site/context";
+import type { PageFacts } from "@jxsuite/site/layout";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
@@ -34,6 +35,7 @@ export function nodeImportRebaser(projectRoot: string): ImportRebaser {
  * @param {string | null} [projectRoot] - Absolute path to the project root (for import rebasing)
  * @param {ResolvedI18n | null} [i18n] - Validated locale config, when the project declares one
  * @param {readonly TranslationMember[]} [translations] - This route's translation set
+ * @param {PageFacts} [page] - What the page says about itself, read before its layout wrapped it
  * @returns {JxDocument} The mutated document
  */
 export function injectContext(
@@ -43,6 +45,7 @@ export function injectContext(
   projectRoot: string | null = null,
   i18n: ResolvedI18n | null = null,
   translations: readonly TranslationMember[] = [],
+  page?: PageFacts,
 ): JxDocument {
   return injectContextWith(
     doc,
@@ -51,5 +54,6 @@ export function injectContext(
     projectRoot === null ? null : nodeImportRebaser(projectRoot),
     i18n,
     translations,
+    page,
   );
 }

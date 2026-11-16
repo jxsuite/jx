@@ -7,7 +7,7 @@
  * only held when the layout came off a disk would pass there and fail here.
  */
 import { describe, expect, test } from "bun:test";
-import { LayoutCycleError, layoutLevels, resolveLayout } from "../src/layout.ts";
+import { LayoutCycleError, layoutLevels, readPageFacts, resolveLayout } from "../src/layout.ts";
 import type { JsonValue, JxDocument, JxHeadEntry } from "@jxsuite/schema/types";
 
 /** A fixture that breaks the JxDocument contract on purpose, to reach one of resolveLayout's guards. */
@@ -165,7 +165,7 @@ describe("resolveLayout", () => {
     const page: JxDocument = { $head: [metaNamed("page")], $layout: "./inner.json" };
     const result = await resolveLayout(page, {}, load);
     expect(result.$head).toEqual([metaNamed("top"), metaNamed("mid"), metaNamed("inner")]);
-    expect(result._pageHead).toEqual([metaNamed("page")]);
+    expect(result._pageHead).toBeUndefined();
   });
 
   test("an intermediate layout's head survives a page that declares its own", async () => {
@@ -189,7 +189,7 @@ describe("resolveLayout", () => {
     const page: JxDocument = { $head: [metaNamed("description")], $layout: "./blog.json" };
     const result = await resolveLayout(page, {}, load);
     expect(result.$head).toEqual([metaNamed("base"), stylesheet]);
-    expect(result._pageHead).toEqual([metaNamed("description")]);
+    expect(result._pageHead).toBeUndefined();
   });
 
   test("a nested layout without a head leaves the outer layout's alone", async () => {
@@ -218,7 +218,7 @@ describe("resolveLayout", () => {
     const untitled = await resolveLayout({ $layout: "./blog.json" }, {}, load);
     expect(untitled._pageTitle).toBeUndefined();
     const titled = await resolveLayout({ $layout: "./blog.json", title: "P" }, {}, load);
-    expect(titled._pageTitle).toBe("P");
+    expect(titled._pageTitle).toBeUndefined();
   });
 
   test("a layout cycle is an error naming the chain", async () => {
@@ -292,7 +292,7 @@ describe("resolveLayout", () => {
     expect(result.attributes).toEqual({ class: "layout", id: "page" });
   });
 
-  test("the page's own head and title survive the merge, and $layout does not", async () => {
+  test("the merged document carries no page carrier, and no $layout", async () => {
     const { load } = loaderFor({
       "./l.json": { children: [{ tagName: "slot" }], tagName: "body" },
     });
@@ -303,10 +303,8 @@ describe("resolveLayout", () => {
       title: "Hello",
     };
     const result = await resolveLayout(page, {}, load);
-    expect(result._pageTitle).toBe("Hello");
-    expect(result._pageHead).toEqual([
-      { attributes: { content: "x", name: "d" }, tagName: "meta" },
-    ]);
+    expect(result._pageTitle).toBeUndefined();
+    expect(result._pageHead).toBeUndefined();
     expect(result.$layout).toBeUndefined();
   });
 
@@ -394,5 +392,29 @@ describe("layoutLevels", () => {
     });
     expect(await layoutLevels("./false.json", load)).toHaveLength(1);
     expect(await layoutLevels("./plain.json", load)).toHaveLength(1);
+  });
+});
+
+describe("readPageFacts", () => {
+  test("a page's title, head and lang are read", () => {
+    const page: JxDocument = { $head: [metaNamed("d")], $lang: "fr", title: "About" };
+    expect(readPageFacts(page)).toEqual({ head: [metaNamed("d")], lang: "fr", title: "About" });
+  });
+
+  test("a description property is stated as a description meta ahead of the page's head", () => {
+    const page: JxDocument = { $head: [metaNamed("d")], description: "About us" };
+    expect(readPageFacts(page).head).toEqual([
+      { attributes: { content: "About us", name: "description" }, tagName: "meta" },
+      metaNamed("d"),
+    ]);
+  });
+
+  test("a page that says nothing about itself has no keys", () => {
+    expect(readPageFacts({})).toEqual({});
+  });
+
+  test("a non-string title and lang and a non-array head are dropped", () => {
+    const page = offContract({ $head: "nope", $lang: 4, title: 3 });
+    expect(readPageFacts(page)).toEqual({});
   });
 });

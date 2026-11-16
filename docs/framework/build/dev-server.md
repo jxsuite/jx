@@ -126,6 +126,8 @@ Content types come from Bun's own inference, with two corrections: a `.md` file 
 
 Studio's **Open in Browser** doesn't compile anything. It asks this server to stand up a second loopback address, one per project, that serves your working tree as a site: each page is composed as it's asked for, at the route it will really have, and assembled in the reader's browser by `@jxsuite/runtime`. That's why it opens at once and why it can show you the document you're editing rather than the last one you saved, which is the whole point of it. Studio sends the unsaved bytes over and this server prefers them over the file at every read.
 
+A page there gets the same `$page` and `$site` a build gives it, with two exceptions the preview cannot compute without building the whole site: `$page.alternates` is absent, and a `title` or description written as a template shows as written.
+
 The address is separate from this one on purpose, and not because the paths would clash. A browser tab belongs to a _project_, and this server belongs to a _window_: a tab pointed here would die with the window that opened it. The other reason is that a previewed page runs your project's own JavaScript, and giving it an origin of its own keeps it away from anything the editor keeps in the browser. What it will serve is an allowlist that defaults closed, so the project file, a lockfile and every dotfile are unreachable from a page.
 
 Your own components render without being listed anywhere. The preview walks the page it composed, finds the tags your `components/` directory defines, and registers those, following each component into the components it uses in turn. You only need `$elements` for what your project does not define, such as a component from an npm package.

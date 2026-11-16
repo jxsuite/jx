@@ -5,6 +5,7 @@ spec:
   - site-architecture.md#5
 code:
   - packages/site/src/layout.ts
+  - packages/site/src/context.ts
   - packages/compiler/src/site/layout-resolver.ts
 ---
 
@@ -112,7 +113,7 @@ Compiling a page against its layout produces one document:
 - **`$elements`**: in a build, every level counts. The page's, each layout's and the project's entries are all registered, and each `$ref` is relative to the file that declares it.
 - **`$head`**: merged site, then each layout from the outermost in, then page, a later entry replacing an earlier one with the same identity; see [SEO and metadata](/docs/framework/site/seo). The page's `<title>` comes from its `title` property, not from a `$head` entry.
 
-Layouts also receive the compiler-injected contexts: `$page` (`title`, `url`, `params`) and `$site` (`name`, `url`, plus site state). See [the project file](/docs/framework/site/project-json).
+Layouts also receive the injected contexts: `$page` (`title`, `description`, `url`, `params`, `locale`, `dir`, `alternates`) and `$site` (`name`, `url`, `locales`, `defaultLocale`, plus site state; see [the project file](/docs/framework/site/project-json)). `$page` always describes the page, not the layout: `${state.$page.title}` is the page's own title, the text its `<title>` shows, even when the layout declares a `title` of its own, and `$page.locale` follows the page's `$lang`, not the layout's. Write `state.$page` in a layout: the bare `$page` works only where the build evaluates the template, and **Open in Browser** renders in the reader's browser.
 
 ## Related
 

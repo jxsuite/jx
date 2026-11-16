@@ -28,6 +28,12 @@ describe("nodeImportRebaser", () => {
     expect(doc.imports?.helpers).toBe("./../../lib/helpers.ts");
   });
 
+  test("passes page facts through", () => {
+    const doc: JxDocument = { title: "Shell" };
+    injectContext(doc, { name: "Site" }, route, null, null, [], { title: "P" });
+    expect(doc.state?.$page).toMatchObject({ title: "P" });
+  });
+
   test("no project root leaves the authored path alone", () => {
     const doc: JxDocument = {};
     injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } }, route);

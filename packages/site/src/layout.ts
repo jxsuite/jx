@@ -21,7 +21,14 @@
  */
 
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
-import type { JxAttributeValue, JxDocument, JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  JxAttributeValue,
+  JxDocument,
+  JxElement,
+  JxHeadEntry,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
+import { withPageDescription } from "./head-merger.ts";
 
 /**
  * Read one layout document by the `$layout` reference that named it.
@@ -88,6 +95,50 @@ export async function layoutLevels(
 }
 
 /**
+ * What a page says about itself, read from the page and never from the layout-wrapped document
+ * (site-architecture.md §5.5). A wrapped document starts as a clone of the outermost layout, so its
+ * own `title` and `$lang` are that layout's, not the page's.
+ */
+export interface PageFacts {
+  /** The page's `title`, as authored: a template when it is written as one. */
+  title?: string;
+  /**
+   * The page's own head: its `$head`, with the `description` property stated as a description meta
+   * ahead of it (`withPageDescription`), so the entry `mergeHead` keeps is the last one here.
+   */
+  head?: readonly JxHeadEntry[];
+  /** The page's own `$lang`. */
+  lang?: string;
+}
+
+/**
+ * Read a page's own facts from the page document, before any layout wraps it.
+ *
+ * @param {JxDocument} pageDoc - The raw page document
+ * @returns {PageFacts} Each fact the page states, with the keys it does not state left out
+ */
+export function readPageFacts(pageDoc: JxDocument): PageFacts {
+  const facts: PageFacts = {};
+  if (isString(pageDoc.title)) {
+    facts.title = pageDoc.title;
+  }
+  const head = withPageDescription(
+    Array.isArray(pageDoc.$head) ? pageDoc.$head : [],
+    pageDoc.description,
+  );
+  if (head.length > 0) {
+    /* SAFETY: a page's `$head` is authored JSON, which `AuthoredHeadEntry` describes as wider than
+       `JxHeadEntry`; the merge and the render both tolerate the wider shapes, as the build's head
+       always has. */
+    facts.head = head as JxHeadEntry[];
+  }
+  if (isString(pageDoc.$lang)) {
+    facts.lang = pageDoc.$lang;
+  }
+  return facts;
+}
+
+/**
  * Resolve a page's layout, wrapping the page content in the layout structure.
  *
  * @param {JxDocument} pageDoc - The raw page JSON document
@@ -117,21 +168,13 @@ export async function resolveLayout(
     const level = deepClone(entry.doc);
     wrapInto(merged, level);
     /* A layout's `$head` is the layout level of the head merge, whatever its depth, so each inner
-       layout's entries follow the ones outside it. Only the page's own `$head` is `_pageHead`. */
+       layout's entries follow the ones outside it. */
     if (level.$head) {
       merged.$head = [...(merged.$head ?? []), ...level.$head];
     }
   }
 
   wrapInto(merged, pageDoc);
-
-  // Preserve page-level metadata
-  if (pageDoc.$head) {
-    merged._pageHead = pageDoc.$head;
-  }
-  if (pageDoc.title) {
-    merged._pageTitle = pageDoc.title;
-  }
 
   // Remove $layout from merged doc (already resolved)
   delete merged.$layout;
