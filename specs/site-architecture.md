@@ -160,8 +160,6 @@ Every new project is provisioned with a `project.jxn`, whichever way it is creat
 
 ## 3. Site Configuration
 
-> **Status: Partial.** `project.json` is the one required configuration file and its keys are read as §3.1 records. The example's `$head` is not in the shape the build reads: an entry's HTML attributes come only from `attributes` (`renderHeadEntry` in `packages/site/src/head-merger.ts`), so the top-level `name`, `content`, `rel` and `href` below are dropped, and the icon and font entries render as bare `<link>` tags.
-
 The project file at the project root (`project.jxn`, or `project.json` in an older project, §2.3) defines site-wide settings. The examples in this spec show its JSON form, which is the same data model. It is the only required configuration file.
 
 ```json
@@ -179,11 +177,10 @@ The project file at the project root (`project.jxn`, or `project.json` in an old
   "$head": [
     {
       "tagName": "meta",
-      "name": "viewport",
-      "content": "width=device-width, initial-scale=1"
+      "attributes": { "name": "viewport", "content": "width=device-width, initial-scale=1" }
     },
-    { "tagName": "link", "rel": "icon", "href": "/favicon.svg" },
-    { "tagName": "link", "rel": "stylesheet", "href": "/fonts/inter.css" }
+    { "tagName": "link", "attributes": { "rel": "icon", "href": "/favicon.svg" } },
+    { "tagName": "link", "attributes": { "rel": "stylesheet", "href": "/fonts/inter.css" } }
   ],
 
   "$media": {
@@ -406,61 +403,44 @@ There is no bare `${$params.…}` template binding. Parameters are resolved at c
 
 ## 5. Layouts
 
-Layouts are Jx documents that provide a shared page shell — the `<html>`, `<head>`, `<body>`, navigation, footer, and any other chrome common across pages.
+Layouts are Jx documents that provide the chrome shared across pages: navigation, a footer, and any other wrapper common to them. The document around them (`<!DOCTYPE html>`, `<html>`, `<head>` and `<body>`) is written by the build, not by a layout (§5.1).
 
 ### 5.1 Layout Documents
-
-> **Status: Partial.** Slot distribution ships (`distributeSlots` in `packages/site/src/layout.ts`). The example's shape does not: a layout is body content wrapped by the page shell (`packages/compiler/src/targets/compile-static.ts`), so an `html` root nests inside `<body>`, head material comes from the layout's `$head` rather than `<head>` children in its tree, and `$page.lang` is never set (§5.5 names it `$page.locale`).
 
 A layout is a standard Jx file that uses HTML `<slot>` elements — the same mechanism already implemented for custom elements — to indicate where page content is injected:
 
 ```json
 {
-  "tagName": "html",
-  "lang": "${$page.lang ?? 'en'}",
+  "tagName": "div",
+  "$elements": [
+    { "$ref": "../components/site-header.json" },
+    { "$ref": "../components/site-footer.json" }
+  ],
+  "$head": [
+    { "tagName": "link", "attributes": { "rel": "stylesheet", "href": "/styles/site.css" } }
+  ],
   "children": [
-    {
-      "tagName": "head",
-      "children": [
-        { "tagName": "meta", "charset": "utf-8" },
-        {
-          "tagName": "meta",
-          "name": "viewport",
-          "content": "width=device-width, initial-scale=1"
-        },
-        { "tagName": "title", "textContent": "${$page.title ?? $site.name}" }
-      ]
-    },
-    {
-      "tagName": "body",
-      "children": [
-        { "$ref": "../components/header.json" },
-        {
-          "tagName": "main",
-          "children": [{ "tagName": "slot" }]
-        },
-        { "$ref": "../components/footer.json" }
-      ]
-    }
+    { "tagName": "site-header" },
+    { "tagName": "main", "children": [{ "tagName": "slot" }] },
+    { "tagName": "site-footer" }
   ]
 }
 ```
 
-### 5.2 Referencing Layouts from Pages
+**A layout is body content.** The build writes the document around the composed page: `<!DOCTYPE html>`, `<html>` carrying the `lang` and `dir` of §8.4 and §13.4, the merged `<head>`, and `<body>`. A layout's root is the first element inside `<body>`, so it is an ordinary element such as a `div`. An `html`, `head` or `body` root would nest inside the real `<body>`. Head material a layout contributes is its own `$head`, the layout level of the merge (§8.3). `<meta charset>`, the viewport and `<title>` need no entry, because the build writes them (§8.4). A layout's chrome components are registered in its `$elements` and placed by tag, as in any document (`spec.md` §13.1).
 
-> **Status: Partial.** `$layout`, its project-root resolution, the `defaults.layout` fallback and `$layout: false` ship (`resolveLayout` in `packages/site/src/layout.ts`, `packages/compiler/src/site/layout-resolver.ts`). The example's `$head` is not in the shape the build reads, as in §8.1: its `title` entry is discarded, because the title is the document's `title` property, and its top-level `name` and `content` are dropped.
+### 5.2 Referencing Layouts from Pages
 
 Pages declare their layout via `$layout`:
 
 ```json
 {
   "$layout": "./layouts/base.json",
+  "title": "About Us",
   "$head": [
-    { "tagName": "title", "textContent": "About Us" },
     {
       "tagName": "meta",
-      "name": "description",
-      "content": "Learn about our company"
+      "attributes": { "name": "description", "content": "Learn about our company" }
     }
   ],
   "children": [
@@ -475,7 +455,7 @@ Pages declare their layout via `$layout`:
 }
 ```
 
-The page's `children` are injected at the layout's `<slot>` position via the same `distributeSlots()` algorithm already implemented for custom elements — just run at compile time instead of DOM time. The page's `$head` entries merge with the layout's and site's head entries.
+The page's `children` are injected at the layout's `<slot>` position via the same `distributeSlots()` algorithm already implemented for custom elements — just run at compile time instead of DOM time. The page's `$head` entries merge with the layout's and site's head entries (§8.3), and its `title` becomes the page's `<title>` (§8.4).
 
 `$layout` paths — like `defaults.layout` — are resolved against the **project root**, not the referencing file. The same `"./layouts/base.json"` works from a page at any directory depth.
 
@@ -487,18 +467,19 @@ Layouts may define multiple named slots for structured page regions, using the s
 
 ```json
 {
-  "tagName": "body",
+  "tagName": "div",
+  "$elements": [
+    { "$ref": "../components/site-header.json" },
+    { "$ref": "../components/site-footer.json" }
+  ],
   "children": [
-    { "$ref": "../components/header.json" },
+    { "tagName": "site-header" },
     {
       "tagName": "aside",
       "children": [{ "tagName": "slot", "attributes": { "name": "sidebar" } }]
     },
-    {
-      "tagName": "main",
-      "children": [{ "tagName": "slot" }]
-    },
-    { "$ref": "../components/footer.json" }
+    { "tagName": "main", "children": [{ "tagName": "slot" }] },
+    { "tagName": "site-footer" }
   ]
 }
 ```
@@ -1056,26 +1037,19 @@ Pages declare metadata via `$head`. The compiler resolves these into `<head>` el
 
 ### 8.2 Templated Metadata
 
-> **Status: Partial.** `$head` values resolve against state, `$site` and `$page` (`resolveHeadTemplates` in `packages/compiler/src/site/site-build.ts`). The example diverges as §8.1's does: its templated `title` entry is discarded, since a templated title is the document's `title` property, and its top-level `name`, `content`, `rel` and `href` are never rendered.
-
-Metadata values support template strings referencing state, `$site`, and `$page`:
+The page's `title`, and the attribute values and `textContent` of a page's or layout's `$head` entries, support template strings referencing state, `$site` and `$page`:
 
 ```json
 {
+  "title": "${state.post.data.title} — ${$site.name}",
   "$head": [
     {
-      "tagName": "title",
-      "textContent": "${state.post.data.title} — ${$site.name}"
-    },
-    {
       "tagName": "meta",
-      "name": "description",
-      "content": "${state.post.data.description}"
+      "attributes": { "name": "description", "content": "${state.post.data.description}" }
     },
     {
       "tagName": "link",
-      "rel": "canonical",
-      "href": "${$site.url}/blog/${$page.params.slug}"
+      "attributes": { "rel": "canonical", "href": "${$site.url}/blog/${$page.params.slug}" }
     }
   ]
 }
@@ -1085,17 +1059,15 @@ For content-driven pages, metadata comes directly from the content entry's front
 
 ### 8.3 Head Merge Order
 
-> **Status: Partial.** The three layers merge in this order under the stated deduplication, auto-injected entries yield to authored ones, and the `rel` check ships (`mergeHead` and `headEntryKey` in `packages/site/src/head-merger.ts`, `packages/compiler/src/site/link-relations.ts`). Two statements do not match: the layout level is the layout document's `$head`, not `<head>` children in its tree, and a `<title>` in `$head` at any level is discarded rather than overriding, because `mergeHead` always writes the title from the document's `title` property.
-
 The compiler assembles `<head>` content from three sources, in order:
 
 1. **Site-level** (`project.json` `$head`) — global meta tags, fonts, icons
-2. **Layout-level** (layout's `<head>` children) — charset, viewport, structural tags
-3. **Page-level** (page's `$head`) — page-specific title, description, OG tags
+2. **Layout-level** (the layout document's `$head`, §5.1) — shared stylesheets, scripts and other structural tags
+3. **Page-level** (the page's `$head`) — the page's description, Open Graph tags and canonical link
 
-Later entries can override earlier entries. If both site and page define a `<title>`, the page's wins.
+Before them come the two entries the build injects itself, `<meta charset>` and the viewport (§8.4), and a later entry replaces an earlier one under the same key. The title is not merged from these layers: `<title>` is written from the page's `title` property after them (§8.4), so a `<title>` entry in any level's `$head` is discarded. Studio's Search appearance modal reports one (§8.6).
 
-Deduplication is by `tagName` plus the attribute that identifies the element: `name` for a `<meta name>`, `property` for a `<meta property>`, and for a `<link>`, `rel` **plus `href` plus whichever of `hreflang`, `type`, `media` or `sizes` is present**. That last part is not pedantry — `rel` and `href` alone are not identity, and the cases where they collide are ones a real site needs: `hreflang="x-default"` conventionally points at the same href as the default locale's alternate, and an RSS and an Atom feed are both `rel="alternate"` differing only in `type`.
+Deduplication is by `tagName` plus the attribute, read from the entry's `attributes`, that identifies the element: `name` for a `<meta name>`, `property` for a `<meta property>`, and for a `<link>`, `rel` **plus `href` plus whichever of `hreflang`, `type`, `media` or `sizes` is present**. That last part is not pedantry — `rel` and `href` alone are not identity, and the cases where they collide are ones a real site needs: `hreflang="x-default"` conventionally points at the same href as the default locale's alternate, and an RSS and an Atom feed are both `rel="alternate"` differing only in `type`.
 
 An auto-injected entry loses to an author-supplied one under the same key, including the canonical link.
 
@@ -1164,9 +1136,7 @@ The `type` is the format's media type without its parameters, and the `href` is 
 
 ### 8.5 Structured Data (JSON-LD)
 
-> **Status: Partial.** Object `textContent` serialization with templates resolved ships in the build and the interpreting runtime (`renderHeadEntry` in `packages/site/src/head-merger.ts`, `injectHead` in `packages/runtime/src/runtime.ts`). The example's shape does not: its `type` sits at the top level of the entry, where both read only `attributes`, so the block renders as a bare `<script>` that a browser runs as JavaScript instead of reading as JSON-LD. `packages/site/tests/head-merger.test.ts` pins the working form, `attributes: { "type": "application/ld+json" }`.
->
-> A head entry's `textContent` may be an object; the compiler serializes it to JSON inside the tag, and template strings **inside** the object resolve against the same scope as everywhere else — a structured-data block that cannot reference the page it describes would not be much use. The interpreting runtime serializes it identically, so a dev preview and a built page agree.
+> **Status: Implemented.** A head entry's `textContent` may be an object; the compiler serializes it to JSON inside the tag, and template strings **inside** the object resolve against the same scope as everywhere else — a structured-data block that cannot reference the page it describes would not be much use. The interpreting runtime serializes it identically, so a dev preview and a built page agree.
 
 Pages may include JSON-LD for rich search results:
 
@@ -1175,7 +1145,7 @@ Pages may include JSON-LD for rich search results:
   "$head": [
     {
       "tagName": "script",
-      "type": "application/ld+json",
+      "attributes": { "type": "application/ld+json" },
       "textContent": {
         "@context": "https://schema.org",
         "@type": "BlogPosting",
@@ -1191,7 +1161,7 @@ Pages may include JSON-LD for rich search results:
 }
 ```
 
-The compiler serializes the `textContent` object to a JSON string within the `<script>` tag, resolving template expressions first.
+The compiler serializes the `textContent` object to a JSON string within the `<script>` tag, resolving template expressions first. `type` is an HTML attribute like any other, so it goes under `attributes`. Without it the block is a plain `<script>`, which a browser runs as JavaScript rather than reading as JSON-LD.
 
 ### 8.6 Studio SEO Panel
 
@@ -2426,17 +2396,17 @@ This spec introduces the following new reserved keywords:
 
 This spec builds on existing Jx primitives wherever possible:
 
-| New Concept        | Built On                                                                                |
-| ------------------ | --------------------------------------------------------------------------------------- |
-| Layouts            | Standard Jx documents + HTML `<slot>` element (already implemented for custom elements) |
-| Named layout slots | Standard `slot` attribute targeting (already implemented)                               |
-| Content query      | `$prototype` (same pattern as `Array`, `URL`, etc.)                                     |
-| Dynamic routes     | `$ref` + compiler-time resolution                                                       |
-| Site state         | Standard `state` with scope prefix                                                      |
-| Media breakpoints  | Existing `$media` (already implemented)                                                 |
-| SEO metadata       | Standard element definitions (existing `tagName`, `name`, `content`)                    |
-| Redirects          | Compiler output (new, but no runtime concept)                                           |
-| File-based routing | Convention only (no new language feature)                                               |
+| New Concept        | Built On                                                                                                                      |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Layouts            | Standard Jx documents + HTML `<slot>` element (already implemented for custom elements)                                       |
+| Named layout slots | Standard `slot` attribute targeting (already implemented)                                                                     |
+| Content query      | `$prototype` (same pattern as `Array`, `URL`, etc.)                                                                           |
+| Dynamic routes     | `$ref` + compiler-time resolution                                                                                             |
+| Site state         | Standard `state` with scope prefix                                                                                            |
+| Media breakpoints  | Existing `$media` (already implemented)                                                                                       |
+| SEO metadata       | `$head` entries written as elements (`tagName`, with HTML attributes under `attributes`), and the document's `title` property |
+| Redirects          | Compiler output (new, but no runtime concept)                                                                                 |
+| File-based routing | Convention only (no new language feature)                                                                                     |
 
 ## Changelog
 

@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - site-architecture.md#5.4
-requires:
-  - site-architecture/head-and-layout-shape
+requires: []
 workspaces:
   - packages/site
   - packages/compiler
@@ -55,7 +54,7 @@ Tracked nesting: `examples/layouts/example.json`, `packages/starters/sites/blog/
 - **Decided:** `_pageHead` and `_pageTitle` stay, narrowed to the page's own `$head` and `title`, which is what their names say. `_pageTitle` is read inside `injectContext`, and when that carrier is deleted relative to `injectContext` is §5.5's question, so this plan does not remove either.
 - **Decided:** the chain is read by one exported function, `layoutLevels`, which throws `LayoutCycleError` naming the chain when a reference repeats, because the recursion is unbounded today and Studio needs the same walk. Detection compares references as authored; a cycle spelled two ways (`./layouts/a.json`, `layouts/a.json`) repeats an exact string within one more lap, because each file names a fixed `$layout`.
 - **Open:** does Studio's merged-head preview follow the chain in this plan? Recommendation: yes, with each level naming itself as the donor, because §8.6 promises the merged head with the donor named, and a flat layer credited to the page's own layout would send the author to a file that does not hold the value. It adds `packages/studio`; declining it drops that workspace, leaves §8.6's preview wrong under nesting, and makes this plan S.
-- **Decided:** this plan requires `plan:site-architecture/head-and-layout-shape`, because its §8.3 and `docs/framework/site/layouts.md` edits are written against the text that paper plan puts there (§8.3's item 2, the layouts page's `$head` bullet), and neither can be right against today's `<head>`-children wording.
+- **Decided:** this plan's §8.3 and `docs/framework/site/layouts.md` edits are written against the text the landed head-and-layout-shape reconciliation put there (§8.3's item 2, the layouts page's `$head` bullet).
 - **Decided:** an intermediate layout's `$elements` are closed here for the live preview and not for the build. The build half is imports.md §1.3's, landed: `layoutChain` feeds the build's npm filter and compile set with each layout's own directory, and the live preview is scoped out. Left there, the live preview's half had no owner and no marker. `composePage` already changes in this plan and its loader already sees every level, so recording what it loads costs three lines. `resolveLayout` still merges no `$elements`: a `$ref` is relative to the file that wrote it, and only a host knows how it resolves (the live preview resolves every one against the shell's base, `refPath` in `compose.ts`).
 
 ## Implementation
@@ -126,7 +125,7 @@ The edits below are written under both Open recommendations. If a layout's `titl
   - "Its `$head` joins the **layout level** of the head merge (§8.3). The layout level is every layout's `$head`, outermost first, so `blog-post.json` adds its stylesheet to what `base.json` declares, and an inner layout's entry replaces an outer one's under the same key. The page's own `$head` is the page level, which follows."
   - "A layout's `title` is not a page title, at any depth: the page's `<title>` is its own `title`, else the project `name` (§8.4)."
   - "A layout that reaches itself through `$layout`, directly or through another layout, is an error naming the chain: `Layout cycle: ./layouts/a.json → ./layouts/b.json → ./layouts/a.json`. The build reports it for each page that uses the layout, and the live preview renders it as that page's problem."
-- **§8.3**, item 2 as `plan:site-architecture/head-and-layout-shape` leaves it ("**Layout-level** (the layout document's `$head`, §5.1): shared stylesheets, scripts and other structural tags") becomes "**Layout-level** (the layout document's `$head`, and when layouts nest every layout's, outermost first, §5.1 and §5.4): shared stylesheets, scripts and other structural tags". That plan wrote item 2 neutral about nesting so this widening undoes none of it.
+- **§8.3**, item 2 as the head-and-layout-shape reconciliation left it ("**Layout-level** (the layout document's `$head`, §5.1): shared stylesheets, scripts and other structural tags") becomes "**Layout-level** (the layout document's `$head`, and when layouts nest every layout's, outermost first, §5.1 and §5.4): shared stylesheets, scripts and other structural tags". That plan wrote item 2 neutral about nesting so this widening undoes none of it.
 
 **Fragment:** `bun run spec:change site-architecture.md minor -m "§5.4: every layout in a nested chain contributes its head entries to the layout level of the head merge, outermost first, a layout's title is never the page title at any depth, and a layout cycle is an error naming the chain."`
 
@@ -134,7 +133,7 @@ The edits below are written under both Open recommendations. If a layout's `titl
 
 - `docs/framework/site/layouts.md`:
   - "Nesting": after "Inner layouts resolve first, so the page's content threads through every level." add "Each layout's `$head` joins the layout layer of the merged `<head>`, outermost first, so `blog-post.json` can add a stylesheet to what `base.json` declares. A `title` on a layout never becomes the page's `<title>`, at any level: that is the page's own `title`, or the site's `name`. A layout that wraps itself, directly or through another layout, is a build error naming the chain."
-  - "What merges", the `$head` bullet as `plan:site-architecture/head-and-layout-shape` leaves it: "merged site, then layout, then page" becomes "merged site, then each layout from the outermost in, then page". The rest of the bullet is unchanged.
+  - "What merges", the `$head` bullet as the head-and-layout-shape reconciliation left it: "merged site, then layout, then page" becomes "merged site, then each layout from the outermost in, then page". The rest of the bullet is unchanged.
 - `docs/framework/site/seo.md`, "Merge order" item 3: "**Layout**: the layout document's `$head`" becomes "**Layout**: the layout document's `$head`, and when layouts nest, each one's, outermost first".
 - `docs/studio/editing/frontmatter.md`: line 82's "the project's own `$head`, then the layout's, then the page's" becomes "the project's own `$head`, then the layout's (every layout in the chain, outermost first, when one wraps another), then the page's"; line 91's "_from Base_ for a layout" becomes "_from Base_ for a layout, naming the layout in the chain that set the value".
 - `docs/studio/editing.md` states nothing about layouts and does not change.
