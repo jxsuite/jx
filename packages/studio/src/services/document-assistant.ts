@@ -55,6 +55,7 @@ import { renderCheck } from "./render-critic";
 import type { RenderProbe } from "./ai-write-report";
 import { validateDoc } from "./jx-validate";
 import { reloadFileInTab } from "../files/files";
+import { noteFileSaved } from "../publish/source-control";
 import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
 import * as sessionStore from "./ai-session-store";
 import type { SaveResult } from "./ai-session-store";
@@ -241,7 +242,7 @@ export function createDocumentAssistant() {
   });
   /* The hand tools gated on live studio state, then the command tools. The state is read on every
      listing, so a mid-loop create_project unlocks the higher tiers the very next round. */
-  const toolRegistry = assistantToolRegistry(innerRegistry, commandTools, () => ({
+  const gatedRegistry = assistantToolRegistry(innerRegistry, commandTools, () => ({
     /* The platform's own answer, read live rather than captured: the assistant is constructed at
        module load, before a platform is registered in some hosts. */
     canImport: Boolean(getPlatform().importSite),
@@ -249,6 +250,22 @@ export function createDocumentAssistant() {
     hasProject: Boolean(workspace.projectRoot),
     treeEditable: treeEditable(),
   }));
+  /* Source control follows the assistant. A tool can write the working tree by any of several doors
+     (a file write, a project or config write, an import, a bridged command that saves), and none of
+     them is the editor's save path that `noteFileSaved` is hooked to. Rather than chase each door,
+     every call settles through here: once a call has run, the Publish workspace's status, its count
+     and any open comparison are re-read, so a change the assistant made shows without a manual
+     refresh. A call that threw may still have written, so the refresh does not wait on success. */
+  const toolRegistry: typeof gatedRegistry = {
+    ...gatedRegistry,
+    async execute(toolName, args, ctx) {
+      try {
+        return await gatedRegistry.execute(toolName, args, ctx);
+      } finally {
+        void noteFileSaved(null);
+      }
+    },
+  };
 
   let controller: AbortController | null = null;
 
