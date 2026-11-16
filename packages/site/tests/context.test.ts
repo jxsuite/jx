@@ -6,10 +6,30 @@
  */
 import { describe, expect, test } from "bun:test";
 import { localeLabel } from "@jxsuite/schema/locale";
-import { injectContext } from "../src/context.ts";
+import { injectContext, pageDescription } from "../src/context.ts";
 import { pagination } from "../src/pagination.ts";
 import type { SiteRoute } from "../src/context.ts";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxDocument, JxHeadEntry } from "@jxsuite/schema/types";
+
+/** A `<meta name=… content=…>` head entry. */
+function meta(name: string, content: string): JxHeadEntry {
+  return { attributes: { content, name }, tagName: "meta" };
+}
+
+describe("pageDescription", () => {
+  test("ignores a link, a meta with property=description and a non-string content", () => {
+    const head: JxHeadEntry[] = [
+      { attributes: { href: "/x", name: "description" }, tagName: "link" },
+      { attributes: { content: "P", property: "description" }, tagName: "meta" },
+      { attributes: { content: true, name: "description" }, tagName: "meta" },
+    ];
+    expect(pageDescription(head)).toBeUndefined();
+  });
+
+  test("reads the last description meta", () => {
+    expect(pageDescription([meta("description", "A"), meta("description", "B")])).toBe("B");
+  });
+});
 
 describe("injectContext", () => {
   const baseProject = {
@@ -52,10 +72,60 @@ describe("injectContext", () => {
     expect(doc.state?.$page).toMatchObject({ title: "Test Site" });
   });
 
-  test("uses _pageTitle as intermediate fallback", () => {
-    const doc: JxDocument = { _pageTitle: "Layout Title" };
+  test("the page's facts decide the title, not the wrapped document", () => {
+    const doc: JxDocument = { title: "Shell" };
+    injectContext(doc, baseProject, baseRoute, null, null, [], { title: "About" });
+    expect(doc.state?.$page).toMatchObject({ title: "About" });
+  });
+
+  test("a page with no title reads as the site name inside a titled layout", () => {
+    const doc: JxDocument = { title: "Shell" };
+    injectContext(doc, baseProject, baseRoute, null, null, [], {});
+    expect(doc.state?.$page).toMatchObject({ title: "Test Site" });
+  });
+
+  test("with no project name the title matches $site.name", () => {
+    const doc: JxDocument = {};
+    injectContext(doc, {}, baseRoute);
+    expect(doc.state?.$page).toMatchObject({ title: "Jx Site" });
+    expect(doc.state?.$site).toMatchObject({ name: "Jx Site" });
+  });
+
+  test("the page's $lang decides $page.locale, not the wrapped document's", () => {
+    const doc: JxDocument = { $lang: "de" };
+    injectContext(doc, baseProject, baseRoute, null, null, [], { lang: "fr" });
+    expect(doc.state?.$page).toMatchObject({ locale: "fr" });
+  });
+
+  test("$page.description is the page's own description meta", () => {
+    const doc: JxDocument = {};
+    injectContext(doc, baseProject, baseRoute, null, null, [], {
+      head: [meta("description", "A")],
+    });
+    expect(doc.state?.$page).toMatchObject({ description: "A" });
+  });
+
+  test("the last description entry wins, as in the merged head", () => {
+    const doc: JxDocument = {};
+    const head = [meta("description", "A"), meta("description", "B")];
+    injectContext(doc, baseProject, baseRoute, null, null, [], { head });
+    expect(doc.state?.$page).toMatchObject({ description: "B" });
+  });
+
+  test("a page with no description carries no description key", () => {
+    const doc: JxDocument = {};
+    injectContext(doc, baseProject, baseRoute, null, null, [], { head: [meta("robots", "all")] });
+    expect(doc.state?.$page).not.toHaveProperty("description");
+  });
+
+  test("without facts the document is read as the page", () => {
+    const doc: JxDocument = {
+      $head: [meta("description", "D")],
+      $lang: "fr",
+      title: "T",
+    };
     injectContext(doc, baseProject, baseRoute);
-    expect(doc.state?.$page).toMatchObject({ title: "Layout Title" });
+    expect(doc.state?.$page).toMatchObject({ description: "D", locale: "fr", title: "T" });
   });
 
   test("includes route path params", () => {

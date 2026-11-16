@@ -328,8 +328,6 @@ describe("composePage", () => {
       }),
     });
     expect(page.doc.$head).toBeUndefined();
-    expect(page.doc._pageHead).toBeUndefined();
-    expect(page.doc._pageTitle).toBeUndefined();
     expect(page.head.some((e) => e.attributes?.name === "description")).toBe(true);
   });
 
@@ -535,10 +533,10 @@ describe("composePage", () => {
     expect(page.doc.tagName).toBe("body");
   });
 
-  test("a layout that lifted the page's $head still reaches the merged head", async () => {
-    /* `resolveLayout` moves the page's own $head onto `_pageHead`, so the composer has to look
-       there as well as at the page document — otherwise wrapping a page in a layout silently drops
-       every meta tag the page declared for itself. */
+  test("a page's own $head still reaches the merged head under a layout", async () => {
+    /* The wrapped document is a clone of the layout, so the composer reads the page's own `$head`
+       from the page — otherwise wrapping a page in a layout silently drops every meta tag the page
+       declared for itself. */
     const page = await compose({
       "layouts/base.json": JSON.stringify({
         children: [{ tagName: "slot" }],
@@ -558,6 +556,92 @@ describe("composePage", () => {
   test("with no title anywhere, the site's name is the title", async () => {
     const page = await compose({ "pages/index.json": PAGE }, { name: "Acme" });
     expect(page.head.some((e) => e.tagName === "title")).toBe(true);
+  });
+
+  test("$page.title is the page's even when the layout declares its own", async () => {
+    const page = await compose({
+      "layouts/base.json": JSON.stringify({
+        children: [{ tagName: "slot" }],
+        tagName: "body",
+        title: "Shell",
+      }),
+      "pages/index.json": JSON.stringify({
+        $layout: "./layouts/base.json",
+        children: ["Hi"],
+        title: "About",
+      }),
+    });
+    expect(page.doc.state?.$page).toMatchObject({ title: "About" });
+    const title = page.head.find((entry) => entry.tagName === "title");
+    expect(title?.children).toEqual(["About"]);
+  });
+
+  test("the page's description reaches $page under a layout", async () => {
+    const page = await compose({
+      "layouts/base.json": JSON.stringify({ children: [{ tagName: "slot" }], tagName: "body" }),
+      "pages/index.json": JSON.stringify({
+        $head: [{ attributes: { content: "Explicit", name: "description" }, tagName: "meta" }],
+        $layout: "./layouts/base.json",
+        description: "From the property",
+      }),
+    });
+    expect(page.doc.state?.$page).toMatchObject({ description: "Explicit" });
+  });
+
+  test("a wrapped page's $lang sets $page.locale and the shell's lang alike", async () => {
+    const page = await compose({
+      "layouts/base.json": JSON.stringify({
+        $lang: "de",
+        children: [{ tagName: "slot" }],
+        tagName: "body",
+      }),
+      "pages/index.json": JSON.stringify({ $lang: "fr", $layout: "./layouts/base.json" }),
+    });
+    expect(page.lang).toBe("fr");
+    expect(page.doc.state?.$page).toMatchObject({ locale: "fr" });
+  });
+
+  test("a dynamic page's $page.url is the concrete path, as the build's is", async () => {
+    const io = treeIO({ "pages/blog/[slug].json": PAGE });
+    const page = await composeRoute(io, routeTable(io.paths()), {}, "/blog/hello/");
+    expect(page?.doc.state?.$page).toMatchObject({ params: { slug: "hello" }, url: "/blog/hello" });
+  });
+
+  test("a catch-all's parameter is named as the build names it", async () => {
+    const declared = treeIO({
+      "pages/docs/[...path].json": JSON.stringify({
+        $paths: { param: "rest", values: [] },
+        tagName: "main",
+      }),
+    });
+    const named = await composeRoute(declared, routeTable(declared.paths()), {}, "/docs/a/b");
+    expect(named?.doc.state?.$page).toMatchObject({ params: { rest: "a/b" }, url: "/docs/a/b" });
+
+    const bare = treeIO({ "pages/docs/[...path].json": PAGE });
+    const fallback = await composeRoute(bare, routeTable(bare.paths()), {}, "/docs/a/b");
+    expect(fallback?.doc.state?.$page).toMatchObject({ params: { path: "a/b" } });
+
+    /* The legacy array form of `$paths` names no parameter. */
+    const legacy = treeIO({
+      "pages/docs/[...path].json": JSON.stringify({ $paths: [{ path: "a/b" }], tagName: "main" }),
+    });
+    const array = await composeRoute(legacy, routeTable(legacy.paths()), {}, "/docs/a/b");
+    expect(array?.doc.state?.$page).toMatchObject({ params: { path: "a/b" } });
+  });
+
+  test("a [lang] route takes its locale from the filled URL", async () => {
+    const io = treeIO({ "pages/[lang]/index.json": PAGE });
+    const config: ProjectConfig = { i18n: { defaultLocale: "en", locales: ["en", "fr"] } };
+    const page = await composeRoute(io, routeTable(io.paths()), config, "/fr");
+    expect(page?.lang).toBe("fr");
+    expect(page?.doc.state?.$page).toMatchObject({ locale: "fr" });
+  });
+
+  test("with no title and no project name the head's title is the site default", async () => {
+    const page = await compose({ "pages/index.json": PAGE });
+    const title = page.head.find((entry) => entry.tagName === "title");
+    expect(title?.children).toEqual(["Jx Site"]);
+    expect(page.doc.state?.$page).toMatchObject({ title: "Jx Site" });
   });
 
   test("a localized route takes its language from the route, not from a default", async () => {

@@ -169,7 +169,7 @@ describe("resolveLayout", () => {
     }
   });
 
-  test("preserves page $head and title as _pageHead and _pageTitle", async () => {
+  test("leaves no page carrier on the merged document", async () => {
     setup();
     try {
       writeLayout("meta.json", {
@@ -189,8 +189,8 @@ describe("resolveLayout", () => {
       };
 
       const result = await resolveLayout(page, {}, FIXTURES);
-      expect(result._pageTitle).toBe("About Us");
-      expect(result._pageHead).toHaveLength(1);
+      expect(result._pageTitle).toBeUndefined();
+      expect(result._pageHead).toBeUndefined();
     } finally {
       cleanup();
     }

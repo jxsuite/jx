@@ -94,12 +94,9 @@ import {
 import { layoutChain, resolveLayout } from "./layout-resolver.ts";
 import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
 import type { DedupedServerEntries, ServerEntryRecord } from "./server-entries.ts";
-import {
-  unrenderedHeadWarnings,
-  mergeHead,
-  renderHead,
-  withPageDescription,
-} from "@jxsuite/site/head-merger";
+import { unrenderedHeadWarnings, mergeHead, renderHead } from "@jxsuite/site/head-merger";
+import { pageDescription } from "@jxsuite/site/context";
+import { readPageFacts } from "@jxsuite/site/layout";
 import type { PagePagination } from "@jxsuite/site/pagination";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
@@ -202,6 +199,7 @@ import type {
   JxMappedArray,
   JxPrototypeDef,
   JxStateDefinition,
+  JxStateObject,
   JxStyle,
   ProjectConfig,
 } from "@jxsuite/schema/types";
@@ -1836,25 +1834,24 @@ async function compilePage(
     ...layoutLevels.flatMap((level) => documentServerEntries(level.doc, level.path, projectRoot)),
   ];
 
-  // Extract head arrays before they get lost in the merge
-  /* SAFETY: `_pageHead` is written only by `resolveLayout`, which copies the page's `$head` (a
-     JxHeadEntry[]) into it when the page has one. */
-  const pageHead = withPageDescription(
-    (pageDoc.$head ?? layoutDoc._pageHead ?? []) as JxHeadEntry[],
-    pageDoc.description,
-  );
+  /* What the page says about itself, read from the page and never from the wrapped document, which
+     is a clone of the outermost layout (site-architecture.md §5.5). */
+  const facts = readPageFacts(pageDoc);
+  const pageHead = [...(facts.head ?? [])];
   const layoutHead = layoutDoc.$head ?? [];
-  /* SAFETY: `_pageTitle` is written only by `resolveLayout`, which copies the page's `title` (a
-     string) into it when the page has one. */
-  const pageTitle = (pageDoc.title ?? layoutDoc._pageTitle ?? null) as string | null;
-
-  // Clean up internal properties
-  delete layoutDoc._pageHead;
-  delete layoutDoc._pageTitle;
+  const pageTitle = facts.title ?? null;
 
   // Inject $site and $page context
   const declaredStateKeys = new Set(Object.keys(layoutDoc.state ?? {}));
-  injectContext(layoutDoc, projectConfig, route, projectRoot, locale.i18n, locale.translations);
+  injectContext(
+    layoutDoc,
+    projectConfig,
+    route,
+    projectRoot,
+    locale.i18n,
+    locale.translations,
+    facts,
+  );
   /* The title is page metadata and never the root's `title` attribute, which would be a tooltip over
      the whole page. `pageTitle` was read above and `injectContext` has just read `$page.title`; with
      no layout this is `pageDoc` itself, and with one it is a clone of the outermost layout, whose own
@@ -1874,7 +1871,7 @@ async function compilePage(
   const language = pageLanguage({
     defaults: projectConfig.defaults,
     pageDir: isString(pageDoc.$dir) ? pageDoc.$dir : undefined,
-    pageLang: isString(pageDoc.$lang) ? pageDoc.$lang : undefined,
+    pageLang: facts.lang,
     routeLocale: localeOfRoute(route.urlPattern, locale.i18n),
   });
 
@@ -1913,6 +1910,22 @@ async function compilePage(
     holdMutable: true,
   });
 
+  /*
+   * What the page says about itself is settled into `$page` before anything else reads it, so a
+   * layout's `$head` (`og:title`) and its tree read `${state.$page.title}` as the text the page's
+   * `<title>` shows, never as a template (site-architecture.md §5.5). The page's own `state` is
+   * where a templated title or description resolves from, and it is merged over the layout's, so
+   * the scope already holds it. A page that ships its `state` to the browser ships the settled
+   * values, not the templates.
+   */
+  const settlePage = (fields: JxStateObject) => {
+    /* SAFETY: `injectContext` wrote `state.$page` as an object above, and `buildInitialScope`
+       cloned it into `scope.$page`; both are the `$page` this assigns into. */
+    Object.assign(layoutDoc.state!.$page as JxStateObject, fields);
+    /* SAFETY: as above, the scope's `$page` is that clone. */
+    Object.assign(scope.$page as JxStateObject, fields);
+  };
+
   // Determine the page title — resolve template strings against the scope
   let title = pageTitle ?? projectConfig.name;
   if (isTemplateString(title)) {
@@ -1921,6 +1934,7 @@ async function compilePage(
        the markup as text, so a non-string result renders as its string form. */
     title = (evaluateStaticTemplate(title, scope) as string | null) ?? title;
   }
+  settlePage({ title });
 
   // Resolve template strings in $head entries
   /*
@@ -1938,6 +1952,10 @@ async function compilePage(
     resolveHeadTemplates(pageHead, scope),
     rewriteNpmAsset,
   );
+  const description = pageDescription(resolvedPageHead);
+  if (description !== undefined) {
+    settlePage({ description });
+  }
   const resolvedLayoutHead = resolveHeadBareSpecifiers(
     resolveHeadTemplates(layoutHead, scope),
     rewriteNpmAsset,

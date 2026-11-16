@@ -17,15 +17,26 @@
  * pages exist — `/blog/anything` renders — and that is the right trade for a surface whose job is
  * "show me this page".
  *
+ * **No state is resolved and no translation set is known.** The build evaluates a templated `title`
+ * or description against the page's state before a layout reads `$page`, and derives
+ * `$page.alternates` from every route of the site. This composes one page from one URL, so a
+ * templated title reads as written and `$page.alternates` is absent (site-architecture.md §5.5).
+ *
  * **`imports` are not rebased.** The build rewrites a project-level relative import onto the page's
  * own directory because the output tree has a different shape from the source tree. This serves the
  * source tree at the origin root, where the authored path already means what it says.
  */
 
-import { compareRoutes, fileToRoute, isRoutedPageFile, matchRoute } from "./routes.ts";
+import {
+  compareRoutes,
+  fileToRoute,
+  fillRoutePattern,
+  isRoutedPageFile,
+  matchRoute,
+} from "./routes.ts";
 import type { FileRoute } from "./routes.ts";
-import { LayoutCycleError, resolveLayout } from "./layout.ts";
-import { mergeHead, withPageDescription } from "./head-merger.ts";
+import { LayoutCycleError, readPageFacts, resolveLayout } from "./layout.ts";
+import { mergeHead } from "./head-merger.ts";
 import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
 import { resolveShadowMode } from "@jxsuite/runtime/css";
@@ -340,6 +351,11 @@ export async function composePage(
     );
   }
 
+  /* Read before a layout wraps the page: the wrapped document is a clone of the outermost layout,
+     so its `title` and `$lang` are that layout's (site-architecture.md §5.5). */
+  const facts = readPageFacts(pageDoc);
+  const url = fillRoutePattern(route.urlPattern, params);
+
   /* Every layout the loader returns, innermost first because `layoutLevels` loads in that order. */
   const layouts: JxDocument[] = [];
   let merged: JxDocument;
@@ -375,11 +391,11 @@ export async function composePage(
 
   const { i18n } = resolveI18n(config);
   const siteRoute = {
-    _pathParams: params,
+    _pathParams: pathParams(route, pageDoc, params),
     sourcePath: route.sourcePath,
-    urlPattern: route.urlPattern,
+    urlPattern: url,
   };
-  injectContext(merged, config, siteRoute, null, i18n);
+  injectContext(merged, config, siteRoute, null, i18n, [], facts);
 
   /* After `injectContext`, because that is what merges the PROJECT's `$elements` in — discovering
      before it would re-declare every component the project already names for every page. */
@@ -389,24 +405,15 @@ export async function composePage(
     merged.$elements = withDiscovered;
   }
 
-  /* SAFETY: `_pageHead` is no authored key; `resolveLayout` is its only writer and stores the page's
-     own `$head` array in it, which is the `JxHeadEntry[]` asserted here. */
-  const pageHead = withPageDescription(
-    (pageDoc.$head ?? merged._pageHead ?? []) as JxHeadEntry[],
-    pageDoc.description,
-  );
+  const pageHead = [...(facts.head ?? [])];
   const layoutHead = merged.$head ?? [];
   const siteHead = config.$head ?? [];
-  /* SAFETY: `pageDoc.title` and `config.name` are declared strings, and `_pageTitle` is no authored
-     key: `resolveLayout` is its only writer and stores the page's own `title`, never a layout's. */
-  const title = (pageDoc.title ?? merged._pageTitle ?? config.name ?? "") as string;
-  const lang =
-    (isString(pageDoc.$lang) ? pageDoc.$lang : undefined) ??
-    localeOfRoute(route.urlPattern, i18n) ??
-    config.defaults?.lang ??
-    "en";
+  const lang = facts.lang ?? localeOfRoute(url, i18n) ?? config.defaults?.lang ?? "en";
 
-  const headContext: HeadMergeContext = { lang, title };
+  const headContext: HeadMergeContext = { lang };
+  if (facts.title !== undefined) {
+    headContext.title = facts.title;
+  }
   if (config.name !== undefined) {
     headContext.siteName = config.name;
   }
@@ -418,8 +425,6 @@ export async function composePage(
   /* `$head` is merged out of the document and rendered into the shell, so leaving it on the
      document would have the runtime inject every entry a second time on mount. */
   delete merged.$head;
-  delete merged._pageHead;
-  delete merged._pageTitle;
   /* The title is read above and `injectContext` has run, so it is no longer anyone's to read. It is
      page metadata and never the root's `title` attribute, which would be a tooltip over the whole
      page: with no layout `merged` IS `pageDoc`, and with one it is a clone of the outermost
@@ -440,4 +445,22 @@ export async function composePage(
     composed.shadow = shadow;
   }
   return composed;
+}
+
+/**
+ * The route parameters a page's `$page.params` carries, named as the build names them.
+ *
+ * {@link matchRoute} keys a catch-all's value `*`, where the build keys it by the page's
+ * `$paths.param`, else by the name in the file's brackets (`[...slug]`), so a page reading
+ * `state.$page.params.slug` sees the same thing in both.
+ */
+function pathParams(route: PageRoute, pageDoc: JxDocument, params: Record<string, string>) {
+  if (!route.isCatchAll || !("*" in params)) {
+    return params;
+  }
+  const { "*": rest, ...named } = params;
+  const paths = pageDoc.$paths;
+  const declared =
+    isNonNullObject(paths) && !Array.isArray(paths) && "param" in paths ? paths.param : undefined;
+  return { ...named, [isString(declared) ? declared : (route.params.at(-1) ?? "*")]: rest };
 }

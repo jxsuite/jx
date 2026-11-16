@@ -260,3 +260,21 @@ export function routeHref(
   const bare = filled.endsWith("/") ? filled.slice(0, -1) : filled;
   return trailingSlash === "always" ? `${bare}/` : bare;
 }
+
+/**
+ * A route pattern with its parameters filled in as the build writes them: each `:name` takes
+ * `params[name]` and a trailing `*` takes `params["*"]`, raw, and a parameter with no value stays
+ * as written.
+ *
+ * This is the concrete `$page.url` a built dynamic page has (`expandDynamicRoutes` in
+ * `@jxsuite/compiler`). {@link routeHref} is not it: that one is a LINK, so it percent-encodes each
+ * segment and applies `build.trailingSlash`, neither of which is part of a page's own URL.
+ */
+export function fillRoutePattern(
+  urlPattern: string,
+  params: Readonly<Record<string, string>>,
+): string {
+  return urlPattern
+    .replaceAll(/:(\w+)/g, (match, name: string) => params[name] ?? match)
+    .replace(/\*$/, (match) => params["*"] ?? match);
+}

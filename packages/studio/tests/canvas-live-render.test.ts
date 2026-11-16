@@ -244,7 +244,7 @@ describe("resolveCanvasDocument", () => {
     expect(state?.product).toHaveProperty("id", "mini-trencher");
     expect(state?.$page).toEqual({
       params: { sku: "mini-trencher" },
-      title: "",
+      title: "Jx Site",
       url: "/products/:sku",
     });
     // The tab's source document keeps its $ref (it is what gets edited and saved).

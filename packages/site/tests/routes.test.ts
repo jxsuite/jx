@@ -11,6 +11,7 @@ import {
   documentUrlPattern,
   dynamicRouteParams,
   fileToRoute,
+  fillRoutePattern,
   isRoutedPageFile,
   matchRoute,
   pageRelativePath,
@@ -216,5 +217,28 @@ describe("routeHref", () => {
     expect(routeHref("/docs/*", { "*": "a/b c" }, "never")).toBe("/docs/a/b%20c");
     expect(routeHref("/docs/*", { "*": "" })).toBe("/docs/");
     expect(routeHref("/docs/*")).toBe("/docs/*/");
+  });
+});
+
+describe("fillRoutePattern", () => {
+  test("a static pattern is unchanged", () => {
+    expect(fillRoutePattern("/about", {})).toBe("/about");
+  });
+
+  test("a named parameter is filled", () => {
+    expect(fillRoutePattern("/blog/:slug", { slug: "hello" })).toBe("/blog/hello");
+  });
+
+  test("a trailing catch-all takes the rest", () => {
+    expect(fillRoutePattern("/docs/*", { "*": "a/b" })).toBe("/docs/a/b");
+  });
+
+  test("a missing value stays as written", () => {
+    expect(fillRoutePattern("/blog/:slug", {})).toBe("/blog/:slug");
+    expect(fillRoutePattern("/docs/*", {})).toBe("/docs/*");
+  });
+
+  test("values are not percent-encoded and no trailing slash is applied", () => {
+    expect(fillRoutePattern("/blog/:slug", { slug: "héllo" })).toBe("/blog/héllo");
   });
 });

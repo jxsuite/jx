@@ -60,6 +60,29 @@ A page can state its description the same way, as a top-level `description` prop
 
 The injected site and page context is available too: `${state.$site.name}`, `${state.$site.url}`, `${state.$page.url}`, and route params via `${state.$page.params.slug}`.
 
+A layout's `$head` can read the page's own `${state.$page.title}` and `${state.$page.description}`, already resolved, so one `og:title` and `og:description` entry in the layout serves every page:
+
+```json
+{
+  "$head": [
+    {
+      "tagName": "meta",
+      "attributes": { "property": "og:title", "content": "${state.$page.title}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": { "name": "twitter:title", "content": "${state.$page.title}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": { "property": "og:description", "content": "${state.$page.description ?? ''}" }
+    }
+  ]
+}
+```
+
+`$page.title` is the text the page's `<title>` shows, whether the page writes a plain `title` or a template such as the docs page above, and it is the page's own even when the layout declares a `title` of its own. `$page.description` is absent on a page with no description, so give the template a fallback as shown. **Open in Browser** composes a page without building the site, so a templated title or description reads as written there.
+
 ## Merge order
 
 The build assembles each page's `<head>` from four layers, later entries winning:

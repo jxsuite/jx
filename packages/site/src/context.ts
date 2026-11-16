@@ -9,11 +9,18 @@
  * - `$site.name`, `$site.url`: from the project file's `name` and `url`.
  * - `$site.<key>`: each project `state` entry as written, read-only, never replacing the four names
  *   in {@link SITE_CONTEXT_KEYS} (§10.4).
- * - `$page.url`, `$page.title`, `$page.params`: the current page's URL path, title and dynamic route
- *   parameters.
- * - `$page.locale`, `$page.dir`: the route's language and writing direction (§13.4).
+ * - `$page.url`, `$page.params`: the current page's URL path and dynamic route parameters.
+ * - `$page.title`, `$page.description`: the page's own title (else `$site.name`) and the content of
+ *   its own description meta, absent when it declares none (§5.5).
+ * - `$page.locale`, `$page.dir`: the page's own `$lang`, else the route's, and its writing direction
+ *   (§13.4).
  * - `$page.alternates`: this page in every language it exists in (§13.5).
  * - `$page.pagination`: where a paged route's page sits in its list (§4.3).
+ *
+ * The page's own facts come from the caller ({@link PageFacts}), read from the page before a layout
+ * wrapped it, because the document injected into is the layout's clone and its `title` and `$lang`
+ * are the layout's (§5.5). Called with none, the document is read as the page, which is right for a
+ * page no layout wrapped.
  *
  * Each project `state` entry is also copied into the page's own `state` unless the page or its
  * layout declares the key.
@@ -30,9 +37,17 @@
  */
 
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
-import type { JxDocument, JxElement, JxStateObject, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  JxDocument,
+  JxElement,
+  JxHeadEntry,
+  JxStateObject,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 import { localeDirection, localeLabel, localeOfRoute } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
+import { readPageFacts } from "./layout.ts";
+import type { PageFacts } from "./layout.ts";
 import type { PagePagination } from "./pagination.ts";
 
 /**
@@ -76,6 +91,28 @@ export const SITE_CONTEXT_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The `content` of the last `<meta name="description">` in a page's head: the entry `mergeHead`
+ * keeps when a head states the description twice.
+ *
+ * @param {readonly JxHeadEntry[]} head - The page's own head
+ * @returns {string | undefined} The description, or undefined when the head states none
+ */
+export function pageDescription(head: readonly JxHeadEntry[]): string | undefined {
+  let description: string | undefined;
+  for (const entry of head) {
+    if (
+      isNonNullObject(entry) &&
+      entry.tagName === "meta" &&
+      entry.attributes?.name === "description" &&
+      isString(entry.attributes.content)
+    ) {
+      description = entry.attributes.content;
+    }
+  }
+  return description;
+}
+
+/**
  * Inject $site and $page context into a page document's state.
  *
  * @param {JxDocument} doc - The page document (mutated)
@@ -85,6 +122,7 @@ export const SITE_CONTEXT_KEYS: ReadonlySet<string> = new Set([
  * @param {ResolvedI18n | null} [i18n] - Validated locale config, when the project declares one
  * @param {readonly TranslationMember[]} [translations] - This route's translation set, itself
  *   included
+ * @param {PageFacts} [page] - What the page says about itself; read from `doc` when absent
  * @returns {JxDocument} The mutated document
  */
 export function injectContext(
@@ -94,6 +132,7 @@ export function injectContext(
   rebaseImport: ImportRebaser | null = null,
   i18n: ResolvedI18n | null = null,
   translations: readonly TranslationMember[] = [],
+  page: PageFacts = readPageFacts(doc),
 ) {
   if (!doc.state) {
     doc.state = {};
@@ -109,11 +148,12 @@ export function injectContext(
      never stand in for the project's name; it is left out altogether so that a project without
      `i18n` does not grow a `$site.locales` from its state. `Object.fromEntries` and a spread, not
      `Object.assign`: an authored `__proto__` key stays an own data property. */
+  const siteName = projectConfig.name ?? "Jx Site";
   doc.state.$site = {
     ...Object.fromEntries(
       Object.entries(projectConfig.state ?? {}).filter(([key]) => !SITE_CONTEXT_KEYS.has(key)),
     ),
-    name: projectConfig.name ?? "Jx Site",
+    name: siteName,
     url: projectConfig.url ?? "",
     ...localeFields,
   };
@@ -126,9 +166,7 @@ export function injectContext(
    * `$lang` still wins over the route's locale, so this is the resolved answer, not the prefix.
    */
   const pageLang =
-    (isString(doc.$lang) ? doc.$lang : undefined) ??
-    localeOfRoute(route.urlPattern, i18n) ??
-    projectConfig.defaults?.lang;
+    page.lang ?? localeOfRoute(route.urlPattern, i18n) ?? projectConfig.defaults?.lang;
   /*
    * The same translation set `<head>` advertises, in the shape a template can render: a language
    * switcher is the one part of a multilingual site the framework cannot write for the author, and
@@ -147,18 +185,22 @@ export function injectContext(
     label: localeLabel(member.locale),
     url: member.urlPattern,
   }));
-  const page: JxStateObject = {
+  const pageState: JxStateObject = {
     params: route._pathParams ?? {},
-    title: doc.title ?? doc._pageTitle ?? projectConfig.name ?? "",
+    title: page.title ?? siteName,
     url: route.urlPattern,
   };
+  const description = pageDescription(page.head ?? []);
+  if (description !== undefined) {
+    pageState.description = description;
+  }
   if (alternates.length > 0) {
-    page.alternates = alternates;
+    pageState.alternates = alternates;
   }
   if (route.pagination) {
     const { first, itemCount, last, next, number, pageCount, pageSize, pages, prev } =
       route.pagination;
-    page.pagination = {
+    pageState.pagination = {
       first,
       itemCount,
       last,
@@ -171,10 +213,10 @@ export function injectContext(
     };
   }
   if (pageLang !== undefined) {
-    page.dir = localeDirection(pageLang);
-    page.locale = pageLang;
+    pageState.dir = localeDirection(pageLang);
+    pageState.locale = pageLang;
   }
-  doc.state.$page = page;
+  doc.state.$page = pageState;
 
   // Merge project-level state into page state: the page, then its layout, wins
   // (site-architecture.md §10.4)
