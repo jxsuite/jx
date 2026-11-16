@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"I want a portfolio site\")",
     "toMessagesArray()",
-    "setTokenCount(5095)",
+    "setTokenCount(5103)",
     "setContextWarning(false)",
-    "setTokenCount(5095)",
+    "setTokenCount(5103)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendDelta(\"Let's start a project\")",
@@ -24,7 +24,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "214e9378a353",
+        "hash": "1553ae56e561",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -65,7 +65,7 @@
           "## Current Mode",
           "## Asking the user"
         ],
-        "length": 20338
+        "length": 20371
       },
       "tools": ["ask_user", "create_project", "list_starters"]
     }
@@ -91,7 +91,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5095,
+    "tokenCount": 5103,
     "usage": null
   },
   "finalDocument": null,

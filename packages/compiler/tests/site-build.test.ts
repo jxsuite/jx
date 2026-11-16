@@ -4284,3 +4284,127 @@ describe("link relation warnings", () => {
     expect(warnings.some((w) => w.includes("is not an IANA link relation"))).toBe(false);
   });
 });
+
+// ── A page's title stays off its root element (site-architecture.md §8.1) ────
+
+describe("buildSite — a page's title stays off its root element (§8.1)", () => {
+  const TITLE_TMP = resolve(import.meta.dir, "__test-root-title__");
+
+  beforeAll(async () => {
+    rmSync(TITLE_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(TITLE_TMP, "pages"), { recursive: true });
+    mkdirSync(resolve(TITLE_TMP, "layouts"), { recursive: true });
+    writeFileSync(
+      resolve(TITLE_TMP, "project.json"),
+      JSON.stringify({ build: { outDir: "./dist" }, name: "Titles" }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(TITLE_TMP, "layouts/titled.json"),
+      JSON.stringify({ children: [{ tagName: "slot" }], tagName: "div", title: "Layout T" }),
+      "utf8",
+    );
+    const pages = {
+      index: {
+        children: [{ tagName: "h1", textContent: "${$page.title}" }],
+        title: "Plain",
+      },
+      off: { $layout: false, children: ["Off"], title: "Off" },
+      tip: { attributes: { title: "Tip" }, children: ["Tip"], title: "Tip page" },
+      wrapped: { $layout: "./layouts/titled.json", children: ["Wrapped"], title: "Home" },
+    };
+    for (const [name, doc] of Object.entries(pages)) {
+      writeFileSync(resolve(TITLE_TMP, `pages/${name}.json`), JSON.stringify(doc), "utf8");
+    }
+    await buildSite(TITLE_TMP, { verbose: false });
+  });
+
+  afterAll(() => {
+    rmSync(TITLE_TMP, { force: true, recursive: true });
+  });
+
+  const built = (path: string) => readFileSync(resolve(TITLE_TMP, "dist", path), "utf8");
+
+  it("a page with no layout: title and $page.title keep it, the root does not", () => {
+    const html = built("index.html");
+    expect(html).toContain("<title>Plain</title>");
+    expect(html).toContain("<h1>Plain</h1>");
+    expect(html).not.toContain('title="Plain"');
+  });
+
+  it("$layout: false behaves the same", () => {
+    const html = built("off/index.html");
+    expect(html).toContain("<title>Off</title>");
+    expect(html).not.toContain('title="Off"');
+  });
+
+  it("a layout's own title never renders on the root", () => {
+    const html = built("wrapped/index.html");
+    expect(html).toContain("<title>Home</title>");
+    expect(html).not.toContain('title="Layout T"');
+    expect(html).not.toContain('title="Home"');
+  });
+
+  it("an attributes title is still the root's tooltip", () => {
+    const html = built("tip/index.html");
+    expect(html).toContain('title="Tip"');
+    expect(html).toContain("<title>Tip page</title>");
+  });
+});
+
+// ── Head entry shape warnings (site-architecture.md §8.1) ────────────────────
+
+describe("head entry shape warnings", () => {
+  const UNRENDERED_TMP = resolve(import.meta.dir, "__test-head-shape__");
+
+  afterAll(() => {
+    rmSync(UNRENDERED_TMP, { force: true, recursive: true });
+  });
+
+  async function buildWithHead(head: unknown[]): Promise<string[]> {
+    rmSync(UNRENDERED_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(UNRENDERED_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(UNRENDERED_TMP, "project.json"),
+      JSON.stringify({ $head: head, build: { outDir: "./dist" }, name: "Shape" }),
+      "utf8",
+    );
+    for (const name of ["index", "about"]) {
+      writeFileSync(
+        resolve(UNRENDERED_TMP, `pages/${name}.json`),
+        JSON.stringify({ children: [{ children: [name], tagName: "h1" }], title: name }),
+        "utf8",
+      );
+    }
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(String(msg));
+    try {
+      await buildSite(UNRENDERED_TMP, { verbose: false });
+    } finally {
+      console.warn = origWarn;
+    }
+    return warnings;
+  }
+
+  it("warns once for a flat key in the site head, however many pages carry it", async () => {
+    const warnings = await buildWithHead([
+      { attributes: { content: "ok", name: "author" }, tagName: "meta" },
+      { name: "description", tagName: "meta" },
+    ]);
+    const matched = warnings.filter((w) => w.includes('<meta> has a top-level "name"'));
+    expect(matched).toHaveLength(1);
+  });
+
+  it("warns once for a title entry", async () => {
+    const warnings = await buildWithHead([{ tagName: "title", textContent: "Ignored" }]);
+    expect(warnings.filter((w) => w.includes("a <title> entry is discarded"))).toHaveLength(1);
+  });
+
+  it("says nothing about a head in the rendered shape", async () => {
+    const warnings = await buildWithHead([
+      { attributes: { content: "x", name: "author" }, tagName: "meta" },
+    ]);
+    expect(warnings.some((w) => w.startsWith("$head:"))).toBe(false);
+  });
+});

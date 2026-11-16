@@ -102,7 +102,7 @@ describe("buildSite — a component instance inside another component's children
 
   it("the whole tree, in order", () => {
     expect(bodyOf(TMP)).toBe(
-      '<div title="repro">' +
+      "<div>" +
         "<inner-chip data-jx-static><span>[PAGE-LEVEL]</span></inner-chip>" +
         "<outer-box data-jx-static><h2>Outer</h2>" +
         "<inner-chip data-jx-static><span>[NESTED]</span></inner-chip>" +

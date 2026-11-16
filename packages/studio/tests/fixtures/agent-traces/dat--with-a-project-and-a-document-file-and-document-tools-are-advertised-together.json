@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"hi\")",
     "toMessagesArray()",
-    "setTokenCount(5628)",
+    "setTokenCount(5636)",
     "setContextWarning(false)",
-    "setTokenCount(5628)",
+    "setTokenCount(5636)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "setError(\"The model sent back an empty reply.\")"
@@ -23,7 +23,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "d659ebd4d9e9",
+        "hash": "bffde0edc08c",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -66,7 +66,7 @@
           "## Project Context",
           "## Asking the user"
         ],
-        "length": 22491
+        "length": 22524
       },
       "tools": [
         "ask_user",
@@ -105,7 +105,7 @@
     "error": "The model sent back an empty reply.",
     "model": "gpt-4o",
     "status": "error",
-    "tokenCount": 5628,
+    "tokenCount": 5636,
     "usage": null
   },
   "finalDocument": {

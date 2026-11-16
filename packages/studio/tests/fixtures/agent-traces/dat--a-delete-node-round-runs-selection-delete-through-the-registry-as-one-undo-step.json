@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"clear the page\")",
     "toMessagesArray()",
-    "setTokenCount(5535)",
+    "setTokenCount(5543)",
     "setContextWarning(false)",
-    "setTokenCount(5535)",
+    "setTokenCount(5543)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendToolCallStart(\"d1\", \"delete_node\")",
@@ -31,7 +31,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "6b0c5b770fe4",
+        "hash": "90817a7ddda9",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -73,7 +73,7 @@
           "## Current Document",
           "## Asking the user"
         ],
-        "length": 22106
+        "length": 22139
       },
       "tools": [
         "ask_user",
@@ -185,7 +185,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5535,
+    "tokenCount": 5543,
     "usage": null
   },
   "finalDocument": {

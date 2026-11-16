@@ -162,6 +162,34 @@ describe("composePage", () => {
     expect(charsets(unset.head)).toEqual([DEFAULT_CHARSET]);
   });
 
+  test("a page with no layout keeps its title off the root, and $page.title keeps it", async () => {
+    const page = await compose({
+      "pages/index.json": JSON.stringify({ tagName: "main", title: "Hello" }),
+    });
+    expect(page.doc.title).toBeUndefined();
+    expect(page.doc.state?.$page).toMatchObject({ title: "Hello" });
+    const title = page.head.find((entry) => entry.tagName === "title");
+    expect(title?.children).toEqual(["Hello"]);
+  });
+
+  test("a layout's own title never reaches the composed root", async () => {
+    const page = await compose({
+      "layouts/base.json": JSON.stringify({
+        children: [{ tagName: "slot" }],
+        tagName: "div",
+        title: "Layout T",
+      }),
+      "pages/index.json": JSON.stringify({
+        $layout: "./layouts/base.json",
+        children: ["Hi"],
+        title: "Home",
+      }),
+    });
+    expect(page.doc.title).toBeUndefined();
+    const title = page.head.find((entry) => entry.tagName === "title");
+    expect(title?.children).toEqual(["Home"]);
+  });
+
   test("a page-declared $element survives layout resolution", async () => {
     /* The regression: `resolveLayout` merges neither side, so the composed document would carry
        only the LAYOUT's $elements, and <site-card> would render as an inert unknown tag — with no

@@ -2,18 +2,18 @@
   "chatCalls": [
     "[chat 1] sendMessage(\"hi\")",
     "[chat 1] toMessagesArray()",
-    "[chat 1] setTokenCount(5529)",
+    "[chat 1] setTokenCount(5537)",
     "[chat 1] setContextWarning(false)",
-    "[chat 1] setTokenCount(5529)",
+    "[chat 1] setTokenCount(5537)",
     "[chat 1] setModel(\"gpt-4o\")",
     "[chat 1] toMessagesArray()",
     "[chat 1] setError(\"The model sent back an empty reply.\")",
     "[chat 2] sendMessage(\"hi\")",
     "[chat 2] toMessagesArray()",
     "[chat 2] toMessagesArray()",
-    "[chat 2] setTokenCount(5534)",
+    "[chat 2] setTokenCount(5542)",
     "[chat 2] setContextWarning(false)",
-    "[chat 2] setTokenCount(5534)",
+    "[chat 2] setTokenCount(5542)",
     "[chat 2] setModel(\"claude-opus-5-5\")",
     "[chat 2] toMessagesArray()",
     "[chat 2] setError(\"The model sent back an empty reply.\")"
@@ -33,7 +33,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "2a3ea6b220f6",
+        "hash": "da6c4589b530",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -75,7 +75,7 @@
           "## Current Document",
           "## Asking the user"
         ],
-        "length": 22094
+        "length": 22127
       },
       "tools": [
         "ask_user",
@@ -136,7 +136,7 @@
     "error": "The model sent back an empty reply.",
     "model": "claude-opus-5-5",
     "status": "error",
-    "tokenCount": 5534,
+    "tokenCount": 5542,
     "usage": null
   },
   "finalDocument": {

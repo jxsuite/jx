@@ -20,7 +20,7 @@
 
 import { siteAbsoluteUrl } from "@jxsuite/schema/asset-paths";
 import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
-import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocumentValue, JxHeadEntry } from "@jxsuite/schema/types";
 
 /**
@@ -269,6 +269,52 @@ function simpleHash(str: string) {
  */
 export function renderHead(headEntries: readonly AuthoredHeadEntry[]) {
   return headEntries.map((e) => renderHeadEntry(e)).join("\n  ");
+}
+
+/** The keys of a `$head` entry that {@link renderHeadEntry} reads; every other key goes unrendered. */
+const RENDERED_HEAD_KEYS: ReadonlySet<string> = new Set([
+  "tagName",
+  "attributes",
+  "textContent",
+  "children",
+]);
+
+/**
+ * What an authored `$head` holds that the build does not render, as sentences for a warning.
+ *
+ * An entry is an element with attributes (site-architecture.md §8.1), and its HTML attributes live
+ * under `attributes`. The flat shape (`{ "tagName": "meta", "name": "description" }`) was the
+ * spec's own example for months, and it renders as a bare `<meta>` with nothing reported anywhere.
+ * A `<title>` entry is discarded for the document's `title` property (§8.3), so its other keys are
+ * not examined. A `$`-prefixed key is an annotation. An entry that is not a non-null object (a raw
+ * HTML string, `null`) states no key and is skipped.
+ *
+ * @param {readonly unknown[]} entries - The authored, unresolved `$head` entries of one or more
+ *   levels
+ * @returns {string[]} Distinct sentences, so a caller can say each once across a build
+ */
+export function unrenderedHeadWarnings(entries: readonly unknown[]): string[] {
+  const warnings = new Set<string>();
+  for (const entry of entries) {
+    if (!isJsonObject(entry)) {
+      continue;
+    }
+    const tag = entry.tagName;
+    if (tag === "title") {
+      warnings.add(
+        '$head: a <title> entry is discarded. The page title is the document\'s "title" property (site-architecture.md §8.1).',
+      );
+      continue;
+    }
+    for (const key of Object.keys(entry)) {
+      if (!RENDERED_HEAD_KEYS.has(key) && !key.startsWith("$")) {
+        warnings.add(
+          `$head: <${String(tag)}> has a top-level "${key}", which is not rendered. A head element's HTML attributes go under "attributes" (site-architecture.md §8.1).`,
+        );
+      }
+    }
+  }
+  return [...warnings];
 }
 
 /**

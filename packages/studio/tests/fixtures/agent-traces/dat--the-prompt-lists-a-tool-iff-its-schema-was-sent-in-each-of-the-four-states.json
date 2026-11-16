@@ -2,33 +2,33 @@
   "chatCalls": [
     "[chat 1] sendMessage(\"hi\")",
     "[chat 1] toMessagesArray()",
-    "[chat 1] setTokenCount(5090)",
+    "[chat 1] setTokenCount(5098)",
     "[chat 1] setContextWarning(false)",
-    "[chat 1] setTokenCount(5090)",
+    "[chat 1] setTokenCount(5098)",
     "[chat 1] setModel(\"gpt-4o\")",
     "[chat 1] toMessagesArray()",
     "[chat 1] setError(\"The model sent back an empty reply.\")",
     "[chat 2] sendMessage(\"hi\")",
     "[chat 2] toMessagesArray()",
-    "[chat 2] setTokenCount(5534)",
+    "[chat 2] setTokenCount(5542)",
     "[chat 2] setContextWarning(false)",
-    "[chat 2] setTokenCount(5534)",
+    "[chat 2] setTokenCount(5542)",
     "[chat 2] setModel(\"gpt-4o\")",
     "[chat 2] toMessagesArray()",
     "[chat 2] setError(\"The model sent back an empty reply.\")",
     "[chat 3] sendMessage(\"hi\")",
     "[chat 3] toMessagesArray()",
-    "[chat 3] setTokenCount(5296)",
+    "[chat 3] setTokenCount(5305)",
     "[chat 3] setContextWarning(false)",
-    "[chat 3] setTokenCount(5296)",
+    "[chat 3] setTokenCount(5305)",
     "[chat 3] setModel(\"gpt-4o\")",
     "[chat 3] toMessagesArray()",
     "[chat 3] setError(\"The model sent back an empty reply.\")",
     "[chat 4] sendMessage(\"hi\")",
     "[chat 4] toMessagesArray()",
-    "[chat 4] setTokenCount(5628)",
+    "[chat 4] setTokenCount(5636)",
     "[chat 4] setContextWarning(false)",
-    "[chat 4] setTokenCount(5628)",
+    "[chat 4] setTokenCount(5636)",
     "[chat 4] setModel(\"gpt-4o\")",
     "[chat 4] toMessagesArray()",
     "[chat 4] setError(\"The model sent back an empty reply.\")"
@@ -48,7 +48,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "214e9378a353",
+        "hash": "1553ae56e561",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -89,7 +89,7 @@
           "## Current Mode",
           "## Asking the user"
         ],
-        "length": 20338
+        "length": 20371
       },
       "tools": ["ask_user", "create_project", "list_starters"]
     },
@@ -107,7 +107,7 @@
         "carried": 1
       },
       "systemPrompt": {
-        "hash": "2a3ea6b220f6",
+        "hash": "da6c4589b530",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -149,7 +149,7 @@
           "## Current Document",
           "## Asking the user"
         ],
-        "length": 22094
+        "length": 22127
       },
       "tools": [
         "ask_user",
@@ -181,7 +181,7 @@
         "carried": 2
       },
       "systemPrompt": {
-        "hash": "6e599c82f00a",
+        "hash": "fa8b1c747194",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -223,7 +223,7 @@
           "## Current Document",
           "## Asking the user"
         ],
-        "length": 21124
+        "length": 21157
       },
       "tools": ["ask_user", "read_document", "create_project", "list_starters", "select_node"]
     },
@@ -241,7 +241,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "d659ebd4d9e9",
+        "hash": "bffde0edc08c",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -284,7 +284,7 @@
           "## Project Context",
           "## Asking the user"
         ],
-        "length": 22491
+        "length": 22524
       },
       "tools": [
         "ask_user",
@@ -332,7 +332,7 @@
     "error": "The model sent back an empty reply.",
     "model": "gpt-4o",
     "status": "error",
-    "tokenCount": 5628,
+    "tokenCount": 5636,
     "usage": null
   },
   "finalDocument": {

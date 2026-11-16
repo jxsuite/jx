@@ -618,6 +618,15 @@ export async function resolveCanvasDocument(
   const isLayoutDoc =
     S.documentPath != null &&
     (S.documentPath.startsWith("layouts/") || S.documentPath.startsWith("./layouts/"));
+  /* A page's `title` is its tab and search-result title, and a layout's is no more the page's; neither
+     is the root's `title` attribute, which the runtime would draw as a tooltip over the whole page
+     (site-architecture.md §8.1). After the preview-parameter step above, whose `$page.title` reads
+     it. A copy, so the deletion never reaches a document the tab saves; a component definition's
+     root `title` is its own tooltip and stays. */
+  if (isPage || isLayoutDoc) {
+    renderDoc = { ...renderDoc };
+    delete renderDoc.title;
+  }
   /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or inline
      element definitions, each a JxElement or a string; getEffectiveElements only dedups them by the
      string itself or by `$ref`. */

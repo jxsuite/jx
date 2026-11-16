@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"first\")",
     "toMessagesArray()",
-    "setTokenCount(5530)",
+    "setTokenCount(5538)",
     "setContextWarning(false)",
-    "setTokenCount(5530)",
+    "setTokenCount(5538)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendToolCallStart(\"q1\", \"ask_user\")",
@@ -15,9 +15,9 @@
     "clearChat()",
     "sendMessage(\"import\")",
     "toMessagesArray()",
-    "setTokenCount(5530)",
+    "setTokenCount(5538)",
     "setContextWarning(false)",
-    "setTokenCount(5530)",
+    "setTokenCount(5538)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendDelta(\"Importing.\")",
@@ -38,7 +38,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "2a3ea6b220f6",
+        "hash": "da6c4589b530",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -80,7 +80,7 @@
           "## Current Document",
           "## Asking the user"
         ],
-        "length": 22094
+        "length": 22127
       },
       "tools": [
         "ask_user",
@@ -142,7 +142,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5530,
+    "tokenCount": 5538,
     "usage": null
   },
   "finalDocument": {

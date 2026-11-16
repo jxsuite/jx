@@ -420,6 +420,11 @@ export async function composePage(
   delete merged.$head;
   delete merged._pageHead;
   delete merged._pageTitle;
+  /* The title is read above and `injectContext` has run, so it is no longer anyone's to read. It is
+     page metadata and never the root's `title` attribute, which would be a tooltip over the whole
+     page: with no layout `merged` IS `pageDoc`, and with one it is a clone of the outermost
+     layout, whose own `title` is no more the page's (site-architecture.md §8.1). */
+  delete merged.title;
   /* A page merged onto a layout has one `$script` where there were two documents, so the text is
      neither's to speak for; every entry already names its own document, and the page fetches the
      client module from there. The server module is the other reason: a reader is never sent one. */

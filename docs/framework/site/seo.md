@@ -34,7 +34,7 @@ A page declares metadata as an array of head elements under `$head`, and its tit
 }
 ```
 
-Each entry is `{ "tagName": ..., "attributes": ... }`, and any head element works: `meta`, `link`, `script`, `style`. Use the `title` property rather than a `<title>` entry; the merge always writes the computed title last, so a literal `<title>` in `$head` is overridden.
+Each entry is `{ "tagName": ..., "attributes": ... }`, and any head element works: `meta`, `link`, `script`, `style`. Use the `title` property rather than a `<title>` entry; the merge always writes the computed title last, so a literal `<title>` in `$head` is overridden. The `title` property is the page title and nothing else. It never becomes a `title` attribute on the page's root element, with or without a layout, and neither does a layout's own `title`, so neither adds a tooltip; write one under `attributes` if you want it. An entry's HTML attributes must sit under `attributes` too. A key at the top level, such as `"name": "description"`, is not rendered, and the build prints one warning for it however many pages carry it.
 
 A page can state its description the same way, as a top-level `description` property; in a Markdown page that is the `description:` frontmatter key beside `title:`. The build writes it as the page's `<meta name="description">`, which beats a description from the site or the layout. A description `meta` in the page's own `$head` still wins over the property.
 
