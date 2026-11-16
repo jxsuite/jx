@@ -252,7 +252,7 @@ function isAllowedRemote(src: string, config: ImageConfig) {
  * @param {readonly AssetMount[]} [mounts]
  * @returns {string}
  */
-function resolveImagePath(src: string, projectRoot: string, mounts?: readonly AssetMount[]) {
+export function resolveImagePath(src: string, projectRoot: string, mounts?: readonly AssetMount[]) {
   const mounted = mounts?.length ? resolveAssetUrl(mounts, src) : null;
   if (mounted) {
     return mounted;

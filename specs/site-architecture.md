@@ -1088,6 +1088,7 @@ The compiler automatically generates certain tags if not explicitly declared:
 | `<link rel="canonical">`         | `url` set: `$site.url` + served path (§8.4.1); not the 404 page (§8.4.2)                                                                                                                      |
 | `<meta property="og:url">`       | With the canonical; an author-supplied value wins                                                                                                                                             |
 | `<meta property="og:site_name">` | From `$site.name`; an author-supplied value wins                                                                                                                                              |
+| `og:image:width`, `:height`      | The page's `og:image` names a local file the build can read (§8.4.4); an author-supplied size wins                                                                                            |
 | `<html lang>`                    | From the page's `$lang`, else `defaults.lang`                                                                                                                                                 |
 | `<html dir>`                     | From the page's `$dir`, else `defaults.dir`; omitted when neither is set                                                                                                                      |
 | `sitemap.xml` entry              | Every indexable page, when `url` is set (§8.4.1)                                                                                                                                              |
@@ -1133,6 +1134,42 @@ The `type` is the format's media type without its parameters, and the `href` is 
 - **Only files that exist.** Twins are serialized before the page is written, and the link is added only for a twin that was. A format that throws or returns nothing for a page leaves that page without a link, and the build still reports the error.
 - **No twin for the not-found page** (§8.4.2): the URL it answers at is whatever was mistyped, so there is nothing for a twin to be a twin of. None is written, and none is advertised.
 - **A format without a media type** advertises nothing, since an alternate with no type says only that something else exists.
+
+#### 8.4.4 Social image size and alt text
+
+A link preview is drawn before the image has been fetched, so Open Graph's `og:image:width` and `og:image:height` let a consumer reserve the card's box without downloading the picture. They are a fact about the file, not a decision, so the build states them instead of leaving a page to type them twice and let them drift when the image is replaced.
+
+After the head is merged, the build looks at the last `<meta property="og:image">`. When the head holds neither `og:image:width` nor `og:image:height` and the image is one the build can open, it writes both after `og:image`, as the size a viewer sees (an EXIF orientation that turns the image on its side has already exchanged the two).
+
+- **Local only.** The image is read when its content is a site-absolute path (`/og/card.png`), or an absolute URL under the project's own `url` (`${state.$site.url}/og/card.png`, with that `url`'s path removed), and the file exists under `public/` or an extension's asset mount (extensions.md §8.5). A query or fragment is dropped and a percent-encoded path is decoded. A remote image, a scheme-relative URL, a `data:` URI, a path that climbs out of `public/` and a file that does not exist state no size, because a wrong size is worse than none.
+- **Formats.** PNG, JPEG, WebP, TIFF and BMP through the compiler's native core (§9.2), and GIF from its 10-byte header. A file whose header cannot be read (an SVG, an unknown format, no native addon for the platform) states no size and does not fail the build.
+- **The author's wins.** A head, from any of the three levels (§8.3), that already carries `og:image:width` or `og:image:height` is left exactly as written, so a card whose image is served from elsewhere declares its own.
+- **No new key.** Nothing in `project.json` or a page's frontmatter names a social image: `og:image` is a `$head` entry, and a layout that wants one default with a per-page override declares it as a `timing: "compiler"` state entry and templates it (§8.2).
+
+The alternative text is not derived, because it describes the picture and only its author can. It is two more `$head` entries, templated from a state entry the same way, so a page overrides only what it needs:
+
+```json
+{
+  "state": {
+    "ogImage": { "timing": "compiler", "default": "/og/default.png" },
+    "ogImageAlt": { "timing": "compiler", "default": "The Example card" }
+  },
+  "$head": [
+    {
+      "tagName": "meta",
+      "attributes": { "property": "og:image", "content": "${state.$site.url}${state.ogImage}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": { "property": "og:image:alt", "content": "${state.ogImageAlt}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": { "name": "twitter:image:alt", "content": "${state.ogImageAlt}" }
+    }
+  ]
+}
+```
 
 ### 8.5 Structured Data (JSON-LD)
 

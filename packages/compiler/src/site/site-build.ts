@@ -140,6 +140,7 @@ import { SLOT_ATTR } from "@jxsuite/runtime";
 import { resolvePrototypes } from "./prototype-resolver.ts";
 import { classEntrySource, locateClass, readsBuildContext } from "./external-class.ts";
 import { literalReplacement, transformImageNodes } from "./image-transform.ts";
+import { withSocialImageSize } from "./social-image.ts";
 import { collectCspSources, emptyCspSources } from "./csp.ts";
 import { resolveShadowMode } from "../shadow.ts";
 import {
@@ -2039,7 +2040,7 @@ async function compilePage(
   ];
 
   // Merge $head from site + layout + page
-  const mergedHead = mergeHead(resolvedSiteHead, resolvedLayoutHead, resolvedPageHead, {
+  const mergedHeadBase = mergeHead(resolvedSiteHead, resolvedLayoutHead, resolvedPageHead, {
     title,
     charset: projectConfig.defaults.charset ?? "utf8",
     siteName: projectConfig.name,
@@ -2053,6 +2054,12 @@ async function compilePage(
     ...(!isNotFoundRoute(route.urlPattern) && {
       pageUrl: servedRoute(route.urlPattern, projectConfig.build.trailingSlash),
     }),
+  });
+  // `og:image:width` and `og:image:height`, read from the image file when the build can open it (§8.4.4).
+  const mergedHead = await withSocialImageSize(mergedHeadBase, {
+    mounts: assetMounts,
+    projectRoot,
+    siteUrl: projectConfig.url,
   });
 
   // Merge project-level $media into the layout document so responsive queries are available
