@@ -64,7 +64,7 @@ The injected site and page context is available too: `${state.$site.name}`, `${s
 
 The build assembles each page's `<head>` from four layers, later entries winning:
 
-1. **Built-in defaults**: `<meta charset>` and a standard viewport tag
+1. **Built-in defaults**: `<meta charset>` (`utf-8` unless `defaults.charset` says otherwise) and a standard viewport tag
 2. **Site**: `$head` in the project file (favicon, fonts, global meta)
 3. **Layout**: the layout document's `$head`
 4. **Page**: the page's `$head`

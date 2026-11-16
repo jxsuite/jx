@@ -71,7 +71,7 @@ A file with nothing declared yet says so and offers **Add a value**, which creat
 
 A **Value** is the workhorse: the counter, the search text, the "menu open" flag. Its editor offers:
 
-- **Type**: `string`, `integer`, `number`, `boolean`, `array`, or `object`. Defaults you type are converted to match.
+- **Type**: `string`, `integer`, `number`, `boolean`, `array`, or `object`, or a data shape defined in this file's `$defs` or in **[Project settings](/docs/studio/projects/settings#data-shapes)**. Defaults you type are converted to match. A type written by hand as an inline schema shows as **Inline schema** and is kept until you pick another.
 - **Format**, for strings only: `image`, `date`, or `color`. An image-formatted value gets a media picker for its default.
 - **Options**, for strings and numbers: the values the entry may hold, separated by commas (`left, center, right`). They are saved as the entry's `enum`, the **Default** becomes a choice among them, and a component's setting is offered as a dropdown of them wherever the component is placed. Clear the field to accept any value again.
 - **Default**: the starting value. Array and object defaults are typed as JSON.

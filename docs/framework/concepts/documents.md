@@ -62,7 +62,7 @@ The pointer is resolved relative to the file that carries it, so it needs one `.
 }
 ```
 
-State entries reference these types with `$ref` (`{ "$ref": "#/$defs/Count" }`). `$defs` entries never contain `default`, `$prototype`, or template strings; runtime values belong in `state`.
+State entries reference these types with `$ref` (`{ "$ref": "#/$defs/Count" }`). In a site, a name the document does not define resolves against the `$defs` in [project.json](/docs/framework/site/project-json). `$defs` entries never contain `default`, `$prototype`, or template strings; runtime values belong in `state`.
 
 ## Component or page fragment
 

@@ -148,7 +148,7 @@ What goes into every page's `<head>`, the invisible part of a web page that load
 
 ## Data Shapes
 
-Reusable descriptions of a piece of data (an API response, a shared record type) that other parts of the project can refer to. A data shape uses the same visual field builder as content types: named fields with a type, an optional format, and a required toggle. **New Data Shape** adds one; pick a shape on the left to edit its fields, and a **reference** field gets a picker naming one of your content types. Most sites never need this section; for modeling your content itself, use **[Content types](/docs/studio/projects/content-types)** instead.
+Reusable descriptions of a piece of data (an API response, a shared record type) that other parts of the project can refer to. A data shape uses the same visual field builder as content types: named fields with a type, an optional format, and a required toggle. **New Data Shape** adds one; pick a shape on the left to edit its fields, and a **reference** field gets a picker naming one of your content types. Most sites never need this section; for modeling your content itself, use **[Content types](/docs/studio/projects/content-types)** instead. Any value in the **[Data panel](/docs/studio/logic/data)** of any page, layout or component can take a data shape as its **Type**.
 
 ## Packages
 

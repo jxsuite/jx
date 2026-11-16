@@ -7,9 +7,13 @@
  *    root-relative JSON Pointer that resolves inside the file — the editor-resolution guarantee of
  *    the committed form (specs/extensions.md §5.4). Checked first and fatal, since walks 2–4
  *    compile those documents;
- * 2. `project.json` against the generated entry schema (validateProjectFile);
+ * 2. `project.json` against the generated entry schema (validateProjectFile), and every
+ *    `#/$defs/<Name>` type reference in its own `$defs` against those definitions alone
+ *    (site-architecture.md §3.1);
  * 3. Every document under `components/`, `pages/`, and `layouts/` against the bundled document schema
- *    (core + extension `$paths` union — the same schema the studio consumes);
+ *    (core + extension `$paths` union — the same schema the studio consumes), and every type
+ *    reference a well-formed one carries against its own `$defs` and then the project's
+ *    (site-architecture.md §3.1);
  * 4. Every project-local `*.class.json` against the generated class schema;
  * 5. Every enabled extension's schema fragments compile standalone against the shipped default union
  *    resources.
@@ -25,6 +29,11 @@ import type { EraseWarning } from "@jxsuite/erase";
 import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
 import { generateClassSchema } from "@jxsuite/schema";
+import {
+  MAP_SUBSCHEMA_KEYWORDS,
+  SUBSCHEMA_KEYWORDS,
+  findDanglingTypeRefs,
+} from "@jxsuite/schema/type-refs";
 import { validateProjectFile } from "@jxsuite/schema/validate-project";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findDialogDefects } from "@jxsuite/schema/dialogs";
@@ -190,6 +199,23 @@ export async function validateProjectTree(
   if (!projectResult.valid) {
     issues.push({ errors: projectResult.errors ?? [], file: projectResult.file });
   }
+  /* The project's own type definitions. A reference inside them resolves against them alone, and
+     a document's resolves in its own `$defs` and then here (site-architecture.md §3.1). */
+  const projectDefs = readProjectDefs(root);
+  if (projectDefs !== undefined) {
+    const dangling = findDanglingTypeRefs({ $defs: projectDefs }).map(({ at, ref }) => ({
+      instancePath: at,
+      message: `type reference "${ref}" names no definition in project.json's $defs`,
+    }));
+    if (dangling.length > 0) {
+      const reported = issues.find((issue) => issue.file === projectResult.file);
+      if (reported === undefined) {
+        issues.push({ errors: dangling, file: projectResult.file });
+      } else {
+        reported.errors.push(...dangling);
+      }
+    }
+  }
 
   const { addFormats, Ajv } = await loadAjv();
 
@@ -244,7 +270,18 @@ export async function validateProjectTree(
          * SAFETY: validateDoc just accepted `doc` against the bundled document schema, which is
          * the JSON Schema rendering of JxElement.
          */
-        lint.push(...lintDocument(doc as JxElement, relative(root, file), scope));
+        const wellFormed = doc as JxElement;
+        lint.push(...lintDocument(wellFormed, relative(root, file), scope));
+        const dangling = findDanglingTypeRefs(wellFormed, projectDefs);
+        if (dangling.length > 0) {
+          issues.push({
+            errors: dangling.map(({ at, ref }) => ({
+              instancePath: at,
+              message: `type reference "${ref}" names no definition in this document's $defs or in project.json's $defs`,
+            })),
+            file: relative(root, file),
+          });
+        }
       } else {
         issues.push({ errors: validateDoc.errors ?? [], file: relative(root, file) });
       }
@@ -297,6 +334,20 @@ export async function validateProjectTree(
 
   const fatalLint = options.strict === true && lint.some((finding) => finding.severity === "error");
   return { checked, issues, lint, valid: issues.length === 0 && !fatalLint };
+}
+
+/**
+ * The project's `$defs`, when `project.json` loads and declares an object. A project file the
+ * loader refuses answers `undefined` and hides nothing: walk 2 has already reported it, and walk 5
+ * keeps its own load.
+ */
+function readProjectDefs(root: string): JsonObject | undefined {
+  try {
+    const defs: unknown = loadProjectConfig(root).config.$defs;
+    return isJsonObject(defs) ? defs : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** A document file as the validator takes it: its value, or why it has none. */
@@ -504,37 +555,6 @@ function collectUnresolvableRefs(entry: JsonValue): { ref: string; reason: strin
   walk(entry);
   return out;
 }
-
-/** Keywords whose values map names to subschemas. */
-const MAP_SUBSCHEMA_KEYWORDS = new Set([
-  "$defs",
-  "definitions",
-  "dependencies",
-  "dependentSchemas",
-  "patternProperties",
-  "properties",
-]);
-
-/** Every keyword position a subschema can occupy (see {@link MAP_SUBSCHEMA_KEYWORDS} for maps). */
-const SUBSCHEMA_KEYWORDS = new Set([
-  ...MAP_SUBSCHEMA_KEYWORDS,
-  "additionalItems",
-  "additionalProperties",
-  "allOf",
-  "anyOf",
-  "contains",
-  "contentSchema",
-  "else",
-  "if",
-  "items",
-  "not",
-  "oneOf",
-  "prefixItems",
-  "propertyNames",
-  "then",
-  "unevaluatedItems",
-  "unevaluatedProperties",
-]);
 
 /** Recursively list document files under a directory (absent directories yield nothing). */
 function walkJsonFiles(dir: string): string[] {

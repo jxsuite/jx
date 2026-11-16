@@ -29,6 +29,13 @@ import {
   isRef,
   isString,
 } from "@jxsuite/schema/guards";
+import {
+  DEFS_POINTER_PREFIX,
+  resolveTypeRef,
+  typeDefinitionNames,
+  typeRefFor,
+  typeRefName,
+} from "@jxsuite/schema/type-refs";
 import { dynamicRouteParams } from "../page-params";
 import { projectState } from "../state";
 import type { JsonValue } from "../types";
@@ -140,7 +147,11 @@ export interface SignalDef {
   $deps?: string[];
   $expression?: JsonObject;
   $handler?: string;
-  type?: string;
+  /**
+   * A primitive's name, or a JSON Schema: a `$defs` reference (`{ "$ref": "#/$defs/Count" }`) or
+   * inline.
+   */
+  type?: string | JsonObject;
   default?: JsonValue;
   body?: string | JxStatement[];
   parameters?: (string | CemParameter)[];
@@ -350,9 +361,20 @@ export function defHint(_name: string, def: SignalDef | null | undefined) {
     return def.$prototype;
   }
   if (def.attribute) {
-    return `[${def.attribute}] ${def.type || ""}`;
+    return `[${def.attribute}] ${typeHint(def.type)}`;
   }
-  return def.type || "";
+  return typeHint(def.type);
+}
+
+/** What a row says about a type: a primitive's name, a data shape's name, or "schema" for inline. */
+function typeHint(type: SignalDef["type"]): string {
+  if (isString(type)) {
+    return type;
+  }
+  if (type === undefined) {
+    return "";
+  }
+  return typeRefName(type) ?? "schema";
 }
 
 /**
@@ -581,7 +603,7 @@ function selectField(
   signal: string,
   key: string,
   label: string,
-  values: string[],
+  values: readonly (string | { label: string; value: string })[],
   value: string,
   write: (value: string) => void,
 ): SignalFieldView {
@@ -590,7 +612,7 @@ function selectField(
       key,
       kind: "select",
       label,
-      options: values.map((v) => ({ label: v, value: v })),
+      options: values.map((v) => (isString(v) ? { label: v, value: v } : v)),
       signal,
       value,
     },
@@ -668,30 +690,83 @@ function parseOptions(text: string, type: string | undefined): (string | number)
   return values.length > 0 ? values : undefined;
 }
 
+/** The value of the Type option that stands for a hand-written inline schema. */
+const INLINE_TYPE = "__inline__";
+
+/** The primitive types the Type select always offers. */
+const PRIMITIVE_TYPES = ["string", "integer", "number", "boolean", "array", "object"] as const;
+
+/**
+ * The Type select's options: the primitives, then the document's and the project's data shapes
+ * (site-architecture.md §3.1). A type the file already says that the list would not offer is added,
+ * so the select shows what the file holds.
+ */
+function typeChoices(S: SignalsPanelState, def: SignalDef): { label: string; value: string }[] {
+  const definitions = typeDefinitionNames(S.document.$defs, projectState?.projectConfig?.$defs);
+  const name = typeRefName(def.type);
+  const choices = [
+    ...PRIMITIVE_TYPES.map((v) => ({ label: v, value: v })),
+    ...definitions.map((definition) => ({
+      label: definition.name,
+      value: typeRefFor(definition.name),
+    })),
+  ];
+  if (name !== null && !definitions.some((definition) => definition.name === name)) {
+    choices.push({ label: `${name} (not defined)`, value: typeRefFor(name) });
+  }
+  if (isNonNullObject(def.type) && name === null) {
+    choices.unshift({ label: "Inline schema", value: INLINE_TYPE });
+  }
+  return choices;
+}
+
+/** The type a typed default is converted to: a primitive, or the primitive a data shape names. */
+function coercionType(S: SignalsPanelState, def: SignalDef): string | undefined {
+  if (isString(def.type)) {
+    return def.type;
+  }
+  const ref = def.type?.$ref;
+  if (!isString(ref)) {
+    return undefined;
+  }
+  const schema = resolveTypeRef(ref, S.document.$defs, projectState?.projectConfig?.$defs)?.schema;
+  const namedType = isJsonObject(schema) ? schema.type : undefined;
+  return isString(namedType) ? namedType : undefined;
+}
+
 /** A plain value entry: its type, its default, and the CEM facts a custom element adds. */
 function stateFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
   const patch = (value: DefPatch): void => {
     transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
   };
   const defaultVal = asText(def.default);
+  const primitive = isString(def.type) ? def.type : undefined;
+  const refName = typeRefName(def.type);
+  let typeValue = INLINE_TYPE;
+  if (refName === null && def.type === undefined) {
+    typeValue = "string";
+  } else if (primitive !== undefined) {
+    typeValue = primitive || "string";
+  } else if (refName !== null) {
+    typeValue = typeRefFor(refName);
+  }
   const out: SignalFieldView[] = [
-    selectField(
-      name,
-      "type",
-      "Type",
-      ["string", "integer", "number", "boolean", "array", "object"],
-      def.type || "string",
-      (v) => patch({ type: v }),
-    ),
+    selectField(name, "type", "Type", typeChoices(S, def), typeValue, (v) => {
+      if (v === INLINE_TYPE) {
+        return;
+      }
+      patch({ type: v.startsWith(DEFS_POINTER_PREFIX) ? { $ref: v } : v });
+    }),
   ];
-  if (def.type === "string" || !def.type) {
+  if (primitive === "string" || !def.type) {
     out.push(
       selectField(name, "format", "Format", ["", "image", "date", "color"], def.format || "", (v) =>
         patch({ format: v || undefined }),
       ),
     );
   }
-  const choosable = !def.type || ["string", "number", "integer"].includes(def.type);
+  const choosable =
+    !def.type || (primitive !== undefined && ["string", "number", "integer"].includes(primitive));
   const choices = choosable && Array.isArray(def.enum) ? enumChoices(def.enum) : null;
   if (choosable && !isMediaFormat(def.format)) {
     out.push(
@@ -700,7 +775,7 @@ function stateFields(S: SignalsPanelState, name: string, def: SignalDef): Signal
         "enum",
         "Options",
         choices ? choices.map(String).join(", ") : "",
-        (v: string) => patch({ enum: parseOptions(v, def.type) }),
+        (v: string) => patch({ enum: parseOptions(v, primitive) }),
         { placeholder: "Any value" },
       ),
     );
@@ -731,13 +806,14 @@ function stateFields(S: SignalsPanelState, name: string, def: SignalDef): Signal
     out.push(
       textField(name, "default", "Default", defaultVal, (v: string) => {
         let parsed: JsonValue = v;
-        if (def.type === "integer") {
+        const coerced = coercionType(S, def);
+        if (coerced === "integer") {
           parsed = Math.trunc(Number(v)) || 0;
-        } else if (def.type === "number") {
+        } else if (coerced === "number") {
           parsed = Number(v) || 0;
-        } else if (def.type === "boolean") {
+        } else if (coerced === "boolean") {
           parsed = v === "true";
-        } else if (def.type === "array" || def.type === "object") {
+        } else if (coerced === "array" || coerced === "object") {
           try {
             // SAFETY: whatever `JSON.parse` returns without throwing is a JSON value.
             parsed = JSON.parse(v) as JsonValue;

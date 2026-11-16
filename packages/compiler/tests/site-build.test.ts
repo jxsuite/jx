@@ -19,6 +19,7 @@ import { resolveLayout } from "../src/site/layout-resolver";
 import { mergeHead, renderHead } from "@jxsuite/site/head-merger";
 import { injectContext } from "../src/site/context-injection";
 import { buildSite } from "../src/site/site-build";
+import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
 import { isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import { hashOf } from "../src/site/csp.ts";
@@ -126,7 +127,7 @@ describe("site-loader", () => {
     expect(config.name).toBe("Test Site");
     expect(config.url).toBe("https://test.com");
     expect(config.defaults.lang).toBe("en");
-    expect(config.defaults.charset).toBe("utf8");
+    expect(config.defaults.charset).toBe(DEFAULT_CHARSET);
     expect(config.build.outDir).toBe("./dist");
   });
 
@@ -303,6 +304,7 @@ describe("buildSite", () => {
     expect(html).toContain('name="generator"');
     expect(html).toContain('name="description"');
     expect(html).toContain("<title>About</title>");
+    expect(html).toContain('<meta charset="utf-8">');
   });
 
   it("writes a page's description property as its description meta", async () => {

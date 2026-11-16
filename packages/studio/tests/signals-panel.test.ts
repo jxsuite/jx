@@ -110,6 +110,16 @@ describe("defHint", () => {
     expect(defHint("x", { $handler: "doThing" })).toBe("handler (legacy)");
   });
 
+  test("a data-shape type shows the shape's name, and an inline schema shows schema", () => {
+    expect(defHint("x", { type: { $ref: "#/$defs/Address" } })).toBe("Address");
+    expect(defHint("x", { attribute: "addr", type: { $ref: "#/$defs/Address" } })).toBe(
+      "[addr] Address",
+    );
+    expect(defHint("x", { type: { items: { type: "string" }, type: "array" } })).toBe("schema");
+    expect(defHint("x", { attribute: "tags", type: { type: "array" } })).toBe("[tags] schema");
+    expect(defHint("x", { attribute: "open" })).toBe("[open] ");
+  });
+
   test("computed shows = expression, truncated when long", () => {
     expect(defHint("x", { $compute: "$a + $b" })).toBe("=$a + $b");
     const long = "x".repeat(25);

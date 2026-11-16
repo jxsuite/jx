@@ -9,6 +9,13 @@ import { LANGUAGE_TAG_PATTERN } from "../src/locale.ts";
  */
 export const REDIRECT_STATUSES = [301, 302, 303, 307, 308] as const;
 
+/**
+ * The only `<meta charset>` value the HTML Standard allows a document to declare
+ * (site-architecture.md §3.1). One definition, read by the schema, the build and the head merger.
+ */
+// oxlint-disable-next-line unicorn/text-encoding-identifier-case -- an HTML charset label, not a Buffer encoding.
+export const DEFAULT_CHARSET = "utf-8";
+
 export const projectConfigSchema = {
   description:
     "Schema for Jx project.json files. " +
@@ -19,7 +26,9 @@ export const projectConfigSchema = {
     "entry document (project.schema.json) closes the composition.",
   properties: {
     $defs: {
-      description: "Global type definitions available to all pages.",
+      description:
+        "JSON Schema type definitions, tooling only. " +
+        "A document's #/$defs/Name reference resolves here when the document does not define Name itself.",
       type: "object",
     },
     $elements: {
@@ -290,8 +299,9 @@ export const projectConfigSchema = {
       description: "Default settings applied to all pages unless overridden.",
       properties: {
         charset: {
-          default: "utf8",
-          description: "Default charset for the page.",
+          default: DEFAULT_CHARSET,
+          description:
+            "The <meta charset> every page declares. The HTML Standard allows only utf-8, which is the default.",
           type: "string",
         },
         dir: {

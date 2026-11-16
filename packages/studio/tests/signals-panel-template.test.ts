@@ -453,6 +453,78 @@ describe("the value editor", () => {
     expect(docState().$sig!.type).toBe("integer");
   });
 
+  test("the type picker offers the document's and the project's data shapes, and a shape writes a $defs reference", async () => {
+    resetStudioState({
+      projectConfig: {
+        $defs: { Address: { type: "object" }, Count: { type: "number" } },
+      },
+    });
+    const { panel } = await drawSignals(
+      { $sig: { default: "", type: "string" } },
+      { defs: { Count: { type: "integer" } } },
+    );
+    const editor = await openEntry(panel, "$sig");
+    const options = [...nativeSelect(control(editor, "Type", "select")).options].map((o) => [
+      o.textContent,
+      o.value,
+    ]);
+    expect(options).toEqual([
+      ["string", "string"],
+      ["integer", "integer"],
+      ["number", "number"],
+      ["boolean", "boolean"],
+      ["array", "array"],
+      ["object", "object"],
+      ["Count", "#/$defs/Count"],
+      ["Address", "#/$defs/Address"],
+    ]);
+    await pick(control(editor, "Type", "select"), "#/$defs/Address");
+    expect(docState().$sig!.type).toEqual({ $ref: "#/$defs/Address" });
+    const reopened = control(await openEntry(panel, "$sig"), "Type", "select");
+    expect(nativeSelect(reopened).value).toBe("#/$defs/Address");
+    await pick(reopened, "integer");
+    expect(docState().$sig!.type).toBe("integer");
+  });
+
+  test("a default typed by a data shape parses as the shape's type", async () => {
+    resetStudioState({ projectConfig: { $defs: { Count: { type: "integer" } } } });
+    const { panel } = await drawSignals({
+      $known: { default: 0, type: { $ref: "#/$defs/Count" } },
+      $lost: { default: "", type: { $ref: "#/$defs/Gone" } },
+      $deeper: { default: "", type: { $ref: "#/$defs/Count/properties/x" } },
+      $inlined: { default: 0, type: { type: "string" } },
+    });
+    await commitText(control(await openEntry(panel, "$known"), "Default", "text"), "42");
+    expect(docState().$known!.default).toBe(42);
+    await commitText(control(await openEntry(panel, "$lost"), "Default", "text"), "42");
+    expect(docState().$lost!.default).toBe("42");
+    await commitText(control(await openEntry(panel, "$deeper"), "Default", "text"), "42");
+    expect(docState().$deeper!.default).toBe("42");
+    await commitText(control(await openEntry(panel, "$inlined"), "Default", "text"), "42");
+    expect(docState().$inlined!.default).toBe("42");
+  });
+
+  test("an inline schema reads as Inline schema and is kept until another type is picked", async () => {
+    const { panel } = await drawSignals({
+      $inline: { default: [], type: { items: { type: "string" }, type: "array" } },
+    });
+    const editor = await openEntry(panel, "$inline");
+    const select = control(editor, "Type", "select");
+    expect(nativeSelect(select).value).toBe("__inline__");
+    expect(nativeSelect(select).options[0]?.textContent).toBe("Inline schema");
+    await pick(select, "__inline__");
+    expect(docState().$inline!.type).toEqual({ items: { type: "string" }, type: "array" });
+    await pick(select, "array");
+    expect(docState().$inline!.type).toBe("array");
+  });
+
+  test("a reference to a shape nobody defines shows its name as not defined", async () => {
+    const { panel } = await drawSignals({ $gone: { default: "", type: { $ref: "#/$defs/Gone" } } });
+    const select = nativeSelect(control(await openEntry(panel, "$gone"), "Type", "select"));
+    expect(select.value).toBe("#/$defs/Gone");
+    expect(select.selectedOptions[0]?.textContent).toBe("Gone (not defined)");
+  });
+
   test("format is offered for strings, and an image format hands Default to the media picker", async () => {
     const { panel } = await drawSignals({ $img: { default: "", type: "string" } });
     let editor = await openEntry(panel, "$img");
