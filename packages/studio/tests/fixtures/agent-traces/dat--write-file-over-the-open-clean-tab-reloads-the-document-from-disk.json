@@ -210,7 +210,8 @@
     "platformCalls": [
       "aiChatUrl()",
       "writeFile(\"pages/index.json\")",
-      "readFile(\"pages/index.json\")"
+      "readFile(\"pages/index.json\")",
+      "gitStatus()"
     ],
     "projectRoot": "/proj",
     "sessions": {

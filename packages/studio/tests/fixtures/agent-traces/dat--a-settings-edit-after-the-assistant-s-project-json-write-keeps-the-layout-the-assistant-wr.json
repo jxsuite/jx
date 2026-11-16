@@ -223,6 +223,7 @@
       "aiChatUrl()",
       "writeFile(\"project.json\")",
       "listExtensionCatalog()",
+      "gitStatus()",
       "writeFile(\"project.json\")"
     ],
     "projectRoot": "/proj",
