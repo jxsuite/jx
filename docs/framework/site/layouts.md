@@ -99,7 +99,7 @@ A layout may declare its own `$layout`, composing shells:
 }
 ```
 
-Saved as `layouts/blog-post.json`, this wraps blog pages in blog chrome while inheriting the site shell from `base.json`. Inner layouts resolve first, so the page's content threads through every level.
+Saved as `layouts/blog-post.json`, this wraps blog pages in blog chrome while inheriting the site shell from `base.json`. Inner layouts resolve first, so the page's content threads through every level. Each layout's `$head` joins the layout layer of the merged `<head>`, outermost first, so `blog-post.json` can add a stylesheet to what `base.json` declares. A `title` on a layout never becomes the page's `<title>`, at any level: that is the page's own `title`, or the site's `name`. A layout that wraps itself, directly or through another layout, is a build error naming the chain.
 
 ## What merges
 
@@ -110,7 +110,7 @@ Compiling a page against its layout produces one document:
 - **`$media`, `style`, `attributes`**: merged the same way, page over layout.
 - **`$script`**: not merged. A layout's [script](/docs/framework/concepts/functions#a-module-inside-the-document) and a page's stay two modules, in a build and in Live Preview, so each can export a function of the same name, and a `#client` entry calls the script of the file it is written in.
 - **`$elements`**: in a build, every level counts. The page's, each layout's and the project's entries are all registered, and each `$ref` is relative to the file that declares it.
-- **`$head`**: merged site, then layout, then page, a later entry replacing an earlier one with the same identity; see [SEO and metadata](/docs/framework/site/seo). The page's `<title>` comes from its `title` property, not from a `$head` entry.
+- **`$head`**: merged site, then each layout from the outermost in, then page, a later entry replacing an earlier one with the same identity; see [SEO and metadata](/docs/framework/site/seo). The page's `<title>` comes from its `title` property, not from a `$head` entry.
 
 Layouts also receive the compiler-injected contexts: `$page` (`title`, `url`, `params`) and `$site` (`name`, `url`, plus site state). See [the project file](/docs/framework/site/project-json).
 

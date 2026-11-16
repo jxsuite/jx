@@ -1364,7 +1364,7 @@ const meta = (attr: "name" | "property", key: string, content: string): JxHeadEn
 });
 
 function layers(over: Partial<HeadLayers> = {}): HeadLayers {
-  return { layout: [], layoutName: null, page: [], site: [], ...over };
+  return { layouts: [], page: [], site: [], ...over };
 }
 
 function warningIds(preview: SeoPreview): string[] {
@@ -1386,7 +1386,9 @@ describe("resolveMetaField — later layer wins, and says which one spoke", () =
 
   test("a layout entry is inherited from the layout, by name", () => {
     const field = resolveMetaField(
-      layers({ layout: [meta("name", "description", "from base")], layoutName: "Base" }),
+      layers({
+        layouts: [{ entries: [meta("name", "description", "from base")], name: "Base" }],
+      }),
       "name",
       "description",
     );
@@ -1395,11 +1397,27 @@ describe("resolveMetaField — later layer wins, and says which one spoke", () =
 
   test("an unnamed layout still names itself as something", () => {
     const field = resolveMetaField(
-      layers({ layout: [meta("name", "description", "x")] }),
+      layers({ layouts: [{ entries: [meta("name", "description", "x")], name: null }] }),
       "name",
       "description",
     );
     expect(field.donor).toBe("the layout");
+  });
+
+  test("the innermost layout that sets a key is its donor", () => {
+    const outer = { entries: [meta("name", "description", "from base")], name: "Base" };
+    const inner = { entries: [meta("name", "description", "from post")], name: "Blog Post" };
+    expect(resolveMetaField(layers({ layouts: [outer, inner] }), "name", "description")).toEqual({
+      donor: "Blog Post",
+      source: "layout",
+      value: "from post",
+    });
+    const silent = { entries: [meta("property", "og:title", "t")], name: "Blog Post" };
+    expect(resolveMetaField(layers({ layouts: [outer, silent] }), "name", "description")).toEqual({
+      donor: "Base",
+      source: "layout",
+      value: "from base",
+    });
   });
 
   test("a site entry is inherited from Site head", () => {
@@ -1653,11 +1671,17 @@ describe("seoWarnings — named consequences, never a total", () => {
   });
 
   test("a <title> in any layer is reported as discarded — the merger overwrites it", () => {
+    const title: JxHeadEntry = { tagName: "title", textContent: "x" };
     for (const layer of ["site", "layout", "page"] as const) {
-      const preview = buildSeoPreview(
-        layers({ ...full(), [layer]: [...full().page, { tagName: "title", textContent: "x" }] }),
-        { pageTitle: "Hello", route: "/hello", siteUrl: "https://example.com" },
-      );
+      const over: Partial<HeadLayers> =
+        layer === "layout"
+          ? { layouts: [{ entries: [...full().page, title], name: "Base" }] }
+          : { [layer]: [...full().page, title] };
+      const preview = buildSeoPreview(layers({ ...full(), ...over }), {
+        pageTitle: "Hello",
+        route: "/hello",
+        siteUrl: "https://example.com",
+      });
       expect(warningIds(preview)).toContain("head-title-ignored");
     }
   });
@@ -1690,16 +1714,17 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "components/card.json",
     });
-    expect(layoutHeadEntries(tab)).toEqual({ entries: [], name: null });
+    expect(layoutHeadEntries(tab)).toEqual({ levels: [], name: null });
   });
 
   test("the first call is empty and schedules the read; the second has the entries", async () => {
     const tab = seedLayout();
-    expect(layoutHeadEntries(tab)).toEqual({ entries: [], name: "Main Layout" });
+    expect(layoutHeadEntries(tab)).toEqual({ levels: [], name: "Main Layout" });
     await flush();
     const resolved = layoutHeadEntries(tab);
     expect(resolved.name).toBe("Main Layout");
-    expect(resolved.entries).toHaveLength(1);
+    expect(resolved.levels).toHaveLength(1);
+    expect(resolved.levels[0]?.entries).toHaveLength(1);
   });
 
   test("an unreadable layout caches as empty rather than re-reading on every render", async () => {
@@ -1711,16 +1736,60 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
     layoutHeadEntries(tab);
     await flush();
-    expect(layoutHeadEntries(tab).entries).toEqual([]);
+    expect(layoutHeadEntries(tab).levels).toEqual([]);
+  });
+
+  test("a layout cycle caches as empty rather than hanging the preview", async () => {
+    installMockPlatform(
+      {},
+      {
+        "layouts/a.json": JSON.stringify({ $layout: "./layouts/b.json", tagName: "div" }),
+        "layouts/b.json": JSON.stringify({ $layout: "./layouts/a.json", tagName: "div" }),
+      },
+    );
+    resetStudioState({ isSiteProject: true, projectConfig: {} });
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
+    layoutHeadEntries(tab, "./layouts/a.json");
+    await flush();
+    expect(layoutHeadEntries(tab, "./layouts/a.json").levels).toEqual([]);
+  });
+
+  test("a nested layout's levels arrive outermost first, each naming itself", async () => {
+    installMockPlatform(
+      {},
+      {
+        "layouts/base.json": JSON.stringify({
+          $head: [{ attributes: { content: "from base", name: "description" }, tagName: "meta" }],
+          tagName: "div",
+        }),
+        "layouts/blog-post.json": JSON.stringify({
+          $head: [{ attributes: { content: "post title", property: "og:title" }, tagName: "meta" }],
+          $layout: "./layouts/base.json",
+          tagName: "div",
+        }),
+      },
+    );
+    resetStudioState({ isSiteProject: true, projectConfig: {} });
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
+    layoutHeadEntries(tab, "./layouts/blog-post.json");
+    await flush();
+    const { levels, name } = layoutHeadEntries(tab, "./layouts/blog-post.json");
+    expect(name).toBe("Blog Post");
+    expect(levels.map((level) => level.name)).toEqual(["Base", "Blog Post"]);
+    expect(levels[0]?.entries).toHaveLength(1);
+    expect(levels[1]?.entries).toHaveLength(1);
+    const preview = seoPreviewFor(tab, { $layout: "./layouts/blog-post.json", tagName: "div" });
+    expect(seoField(preview, "description")).toMatchObject({ donor: "Base", source: "layout" });
+    expect(warningIds(preview)).not.toContain("description-missing");
   });
 
   test("invalidateLayoutPickerCache drops the head too — one event, one answer", async () => {
     const tab = seedLayout();
     layoutHeadEntries(tab);
     await flush();
-    expect(layoutHeadEntries(tab).entries).toHaveLength(1);
+    expect(layoutHeadEntries(tab).levels).toHaveLength(1);
     invalidateLayoutPickerCache();
-    expect(layoutHeadEntries(tab).entries).toEqual([]);
+    expect(layoutHeadEntries(tab).levels).toEqual([]);
   });
 
   test("a second layout asked for mid-flight owns the cache; the first is discarded", async () => {
@@ -1729,7 +1798,7 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
     layoutHeadEntries(tab, "./layouts/other.json");
     await flush();
     // The superseded read must not have written "Main Layout"'s entries under "Other".
-    expect(layoutHeadEntries(tab, "./layouts/other.json").entries).toEqual([]);
+    expect(layoutHeadEntries(tab, "./layouts/other.json").levels).toEqual([]);
   });
 
   test("layoutDisplayName reads a path the way a person names the layout", () => {

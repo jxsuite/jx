@@ -388,6 +388,74 @@ describe("composePage", () => {
     expect(page.head.some((e) => e.tagName === "title")).toBe(true);
   });
 
+  const NESTED = {
+    "layouts/base.json": JSON.stringify({
+      $elements: ["@acme/base-kit"],
+      $head: [{ attributes: { content: "base", name: "base" }, tagName: "meta" }],
+      children: [{ tagName: "slot" }],
+      tagName: "body",
+      title: "Base T",
+    }),
+    "layouts/blog.json": JSON.stringify({
+      $elements: ["@acme/blog-kit"],
+      $head: [{ attributes: { href: "/blog.css", rel: "stylesheet" }, tagName: "link" }],
+      $layout: "./layouts/base.json",
+      children: [{ tagName: "slot" }],
+      tagName: "div",
+      title: "Blog T",
+    }),
+  };
+
+  test("a nested layout's $head reaches the merged head beside the page's", async () => {
+    const page = await compose(
+      {
+        ...NESTED,
+        "pages/index.json": JSON.stringify({
+          $head: [{ attributes: { content: "page", name: "description" }, tagName: "meta" }],
+          $layout: "./layouts/blog.json",
+          children: ["Hi"],
+          tagName: "main",
+        }),
+      },
+      { name: "Nested" },
+    );
+    const at = (match: (entry: (typeof page.head)[number]) => boolean) =>
+      page.head.findIndex(match);
+    const base = at((e) => e.attributes?.name === "base");
+    const stylesheet = at((e) => e.attributes?.href === "/blog.css");
+    const description = at((e) => e.attributes?.name === "description");
+    expect(base).toBeGreaterThanOrEqual(0);
+    expect(stylesheet).toBeGreaterThan(base);
+    expect(description).toBeGreaterThan(stylesheet);
+    const title = page.head.find((e) => e.tagName === "title");
+    expect(title?.children?.[0]).toBe("Nested");
+  });
+
+  test("every layout's $elements reach the composed document, outermost first", async () => {
+    const page = await compose({
+      ...NESTED,
+      "pages/index.json": JSON.stringify({
+        $elements: ["@acme/page-kit"],
+        $layout: "./layouts/blog.json",
+        children: ["Hi"],
+        tagName: "main",
+      }),
+    });
+    expect(page.doc.$elements).toEqual(["@acme/base-kit", "@acme/blog-kit", "@acme/page-kit"]);
+  });
+
+  test("a layout cycle is a ComposeError naming the chain", async () => {
+    const promise = compose({
+      "layouts/a.json": JSON.stringify({ $layout: "./layouts/b.json", tagName: "div" }),
+      "layouts/b.json": JSON.stringify({ $layout: "./layouts/a.json", tagName: "div" }),
+      "pages/index.json": JSON.stringify({ $layout: "./layouts/a.json", tagName: "main" }),
+    });
+    await expect(promise).rejects.toThrow(ComposeError);
+    await expect(promise).rejects.toThrow(
+      "Layout cycle: ./layouts/a.json → ./layouts/b.json → ./layouts/a.json",
+    );
+  });
+
   test("a missing layout names the reference it could not find", async () => {
     const promise = compose({
       "pages/index.json": JSON.stringify({ $layout: "./layouts/gone.json", tagName: "main" }),

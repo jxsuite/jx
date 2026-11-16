@@ -1,3 +1,4 @@
+// oxlint-disable typescript/await-thenable -- bun test .rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 /**
  * Layout resolution — slot distribution and property merging, over an in-memory loader.
  *
@@ -6,8 +7,8 @@
  * only held when the layout came off a disk would pass there and fail here.
  */
 import { describe, expect, test } from "bun:test";
-import { resolveLayout } from "../src/layout.ts";
-import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
+import { LayoutCycleError, layoutLevels, resolveLayout } from "../src/layout.ts";
+import type { JsonValue, JxDocument, JxHeadEntry } from "@jxsuite/schema/types";
 
 /** A fixture that breaks the JxDocument contract on purpose, to reach one of resolveLayout's guards. */
 function offContract(json: JsonValue): JxDocument {
@@ -31,6 +32,11 @@ function loaderFor(layouts: Record<string, JxDocument>) {
     return structuredClone(doc);
   };
   return { asked, load };
+}
+
+/** A `<meta name>` head entry, the smallest thing that can be told apart in a merged head. */
+function metaNamed(name: string): JxHeadEntry {
+  return { attributes: { content: name, name }, tagName: "meta" };
 }
 
 describe("resolveLayout", () => {
@@ -140,6 +146,126 @@ describe("resolveLayout", () => {
     ]);
   });
 
+  test("three levels of $head arrive at the layout level, outermost first", async () => {
+    const { load } = loaderFor({
+      "./inner.json": {
+        $head: [metaNamed("inner")],
+        $layout: "./mid.json",
+        children: [{ tagName: "slot" }],
+        tagName: "div",
+      },
+      "./mid.json": {
+        $head: [metaNamed("mid")],
+        $layout: "./top.json",
+        children: [{ tagName: "slot" }],
+        tagName: "div",
+      },
+      "./top.json": { $head: [metaNamed("top")], children: [{ tagName: "slot" }], tagName: "body" },
+    });
+    const page: JxDocument = { $head: [metaNamed("page")], $layout: "./inner.json" };
+    const result = await resolveLayout(page, {}, load);
+    expect(result.$head).toEqual([metaNamed("top"), metaNamed("mid"), metaNamed("inner")]);
+    expect(result._pageHead).toEqual([metaNamed("page")]);
+  });
+
+  test("an intermediate layout's head survives a page that declares its own", async () => {
+    const stylesheet: JxHeadEntry = {
+      attributes: { href: "/blog.css", rel: "stylesheet" },
+      tagName: "link",
+    };
+    const { load } = loaderFor({
+      "./base.json": {
+        $head: [metaNamed("base")],
+        children: [{ tagName: "slot" }],
+        tagName: "body",
+      },
+      "./blog.json": {
+        $head: [stylesheet],
+        $layout: "./base.json",
+        children: [{ tagName: "slot" }],
+        tagName: "div",
+      },
+    });
+    const page: JxDocument = { $head: [metaNamed("description")], $layout: "./blog.json" };
+    const result = await resolveLayout(page, {}, load);
+    expect(result.$head).toEqual([metaNamed("base"), stylesheet]);
+    expect(result._pageHead).toEqual([metaNamed("description")]);
+  });
+
+  test("a nested layout without a head leaves the outer layout's alone", async () => {
+    const { load } = loaderFor({
+      "./base.json": {
+        $head: [metaNamed("base")],
+        children: [{ tagName: "slot" }],
+        tagName: "body",
+      },
+      "./post.json": { $layout: "./base.json", children: [{ tagName: "slot" }], tagName: "div" },
+    });
+    const result = await resolveLayout({ $layout: "./post.json" }, {}, load);
+    expect(result.$head).toEqual([metaNamed("base")]);
+  });
+
+  test("an intermediate layout's title is not the page's", async () => {
+    const { load } = loaderFor({
+      "./base.json": { children: [{ tagName: "slot" }], tagName: "body", title: "Base T" },
+      "./blog.json": {
+        $layout: "./base.json",
+        children: [{ tagName: "slot" }],
+        tagName: "div",
+        title: "Blog T",
+      },
+    });
+    const untitled = await resolveLayout({ $layout: "./blog.json" }, {}, load);
+    expect(untitled._pageTitle).toBeUndefined();
+    const titled = await resolveLayout({ $layout: "./blog.json", title: "P" }, {}, load);
+    expect(titled._pageTitle).toBe("P");
+  });
+
+  test("a layout cycle is an error naming the chain", async () => {
+    const { load } = loaderFor({
+      "./a.json": { $layout: "./b.json", tagName: "div" },
+      "./b.json": { $layout: "./a.json", tagName: "div" },
+      "./self.json": { $layout: "./self.json", tagName: "div" },
+    });
+    const rejection = resolveLayout({ $layout: "./a.json" }, {}, load);
+    await expect(rejection).rejects.toBeInstanceOf(LayoutCycleError);
+    await expect(rejection).rejects.toMatchObject({
+      message: "Layout cycle: ./a.json → ./b.json → ./a.json",
+      name: "LayoutCycleError",
+    });
+    await expect(resolveLayout({ $layout: "./self.json" }, {}, load)).rejects.toThrow(
+      "Layout cycle: ./self.json → ./self.json",
+    );
+  });
+
+  test("a loader that caches its documents is not mutated by a nested resolution", async () => {
+    const inner: JxDocument = {
+      $head: [metaNamed("inner")],
+      $layout: "./outer.json",
+      children: [
+        { attributes: { slot: "body" }, children: [{ tagName: "slot" }], tagName: "main" },
+      ],
+      tagName: "div",
+    };
+    const outer: JxDocument = {
+      children: [{ attributes: { name: "body" }, tagName: "slot" }],
+      tagName: "body",
+    };
+    const load = (ref: string) => (ref === "./inner.json" ? inner : outer);
+    const first = await resolveLayout({ $layout: "./inner.json", children: ["one"] }, {}, load);
+    const second = await resolveLayout({ $layout: "./inner.json", children: ["two"] }, {}, load);
+    expect(first.children).toEqual([
+      { attributes: { slot: "body" }, children: ["one"], tagName: "main" },
+    ]);
+    expect(second.children).toEqual([
+      { attributes: { slot: "body" }, children: ["two"], tagName: "main" },
+    ]);
+    expect(inner.children).toEqual([
+      { attributes: { slot: "body" }, children: [{ tagName: "slot" }], tagName: "main" },
+    ]);
+    expect(inner.$head).toEqual([metaNamed("inner")]);
+  });
+
   test("page state, style, $media and attributes extend the layout's", async () => {
     const { load } = loaderFor({
       "./l.json": {
@@ -243,5 +369,30 @@ describe("resolveLayout", () => {
     const page: JxDocument = { $layout: "./l.json", children: [{ tagName: "p" }] };
     const result = await resolveLayout(page, {}, load);
     expect(result).toBe(notADocument);
+  });
+});
+
+describe("layoutLevels", () => {
+  test("lists the chain outermost first, each with its reference", async () => {
+    const layouts = {
+      "./inner.json": { $layout: "./outer.json", tagName: "div" },
+      "./outer.json": { tagName: "body" },
+    } satisfies Record<string, JxDocument>;
+    const { asked, load } = loaderFor(layouts);
+    const levels = await layoutLevels("./inner.json", load);
+    expect(levels).toEqual([
+      { doc: layouts["./outer.json"], ref: "./outer.json" },
+      { doc: layouts["./inner.json"], ref: "./inner.json" },
+    ]);
+    expect(asked).toEqual(["./inner.json", "./outer.json"]);
+  });
+
+  test("stops at a layout whose $layout is false or absent", async () => {
+    const { load } = loaderFor({
+      "./false.json": { $layout: false, tagName: "div" },
+      "./plain.json": { tagName: "div" },
+    });
+    expect(await layoutLevels("./false.json", load)).toHaveLength(1);
+    expect(await layoutLevels("./plain.json", load)).toHaveLength(1);
   });
 });

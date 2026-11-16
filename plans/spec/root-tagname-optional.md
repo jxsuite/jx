@@ -51,7 +51,7 @@ The table (line 128) reads ``| `tagName` | Required | HTML tag name for the root
 
 - **Decided:** pin what the new text promises and no test holds, with one case in `packages/compiler` and one in `packages/site`. A reconcile turns what the code does into what the spec promises, and neither half is asserted today. The runtime default, the hyphen refusal and the schema's optional root are already held by the tests and the `schema:validate-all` gate named in Context, so nothing is added for them.
 - **Decided:** §3.1 does not list `title`, `$layout`, `$head` or the other site keys. The table is the core field set every document shares. The site keys are specified in site-architecture.md §5 and §8, and schema.md §3.1 enumerates every root key the schema declares.
-- **Decided:** no `requires` edge. `plan:spec/tag-expression-completion` edits §19.6, but it keeps the root `tagName` literal, which is all §3.1 cites §19.6 for. `plan:site-architecture/nested-layout-head` rewrites `resolveLayout` without reading or changing a page's root `tagName`, and the landed head-and-layout-shape reconciliation of site-architecture.md §5 did the same. §3.1 cites §5.2 by heading, which none of them moves.
+- **Decided:** no `requires` edge. `plan:spec/tag-expression-completion` edits §19.6, but it keeps the root `tagName` literal, which is all §3.1 cites §19.6 for. the nested-layout change that landed with site-architecture.md §5.4 rewrote `resolveLayout` without reading or changing a page's root `tagName`, and the landed head-and-layout-shape reconciliation of site-architecture.md §5 did the same. §3.1 cites §5.2 by heading, which none of them moves.
 - **Decided:** fragment level `minor`, as for any `reconcile`, and not `major`. Nothing ever enforced Required, so no author or tool could rely on it.
 
 ## Implementation
@@ -72,7 +72,7 @@ One small pull request: the spec and docs edits, two test cases, the fragment, a
 - A hyphenated root `tagName` is what makes a document a custom-element definition (§16.1).
 - A page a layout wraps renders inside the layout's root element and its own root `tagName` is not used.
 
-`plan:site-architecture/head-and-layout-shape-root-title` and `plan:site-architecture/nested-layout-head` may cite §3.1 for "the layout's root is the page's root". If a later plan gives a wrapped page's `tagName` a meaning, it must rewrite §3.1's paragraph and delete this plan's layout test.
+`plan:site-architecture/head-and-layout-shape-root-title` and site-architecture.md §5.4 may cite §3.1 for "the layout's root is the page's root". If a later plan gives a wrapped page's `tagName` a meaning, it must rewrite §3.1's paragraph and delete this plan's layout test.
 
 ## Tests
 

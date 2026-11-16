@@ -88,7 +88,7 @@ The first thing it shows is not a form but two pictures of the finished page: a 
 Every field commits as you type, and the previews above redraw with it. That is the reason it is a window rather than a panel: the previews want the width, and a search result rendered a third of a column wide is not a preview of anything.
 
 :::doc-note
-**The previews show the merged head, not just what this page declares.** A page's metadata is layered: the project's own `$head`, then the layout's, then the page's, with the later layer winning key by key. The title follows the same idea: the page's own title, or the project name, or `Jx Site` if nothing supplies one. What the previews draw is the result, which is what a search engine or a chat app will actually see.
+**The previews show the merged head, not just what this page declares.** A page's metadata is layered: the project's own `$head`, then the layout's (every layout in the chain, outermost first, when one wraps another), then the page's, with the later layer winning key by key. The title follows the same idea: the page's own title, or the project name, or `Jx Site` if nothing supplies one. What the previews draw is the result, which is what a search engine or a chat app will actually see.
 :::
 
 ### The resolved fields
@@ -97,7 +97,7 @@ One row per value that reaches the browser: Title, Description, Social title, So
 
 The count is of **characters as you see them**: an emoji counts as one, a flag counts as one, and an accented letter counts as one however it was typed. That is not what `length` gives you in most tools: it counts a rocket as two and a flag as four, so a headline with three emoji used to report six characters of budget it had not spent. The count is not a measure of _width_, and deliberately so: a search result truncates on pixels, in a font the engine picks at a size it picks, and any number here claiming to predict that would be a guess wearing a measurement's clothes.
 
-A value this page sets shows the ordinary set dot. A value it inherits is marked **inherited** and names its donor: _from Base_ for a layout, _from Site head_ or _from Site name_ for the project, _from the build_ for a value the build supplies on your behalf. The two chips that lead somewhere are clickable and open the setting in Project Settings; the layout and build chips are plain text, because the card has no verb for them.
+A value this page sets shows the ordinary set dot. A value it inherits is marked **inherited** and names its donor: _from Base_ for a layout (naming the layout in the chain that set the value), _from Site head_ or _from Site name_ for the project, _from the build_ for a value the build supplies on your behalf. The two chips that lead somewhere are clickable and open the setting in Project Settings; the layout and build chips are plain text, because the card has no verb for them.
 
 That marking is the whole point. A page inheriting its description from the site is not a page missing a description, and until the preview said which was which, the two looked identical.
 

@@ -380,8 +380,8 @@ describe("the layout `$head` read", () => {
     // Both calls happen before the first read lands, so both see an empty middle layer…
     const first = layoutHeadEntries(tab);
     const second = layoutHeadEntries(tab);
-    expect(first).toEqual({ entries: [], name: "Main Layout" });
-    expect(second).toEqual({ entries: [], name: "Main Layout" });
+    expect(first).toEqual({ levels: [], name: "Main Layout" });
+    expect(second).toEqual({ levels: [], name: "Main Layout" });
     await flush();
 
     // …and the file was opened exactly once for the two of them.
@@ -390,7 +390,7 @@ describe("the layout `$head` read", () => {
     );
     expect(reads).toHaveLength(1);
     // The one read did land, so the guard dropped a duplicate rather than the answer.
-    expect(layoutHeadEntries(tab).entries).toHaveLength(1);
+    expect(layoutHeadEntries(tab).levels[0]?.entries).toHaveLength(1);
   });
 });
 

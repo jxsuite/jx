@@ -66,7 +66,7 @@ The build assembles each page's `<head>` from four layers, later entries winning
 
 1. **Built-in defaults**: `<meta charset>` (`utf-8` unless `defaults.charset` says otherwise) and a standard viewport tag
 2. **Site**: `$head` in the project file (favicon, fonts, global meta)
-3. **Layout**: the layout document's `$head`
+3. **Layout**: the layout document's `$head`, and when layouts nest, each one's, outermost first
 4. **Page**: the page's `$head`
 
 Duplicates are detected by element identity, so a page-level entry replaces the site-level one rather than appearing twice:
