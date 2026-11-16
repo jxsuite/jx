@@ -24,7 +24,7 @@
 
 import { compareRoutes, fileToRoute, isRoutedPageFile, matchRoute } from "./routes.ts";
 import type { FileRoute } from "./routes.ts";
-import { resolveLayout } from "./layout.ts";
+import { LayoutCycleError, resolveLayout } from "./layout.ts";
 import { mergeHead, withPageDescription } from "./head-merger.ts";
 import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
@@ -340,23 +340,35 @@ export async function composePage(
     );
   }
 
-  const merged = await resolveLayout(pageDoc, config, async (ref) => {
-    const doc = await readDocument(io, ref.replace(/^\.\//, ""));
-    if (!doc) {
-      throw new ComposeError(`Layout not found: ${ref}`);
-    }
-    return doc;
-  });
+  /* Every layout the loader returns, innermost first because `layoutLevels` loads in that order. */
+  const layouts: JxDocument[] = [];
+  let merged: JxDocument;
+  try {
+    merged = await resolveLayout(pageDoc, config, async (ref) => {
+      const doc = await readDocument(io, ref.replace(/^\.\//, ""));
+      if (!doc) {
+        throw new ComposeError(`Layout not found: ${ref}`);
+      }
+      layouts.push(doc);
+      return doc;
+    });
+  } catch (error) {
+    throw error instanceof LayoutCycleError ? new ComposeError(error.message) : error;
+  }
 
   /*
-   * `$elements` is legal on the page AND on the layout, and `resolveLayout` merges neither into the
-   * other — so the composed document has only the LAYOUT's, and every custom element a page
-   * declared for itself goes unregistered. The compiler reads both documents for exactly this
-   * reason (`site-build.ts`, "a page of inert unknown elements with no error anywhere"), and the
-   * failure is just as quiet here: the runtime renders `<site-card>` into the DOM, nothing defines
-   * it, and the browser reports nothing at all.
+   * `$elements` is legal on the page AND on every layout, and `resolveLayout` merges none of them
+   * into another document, so the composed document has only the OUTERMOST layout's, and every
+   * custom element a page or an inner layout declared for itself goes unregistered. The compiler
+   * reads every document for exactly this reason (`site-build.ts`, "a page of inert unknown
+   * elements with no error anywhere"), and the failure is just as quiet here: the runtime renders
+   * `<site-card>` into the DOM, nothing defines it, and the browser reports nothing at all. The
+   * union is every layout's, outermost first, then the page's.
    */
-  const elements = unionElements(merged.$elements, pageDoc.$elements);
+  const elements = unionElements(
+    ...layouts.toReversed().map((layout) => layout.$elements),
+    pageDoc.$elements,
+  );
   if (elements) {
     merged.$elements = elements;
   }
@@ -377,8 +389,8 @@ export async function composePage(
     merged.$elements = withDiscovered;
   }
 
-  /* SAFETY: `_pageHead` is no authored key; `resolveLayout` is its only writer and stores a page's
-     (or a nested layout's) `$head` array in it, which is the `JxHeadEntry[]` asserted here. */
+  /* SAFETY: `_pageHead` is no authored key; `resolveLayout` is its only writer and stores the page's
+     own `$head` array in it, which is the `JxHeadEntry[]` asserted here. */
   const pageHead = withPageDescription(
     (pageDoc.$head ?? merged._pageHead ?? []) as JxHeadEntry[],
     pageDoc.description,
@@ -386,7 +398,7 @@ export async function composePage(
   const layoutHead = merged.$head ?? [];
   const siteHead = config.$head ?? [];
   /* SAFETY: `pageDoc.title` and `config.name` are declared strings, and `_pageTitle` is no authored
-     key: `resolveLayout` is its only writer and stores a page's (or a nested layout's) `title`. */
+     key: `resolveLayout` is its only writer and stores the page's own `title`, never a layout's. */
   const title = (pageDoc.title ?? merged._pageTitle ?? config.name ?? "") as string;
   const lang =
     (isString(pageDoc.$lang) ? pageDoc.$lang : undefined) ??

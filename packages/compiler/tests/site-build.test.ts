@@ -546,6 +546,88 @@ describe("buildSite — color scheme", () => {
   });
 });
 
+describe("buildSite — nested layouts", () => {
+  const NESTED_TMP = resolve(import.meta.dir, "__test-site-nested-layouts__");
+  const CYCLE_TMP = resolve(import.meta.dir, "__test-site-layout-cycle__");
+
+  const writeAt = (root: string, path: string, obj: JsonValue) => {
+    mkdirSync(resolve(root, ...path.split("/").slice(0, -1)), { recursive: true });
+    writeFileSync(resolve(root, path), JSON.stringify(obj, null, 2), "utf8");
+  };
+
+  beforeAll(async () => {
+    rmSync(NESTED_TMP, { force: true, recursive: true });
+    rmSync(CYCLE_TMP, { force: true, recursive: true });
+    const project = { build: { outDir: "./dist" }, name: "Nested" };
+    writeAt(NESTED_TMP, "project.json", project);
+    writeAt(NESTED_TMP, "layouts/base.json", {
+      $head: [{ attributes: { content: "base", name: "base" }, tagName: "meta" }],
+      children: [{ children: [{ tagName: "slot" }], tagName: "main" }],
+      tagName: "div",
+      title: "Base T",
+    });
+    writeAt(NESTED_TMP, "layouts/blog.json", {
+      $head: [{ attributes: { href: "/blog.css", rel: "stylesheet" }, tagName: "link" }],
+      $layout: "./layouts/base.json",
+      children: [{ tagName: "slot" }],
+      tagName: "div",
+      title: "Blog T",
+    });
+    writeAt(NESTED_TMP, "pages/described.json", {
+      $head: [{ attributes: { content: "about", name: "description" }, tagName: "meta" }],
+      $layout: "./layouts/blog.json",
+      children: [{ children: ["Hello"], tagName: "h1" }],
+      title: "Described",
+    });
+    writeAt(NESTED_TMP, "pages/untitled.json", {
+      $layout: "./layouts/blog.json",
+      children: [{ children: ["Hello"], tagName: "h1" }],
+    });
+    await buildSite(NESTED_TMP, { verbose: false });
+
+    writeAt(CYCLE_TMP, "project.json", project);
+    writeAt(CYCLE_TMP, "layouts/a.json", { $layout: "./layouts/b.json", tagName: "div" });
+    writeAt(CYCLE_TMP, "layouts/b.json", { $layout: "./layouts/a.json", tagName: "div" });
+    writeAt(CYCLE_TMP, "pages/index.json", { $layout: "./layouts/a.json", children: ["Hi"] });
+  });
+
+  afterAll(() => {
+    rmSync(NESTED_TMP, { force: true, recursive: true });
+    rmSync(CYCLE_TMP, { force: true, recursive: true });
+  });
+
+  it("every layout's head reaches the page, outermost first", () => {
+    const html = readFileSync(resolve(NESTED_TMP, "dist/described/index.html"), "utf8");
+    const base = html.indexOf('name="base"');
+    const stylesheet = html.indexOf('href="/blog.css"');
+    const description = html.indexOf('name="description"');
+    expect(base).toBeGreaterThan(-1);
+    expect(stylesheet).toBeGreaterThan(base);
+    expect(description).toBeGreaterThan(stylesheet);
+  });
+
+  it("no layout's title becomes the page title", () => {
+    const untitled = readFileSync(resolve(NESTED_TMP, "dist/untitled/index.html"), "utf8");
+    expect(untitled).toContain("<title>Nested</title>");
+    expect(untitled).not.toContain("Blog T");
+    const described = readFileSync(resolve(NESTED_TMP, "dist/described/index.html"), "utf8");
+    expect(described).toContain("<title>Described</title>");
+  });
+
+  it("a layout cycle fails that page's build and names the chain", async () => {
+    const spy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const result = await buildSite(CYCLE_TMP, { verbose: false });
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain(
+        "Layout cycle: ./layouts/a.json → ./layouts/b.json → ./layouts/a.json",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 // ── Server worker generation ─────────────────────────────────────────────────
 
 /** What the emitted worker module exports: a Workers-style fetch handler taking request and env. */

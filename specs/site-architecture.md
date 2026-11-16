@@ -516,7 +516,7 @@ Children without a `slot` attribute go into the default (unnamed) slot. Fallback
 
 ### 5.4 Layout Nesting
 
-> **Status: Partial.** A layout's own `$layout` resolves recursively and the slots compose (`resolveLayout` in `packages/site/src/layout.ts`). An intermediate layout's `$head` does not survive as layout head: the inner resolution records it as the page's (`_pageHead`), so it is dropped when the page declares its own `$head` and is otherwise merged at page level, and only the outermost layout's `$head` is merged as the layout level (`compilePage` in `packages/compiler/src/site/site-build.ts`, `composePage` in `packages/site/src/compose.ts`).
+> **Status: Implemented.** `layoutLevels` and `resolveLayout` (`packages/site/src/layout.ts`) resolve the chain for the build (`compilePage` in `packages/compiler/src/site/site-build.ts`) and the live preview (`composePage` in `packages/site/src/compose.ts`), and Studio's merged-head preview reads the same levels (`packages/studio/src/panels/head-panel.ts`).
 
 Layouts can reference other layouts, enabling composition:
 
@@ -543,6 +543,14 @@ Layouts can reference other layouts, enabling composition:
 ```
 
 This allows `blog-post.json` layout to wrap within `base.json`, providing blog-specific chrome while inheriting the site shell.
+
+Every layout in the chain is resolved as a layout, whatever its depth. Its children fill the slots of the layout it names, and its `state`, `$media`, `style` and `attributes` extend that layout's, key by key, the way a page's extend its layout's.
+
+Its `$head` joins the **layout level** of the head merge (§8.3). The layout level is every layout's `$head`, outermost first, so `blog-post.json` adds its stylesheet to what `base.json` declares, and an inner layout's entry replaces an outer one's under the same key. The page's own `$head` is the page level, which follows.
+
+A layout's `title` is not a page title, at any depth: the page's `<title>` is its own `title`, else the project `name` (§8.4).
+
+A layout that reaches itself through `$layout`, directly or through another layout, is an error naming the chain: `Layout cycle: ./layouts/a.json → ./layouts/b.json → ./layouts/a.json`. The build reports it for each page that uses the layout, and the live preview renders it as that page's problem.
 
 ### 5.5 Layout Props
 
@@ -1071,7 +1079,7 @@ For content-driven pages, metadata comes directly from the content entry's front
 The compiler assembles `<head>` content from three sources, in order:
 
 1. **Site-level** (`project.json` `$head`) — global meta tags, fonts, icons
-2. **Layout-level** (the layout document's `$head`, §5.1) — shared stylesheets, scripts and other structural tags
+2. **Layout-level** (the layout document's `$head`, and when layouts nest every layout's, outermost first, §5.1 and §5.4) — shared stylesheets, scripts and other structural tags
 3. **Page-level** (the page's `$head`) — the page's description, Open Graph tags and canonical link
 
 Before them come the two entries the build injects itself, `<meta charset>` and the viewport (§8.4), and a later entry replaces an earlier one under the same key. The title is not merged from these layers: `<title>` is written from the page's `title` property after them (§8.4), so a `<title>` entry in any level's `$head` is discarded. Studio's Search appearance modal reports one (§8.6).

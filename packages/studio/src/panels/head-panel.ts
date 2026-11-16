@@ -30,6 +30,7 @@
 import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { isString } from "@jxsuite/schema/guards";
 import { withPageDescription } from "@jxsuite/site/head-merger";
+import { layoutLevels } from "@jxsuite/site/layout";
 import { projectState, renderOnly, updateSession } from "../store";
 import type { DirEntry, JsonValue } from "../types";
 import { activeTab } from "../workspace/workspace";
@@ -62,7 +63,12 @@ import {
   unmountEntryInspector,
 } from "../content/entry-inspector";
 
-import type { ContentTypeSchemaField, JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
+import type {
+  ContentTypeSchemaField,
+  JxDocument,
+  JxHeadEntry,
+  JxMutableNode,
+} from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type * as MediaPickerModule from "../ui/media-picker";
 import type {
@@ -418,12 +424,20 @@ export interface ResolvedHeadField {
   donor: string | null;
 }
 
-/** The three `$head` arrays the build merges, plus the name of the layout supplying the middle one. */
+/** One layout of the chain: its `$head` entries, and the name to print for the layout. */
+export interface HeadLayoutLevel {
+  name: string | null;
+  entries: JxHeadEntry[];
+}
+
+/**
+ * The `$head` arrays the build merges: the site's, then one per layout in the chain (outermost
+ * first, each naming itself), then the page's.
+ */
 export interface HeadLayers {
   site: JxHeadEntry[];
-  layout: JxHeadEntry[];
+  layouts: HeadLayoutLevel[];
   page: JxHeadEntry[];
-  layoutName: string | null;
 }
 
 /** The title the build emits when neither the page nor the site names one (`head-merger.ts`). */
@@ -452,7 +466,7 @@ function metaContentIn(
 }
 
 /**
- * Resolve one meta key through site → layout → page.
+ * Resolve one meta key through site → each layout, outermost first → page.
  *
  * A page entry whose `content` is empty still counts as the page speaking: the merged map is keyed
  * by `meta:<key>`, so an empty page entry SHADOWS the site's. The preview reports the empty result,
@@ -472,9 +486,13 @@ export function resolveMetaField(
   if (page !== null) {
     return { donor: null, source: "page", value: page };
   }
-  const layout = metaContentIn(layers.layout, attr, key);
-  if (layout !== null) {
-    return { donor: layers.layoutName ?? "the layout", source: "layout", value: layout };
+  /* Innermost first, which is the merger's order read backwards: the inner layout's entry is
+     folded in last, so it is the one that replaces an outer layout's under the same key. */
+  for (const level of layers.layouts.toReversed()) {
+    const layout = metaContentIn(level.entries, attr, key);
+    if (layout !== null) {
+      return { donor: level.name ?? "the layout", source: "layout", value: layout };
+    }
   }
   const site = metaContentIn(layers.site, attr, key);
   if (site !== null) {
@@ -486,11 +504,11 @@ export function resolveMetaField(
 /**
  * Resolve `<title>`: the page's `title` property, then the site's `name`, then `"Jx Site"`.
  *
- * A layout never supplies one. `site/site-build.ts` reads `pageDoc.title ?? layoutDoc._pageTitle`,
- * and `_pageTitle` is a carrier for the PAGE's title through layout distribution, not a layout
- * value of its own. A `<title>` entry inside any `$head` does not supply one either — the merger
- * overwrites the `title` key from its context after the layers are folded in, which is what
- * {@link seoWarnings}' `head-title-ignored` exists to say out loud.
+ * A layout never supplies one, at any depth: `compilePage` reads the page's own `title`, and
+ * `_pageTitle` is a carrier for the PAGE's title through layout distribution, not a layout value of
+ * its own (site-architecture.md §5.4). A `<title>` entry inside any `$head` does not supply one
+ * either — the merger overwrites the `title` key from its context after the layers are folded in,
+ * which is what {@link seoWarnings}' `head-title-ignored` exists to say out loud.
  *
  * @param {string} pageTitle
  * @param {string} [siteName]
@@ -658,7 +676,7 @@ export function seoField(preview: SeoPreview, key: string): SeoField {
 
 /** Whether any layer declares a `<title>` element, which the merger discards. */
 function hasTitleEntry(layers: HeadLayers): boolean {
-  return [...layers.site, ...layers.layout, ...layers.page].some(
+  return [...layers.site, ...layers.layouts.flatMap((l) => l.entries), ...layers.page].some(
     (e: HeadSlot) => e?.tagName === "title",
   );
 }
@@ -802,14 +820,40 @@ export function buildSeoPreview(layers: HeadLayers, ctx: SeoPreviewContext): Seo
  */
 
 let _layoutHeadPath: string | null = null;
-let _layoutHead: JxHeadEntry[] = [];
+let _layoutLevels: HeadLayoutLevel[] = [];
 let _layoutHeadPending: string | null = null;
 
 /** Drop the cached layout head, so the next preview re-reads the file. */
 export function invalidateLayoutHeadCache(): void {
   _layoutHeadPath = null;
-  _layoutHead = [];
+  _layoutLevels = [];
   _layoutHeadPending = null;
+}
+
+/**
+ * Every layout `path` is wrapped in, outermost first, each named for what it is (§5.4). The chain
+ * is the build's own walk (`layoutLevels`), so a layout nested under another contributes its head
+ * under its own name. A layout that cannot be read, or a cycle, leaves the layer empty, as an
+ * unreadable layout always has.
+ */
+async function readLayoutLevels(path: string): Promise<HeadLayoutLevel[]> {
+  try {
+    const levels = await layoutLevels(path, async (ref) => {
+      const doc = await resolveLayoutDoc(ref);
+      if (doc === null) {
+        throw new Error(`Layout not found: ${ref}`);
+      }
+      /* SAFETY: a layout file is a Jx document (the same file `resolveLayoutDoc` parses with the
+         document parser), and the walk reads its `$layout` and this module its `$head`. */
+      return doc as JxDocument;
+    });
+    return levels.map((level) => ({
+      entries: level.doc.$head ?? [],
+      name: layoutDisplayName(level.ref),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 async function loadLayoutHead(path: string): Promise<void> {
@@ -817,14 +861,14 @@ async function loadLayoutHead(path: string): Promise<void> {
     return;
   }
   _layoutHeadPending = path;
-  const doc = await resolveLayoutDoc(path);
+  const levels = await readLayoutLevels(path);
   if (_layoutHeadPending !== path) {
     // A different layout was asked for while this one was in flight; that request owns the cache.
     return;
   }
   _layoutHeadPending = null;
   _layoutHeadPath = path;
-  _layoutHead = doc?.$head ?? [];
+  _layoutLevels = levels;
   // Search appearance shows the merged head, and the layout layer arrives asynchronously. A modal
   // Left off this list renders the page's own head with the layout layer missing — which reads as
   // "you have no description" on a page that inherits one.
@@ -848,14 +892,14 @@ export function layoutDisplayName(path: string): string {
   );
 }
 
-/** A layout's `$head` entries, and the name to print for the layout. */
+/** The `$head` of every layout in the chain, outermost first, and the page's own layout's name. */
 export interface LayoutHead {
-  entries: JxHeadEntry[];
+  levels: HeadLayoutLevel[];
   name: string | null;
 }
 
 /**
- * The effective layout's `$head`, and the name to print for it.
+ * The effective layout's `$head` chain, and the name to print for the page's own layout.
  *
  * Returns empty on the first call for a layout and schedules the read; the card repaints when it
  * lands. Showing nothing briefly is the honest state — the alternative is attributing the layout's
@@ -868,14 +912,14 @@ export interface LayoutHead {
 export function layoutHeadEntries(tab: Tab | null, docLayout?: string | false): LayoutHead {
   const path = isPageDocument(tab) ? getEffectiveLayoutPath(docLayout) : null;
   if (path === null) {
-    return { entries: [], name: null };
+    return { levels: [], name: null };
   }
   const name = layoutDisplayName(path);
   if (path === _layoutHeadPath) {
-    return { entries: _layoutHead, name };
+    return { levels: _layoutLevels, name };
   }
   void loadLayoutHead(path);
-  return { entries: [], name };
+  return { levels: [], name };
 }
 
 /**
@@ -903,8 +947,7 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
   }
   return buildSeoPreview(
     {
-      layout: layout.entries,
-      layoutName: layout.name,
+      layouts: layout.levels,
       // The page level as the build merges it: its `description` property leads its own head.
       page: withPageDescription(doc.$head ?? [], doc.description),
       site: config?.$head ?? [],
