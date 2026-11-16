@@ -6,9 +6,9 @@
  * `compile-client.ts` (compiler.md §8.1, §9.1).
  */
 
+import { joinChildren } from "../child-separator.ts";
 import {
   buildAttrs,
-  childSeparator,
   contentPropertyText,
   colorSchemePrePaintScript,
   compileStyles,
@@ -160,9 +160,10 @@ function buildStaticInner(def: JxMutableNode, tag: string, context: CompileConte
     return content;
   }
   if (Array.isArray(def.children)) {
-    return def.children
-      .map((child) => compileNode(child, context))
-      .join(childSeparator(context.preformatted));
+    return joinChildren(
+      def.children.map((child) => compileNode(child, context)),
+      { preformatted: context.preformatted },
+    );
   }
   return "";
 }

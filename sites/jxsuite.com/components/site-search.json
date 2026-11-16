@@ -509,7 +509,7 @@
                   "tagName": "span",
                   "children": [
                     { "tagName": "kbd", "attributes": { "class": "foot-key" }, "textContent": "↵" },
-                    "select"
+                    " select"
                   ]
                 },
                 {
@@ -520,7 +520,7 @@
                       "attributes": { "class": "foot-key" },
                       "textContent": "↑↓"
                     },
-                    "navigate"
+                    " navigate"
                   ]
                 },
                 {
@@ -532,7 +532,7 @@
                       "attributes": { "class": "foot-key" },
                       "textContent": "esc"
                     },
-                    "close"
+                    " close"
                   ]
                 }
               ]

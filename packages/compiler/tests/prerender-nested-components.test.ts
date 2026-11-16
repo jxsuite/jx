@@ -289,7 +289,7 @@ describe("preRenderComponentHtml — a nested instance's host style", () => {
   test("resolves the definition's template entries against the instance, inline", () => {
     const html = preRenderComponentHtml(lcbButton, { icon: "phone" }, null, registry(lcbIcon));
     expect(html).toBe(
-      '<a href="/quote">Go\n' +
+      '<a href="/quote">Go' +
         '<lcb-icon style="margin-left: 4px; height: 24px; mask-image: var(--icon-phone)" ' +
         "data-jx-static></lcb-icon></a>",
     );
@@ -360,7 +360,7 @@ describe("preRenderComponentHtml — two levels, a live child, a shadow child", 
     );
     expect(html).toBe(
       "<h3>Outer</h3>\n" +
-        '<lcb-button data-jx-static><a href="/quote">Free Quote\n' +
+        '<lcb-button data-jx-static><a href="/quote">Free Quote' +
         '<lcb-icon style="margin-left: 4px; height: 24px; mask-image: var(--icon-phone)" ' +
         "data-jx-static></lcb-icon></a></lcb-button>",
     );
@@ -633,7 +633,7 @@ describe("renderStaticNode — a registered tag", () => {
     };
     const node: JxElement = { $props: { to: "/pricing" }, tagName: "link-card" };
     expect(renderStaticNode(node, null, null, registry(linkCard))).toBe(
-      '<link-card data-jx-static><a href="/pricing">Go</a>\n<textarea>Go</textarea></link-card>',
+      '<link-card data-jx-static><a href="/pricing">Go</a><textarea>Go</textarea></link-card>',
     );
   });
 

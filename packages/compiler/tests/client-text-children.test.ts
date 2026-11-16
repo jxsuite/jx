@@ -3,8 +3,7 @@
  *
  * The emitter's own assertions are on bytes; this file runs the emitted module in a DOM, because
  * the binding is a contract between two comment nodes and a `Text` node the module has to find, and
- * only a parsed document shows whether the separator after the markers stays out of the bound
- * node.
+ * only a parsed document shows whether the node after the markers stays out of the bound node.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -87,17 +86,17 @@ afterAll(() => {
 describe("a bound text child in a hydrated page (compiler.md §2.2)", () => {
   test("a runtime-only text child is filled at hydration and follows state", () => {
     expect(live.textContent).toContain("Hello World");
-    // The separator the emitter writes between siblings is its own text node, outside the markers.
-    const separator = button.previousSibling;
-    expect(separator?.nodeType).toBe(3);
-    expect(separator?.textContent.trim()).toBe("");
+    // No separator is written between a text child and an inline sibling (compiler.md §8.1).
+    // The button follows the bound part's closing marker directly.
+    const marker = button.previousSibling;
+    expect(marker?.nodeType).toBe(8);
 
     button.dispatchEvent(new win.Event("click"));
 
     expect(live.textContent).toContain("Hello Ada");
     expect(live.textContent).not.toContain("World");
     expect(win.document.querySelector("#live button")).toBe(button);
-    expect(button.previousSibling).toBe(separator);
+    expect(button.previousSibling).toBe(marker);
   });
 
   test("a prerendered text node is reused, not duplicated", () => {

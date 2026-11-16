@@ -33,7 +33,6 @@ import {
   DEFAULT_LIT_HTML_SRC,
   DEFAULT_REACTIVITY_SRC,
   buildAttrs,
-  childSeparator,
   colorSchemePrePaintScript,
   compileExpression,
   compileStatements,
@@ -87,6 +86,7 @@ import {
   isTagExpression,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
+import { blockChildren, joinChildren } from "../child-separator.ts";
 import type { ClientClasses, CompileContext, MappedArrayFeatures, SrcImports } from "../shared.ts";
 import {
   canonicalMapRef,
@@ -714,9 +714,10 @@ function buildClientNode(
     counter.needsLit = true;
     const listKey = `_children${counter.l}`;
     counter.l += 1;
-    const childrenTpl = source.children
-      .map((c) => emitChildLit(c, nextContext.preformatted))
-      .join(childSeparator(nextContext.preformatted, "      "));
+    const childrenTpl = joinChildren(
+      source.children.map((c) => emitChildLit(c, nextContext.preformatted)),
+      { preformatted: nextContext.preformatted, separator: "\n      " },
+    );
     bindings.set(
       listKey,
       nextContext.preformatted
@@ -734,9 +735,10 @@ function buildClientNode(
           "Write it as the element's textContent.",
       );
     }
-    inner = source.children
-      .map((c) => buildClientNode(c, nextContext, bindings, handlers, counter))
-      .join(childSeparator(nextContext.preformatted));
+    inner = joinChildren(
+      source.children.map((c) => buildClientNode(c, nextContext, bindings, handlers, counter)),
+      { preformatted: nextContext.preformatted },
+    );
   }
 
   // Self-closing tags
@@ -963,14 +965,23 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
     inner = mapRefsToLit(String(def.innerHTML));
   } else if (isMappedArray(def.children)) {
     // Legacy whole-children repeater nested inside a map template.
-    inner = `\n      ${emitArrayHole(def.children)}${guard}\n    `;
+    inner = blockChildren([`${emitArrayHole(def.children)}${guard}`], {
+      close: "\n    ",
+      open: "\n      ",
+      separator: "\n      ",
+    });
   } else if (Array.isArray(def.children)) {
     const rendered = def.children.map((c) => {
       const text = emitChildLit(c, inPre);
       const isPart = isMappedArray(c) || (isString(c) && isTemplateString(c));
       return isPart ? `${text}${guard}` : text;
     });
-    inner = inPre ? rendered.join("") : `\n      ${rendered.join("\n      ")}\n    `;
+    inner = blockChildren(rendered, {
+      close: "\n    ",
+      open: "\n      ",
+      preformatted: inPre,
+      separator: "\n      ",
+    });
   }
 
   const voidTags = new Set(["input", "br", "hr", "img", "meta", "link"]);

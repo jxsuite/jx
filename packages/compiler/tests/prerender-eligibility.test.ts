@@ -318,9 +318,14 @@ describe("renderStaticNode — state with no build-time value", () => {
   });
 
   test("a preformatted subtree joins nested arrays with nothing too", () => {
-    const children = [["a", "b"], { tagName: "i", textContent: "c" }];
-    expect(renderStaticNode(children, {}, null, null, true)).toBe("ab<i>c</i>");
-    expect(renderStaticNode(children, {})).toBe("a\nb\n<i>c</i>");
+    const p = (text: string) => ({ tagName: "p", textContent: text });
+    const children = [[p("a"), p("b")], p("c")];
+    expect(renderStaticNode(children, {}, null, null, true)).toBe("<p>a</p><p>b</p><p>c</p>");
+    expect(renderStaticNode(children, {})).toBe("<p>a</p>\n<p>b</p>\n<p>c</p>");
+    // Text beside text, or beside an inline element, is never separated.
+    expect(renderStaticNode([["a", "b"], { tagName: "i", textContent: "c" }], {})).toBe(
+      "ab<i>c</i>",
+    );
   });
 });
 

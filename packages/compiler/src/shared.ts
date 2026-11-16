@@ -69,6 +69,7 @@ import {
   maskCode,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
+import { joinChildren } from "./child-separator.ts";
 import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
 import type { ShadowMode } from "./shadow.ts";
 import {
@@ -1874,18 +1875,6 @@ export function contentPropertyText(
 export const PREFORMATTED_TAGS = new Set(["pre", "textarea", "listing", "plaintext", "xmp"]);
 
 /**
- * The separator to place between an element's compiled children: none inside a preformatted
- * subtree, a newline plus `indent` elsewhere.
- *
- * @param {boolean | undefined} preformatted
- * @param {string} [indent]
- * @returns {string}
- */
-export function childSeparator(preformatted: boolean | undefined, indent = "  "): string {
-  return preformatted ? "" : `\n${indent}`;
-}
-
-/**
  * A {@link CompileContext} as a static emitter hands it to a node, before that node's own scope is
  * known: the scope in effect may still be none.
  */
@@ -1934,12 +1923,13 @@ export function buildInner(
   }
   if (Array.isArray(source.children)) {
     const rawChildren = raw?.children;
-    return source.children
-      .map((c, i) => {
+    return joinChildren(
+      source.children.map((c, i) => {
         const childRaw = (Array.isArray(rawChildren) ? rawChildren[i] : undefined) ?? c;
         return childCompiler(c, childRaw, context);
-      })
-      .join(childSeparator(context.preformatted));
+      }),
+      { preformatted: context.preformatted },
+    );
   }
   return "";
 }
@@ -3449,7 +3439,7 @@ export function createSlotFill(
     }
     const group = groups.get(name);
     if (group) {
-      group.html = group.html === "" ? html : `${group.html}\n${html}`;
+      group.html = joinChildren([group.html, html], { separator: "\n" });
       group.content ||= content;
     } else {
       groups.set(name, { content, html });
@@ -3713,11 +3703,12 @@ function renderInner(
     return renderMappedRows(node.children, scope, slots, context, preformatted);
   }
   if (Array.isArray(node.children)) {
-    return node.children
-      .map((c: JxElement | JxMutableNode | string) =>
+    return joinChildren(
+      node.children.map((c: JxElement | JxMutableNode | string) =>
         renderStaticNode(c, scope, slots, context, preformatted),
-      )
-      .join(preformatted ? "" : "\n");
+      ),
+      { preformatted, separator: "\n" },
+    );
   }
   return "";
 }
@@ -3763,15 +3754,16 @@ export function renderMappedRows(
   if (rows === null) {
     return "";
   }
-  return rows
-    .map((item, index) => {
+  return joinChildren(
+    rows.map((item, index) => {
       const rowScope = emptyScope(parent);
       rowScope.$map = { index, item };
       rowScope["$map/item"] = item;
       rowScope["$map/index"] = index;
       return renderStaticNode(template, rowScope, slots, context, preformatted);
-    })
-    .join(preformatted ? "" : "\n");
+    }),
+    { preformatted, separator: "\n" },
+  );
 }
 
 /**
@@ -3861,9 +3853,10 @@ export function renderStaticNode(
     return escapeHtml(String(node));
   }
   if (Array.isArray(node)) {
-    return node
-      .map((c): string => renderStaticNode(c, scope, slots, context, preformatted))
-      .join(preformatted ? "" : "\n");
+    return joinChildren(
+      node.map((c): string => renderStaticNode(c, scope, slots, context, preformatted)),
+      { preformatted, separator: "\n" },
+    );
   }
   if (!isNonNullObject(node)) {
     return "";
@@ -3918,7 +3911,7 @@ export function renderStaticNode(
       return out;
     }
     const fallback = renderInner(node, scope, slots, context, preformatted);
-    return out === "" ? fallback : fallback === "" ? out : `${out}\n${fallback}`;
+    return joinChildren([out, fallback], { preformatted, separator: "\n" });
   }
 
   // A registered component: expanded exactly as the page walk expands one, not emitted bare.
@@ -4031,7 +4024,10 @@ function renderComponentInstance(
   if (shadow) {
     // The light children stay siblings of the template, where a real `<slot>` distributes them.
     const light = Array.isArray(children)
-      ? children.map((c: StaticChild) => renderChild(c)).join("\n")
+      ? joinChildren(
+          children.map((c: StaticChild) => renderChild(c)),
+          { separator: "\n" },
+        )
       : "";
     innerHTML =
       `<template shadowrootmode="${shadow}">` +

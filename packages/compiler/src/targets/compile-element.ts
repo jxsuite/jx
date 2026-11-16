@@ -5,6 +5,7 @@
  * state and lit-html for rendering.
  */
 
+import { joinChildren, padChildren } from "../child-separator.ts";
 import { erasedDocument } from "../erased.ts";
 import { qualifyScripts } from "@jxsuite/schema/document-scripts";
 import {
@@ -1268,8 +1269,8 @@ function emitLitChildren(
      an instance's children, a child that emits a lit child part — a binding, a repeater, a chosen
      tag — is followed by a guard: distribution moves its neighbours, and a part that ended at one
      would clear its new parent on the next update (`LIT_PART_GUARD`). */
-  return children
-    .map((child) => {
+  return joinChildren(
+    children.map((child) => {
       if (isMappedArray(child)) {
         return `${emitMappedArray(child, indent)}${guard}`;
       }
@@ -1278,8 +1279,9 @@ function emitLitChildren(
         (isString(child) && child.includes("${")) ||
         (isNonNullObject(child) && isTagExpression(child.tagName));
       return isPart ? `${text}${guard}` : text;
-    })
-    .join(preformatted ? "" : "\n");
+    }),
+    { lead: indent, preformatted, separator: "\n" },
+  );
 }
 
 /**
@@ -1573,7 +1575,10 @@ function emitNodeInner(
   if (def.children) {
     return inPre
       ? emitLitChildren(def.children, def.style, "", true, inMap, scope, guardParts)
-      : `\n${emitLitChildren(def.children, def.style, `${indent}  `, false, inMap, scope, guardParts)}\n${indent}`;
+      : padChildren(
+          emitLitChildren(def.children, def.style, `${indent}  `, false, inMap, scope, guardParts),
+          { close: `\n${indent}`, lead: `${indent}  `, open: "\n" },
+        );
   }
   return "";
 }
@@ -1705,7 +1710,10 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
   if (mapDef.textContent !== undefined) {
     inner = toLitTextContent(mapDef.textContent);
   } else if (mapDef.children) {
-    inner = `\n${emitLitChildren(mapDef.children, null, `${indent}      `, false, true, mapScope)}\n${indent}    `;
+    inner = padChildren(
+      emitLitChildren(mapDef.children, null, `${indent}      `, false, true, mapScope),
+      { close: `\n${indent}    `, lead: `${indent}      `, open: "\n" },
+    );
   }
 
   const body = `html\`\n${indent}  <${tag}${attrsStr}\n${indent}  >${inner}</${tag}>\n${indent}\``;
