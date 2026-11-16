@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"rename the project\")",
     "toMessagesArray()",
-    "setTokenCount(5647)",
+    "setTokenCount(5655)",
     "setContextWarning(false)",
-    "setTokenCount(5647)",
+    "setTokenCount(5655)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendToolCallStart(\"c1\", \"write_file\")",
@@ -31,7 +31,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "c4ee01bf71c6",
+        "hash": "95ea702528d6",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -75,7 +75,7 @@
           "## Project Files",
           "## Asking the user"
         ],
-        "length": 22550
+        "length": 22583
       },
       "tools": [
         "ask_user",
@@ -191,7 +191,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5647,
+    "tokenCount": 5655,
     "usage": null
   },
   "finalDocument": {

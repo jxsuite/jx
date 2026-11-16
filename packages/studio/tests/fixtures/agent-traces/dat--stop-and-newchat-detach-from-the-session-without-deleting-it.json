@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"hi\")",
     "toMessagesArray()",
-    "setTokenCount(5529)",
+    "setTokenCount(5537)",
     "setContextWarning(false)",
-    "setTokenCount(5529)",
+    "setTokenCount(5537)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendDelta(\"x\")",
@@ -27,7 +27,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "2a3ea6b220f6",
+        "hash": "da6c4589b530",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -69,7 +69,7 @@
           "## Current Document",
           "## Asking the user"
         ],
-        "length": 22094
+        "length": 22127
       },
       "tools": [
         "ask_user",
@@ -98,7 +98,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5529,
+    "tokenCount": 5537,
     "usage": null
   },
   "finalDocument": {

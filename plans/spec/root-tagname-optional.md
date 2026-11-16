@@ -31,7 +31,7 @@ The table (line 128) reads ``| `tagName` | Required | HTML tag name for the root
 
 **What is wrong.** The table says Required, and four authored texts repeat it: `docs/framework/concepts/documents.md` (lines 38, 41, 94), `docs/framework.md` (line 61) and `docs/framework/agents/authoring-rules.md` (line 92). `authoring-rules.md` (lines 256 to 269) and `.claude/commands/jx.md` (lines 205 to 219) show a page example with `"$layout"` and `"tagName": "main"`, and say "`tagName` is optional on a page that uses a layout". The build discards that `main`, so the example teaches a landmark that never renders.
 
-**Outside this claim.** A page's `title` that renders as a tooltip on a root element nobody wraps is site-architecture.md §8.1, owned by `plan:site-architecture/head-and-layout-shape-root-title`. schema.md §3.1's "`tagName` is optional (pages with `$layout` may omit it)" bullet is `plan:schema/generator-inventory`'s section, and that plan already appends "the schema requires it only on an element (`ElementDef`)".
+**Outside this claim.** A page's `title` that renders as a tooltip on a root element nobody wraps is site-architecture.md §8.1, which landed with the fix. schema.md §3.1's "`tagName` is optional (pages with `$layout` may omit it)" bullet is `plan:schema/generator-inventory`'s section, and that plan already appends "the schema requires it only on an element (`ElementDef`)".
 
 ## Outcome
 
@@ -72,7 +72,7 @@ One small pull request: the spec and docs edits, two test cases, the fragment, a
 - A hyphenated root `tagName` is what makes a document a custom-element definition (§16.1).
 - A page a layout wraps renders inside the layout's root element and its own root `tagName` is not used.
 
-`plan:site-architecture/head-and-layout-shape-root-title` and site-architecture.md §5.4 may cite §3.1 for "the layout's root is the page's root". If a later plan gives a wrapped page's `tagName` a meaning, it must rewrite §3.1's paragraph and delete this plan's layout test.
+site-architecture.md §5.4 and §8.1 may cite §3.1 for "the layout's root is the page's root". If a later plan gives a wrapped page's `tagName` a meaning, it must rewrite §3.1's paragraph and delete this plan's layout test.
 
 ## Tests
 

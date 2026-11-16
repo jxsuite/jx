@@ -420,6 +420,71 @@ describe("resolveCanvasDocument", () => {
     expect(result.renderDoc.state?.own).toBe(1);
   });
 
+  describe("a page's title is not its root element's tooltip (site-architecture.md §8.1)", () => {
+    const TITLED_LAYOUT = { ...LAYOUT, title: "Layout T" };
+    const WRAPPED = {
+      $layout: "./layouts/base.json",
+      children: [{ tagName: "p", textContent: "Page content" }],
+      tagName: "div",
+      title: "Home",
+    };
+
+    test("a page's title never reaches the render root, and the tab's document keeps it", async () => {
+      for (const canvasMode of ["design", "edit"]) {
+        resetStudioState({ isSiteProject: true, projectConfig: {} });
+        const tab = resetWorkspaceWithTab(
+          { children: ["Hi"], tagName: "main", title: "Hello" },
+          { documentPath: "pages/home.json" },
+        );
+        tab.session.ui.canvasMode = canvasMode;
+        const result = await resolveCanvasDocument(tab.doc.document, tab);
+        expect(result.renderDoc.title).toBeUndefined();
+        expect(result.renderDoc.state?.$page).toMatchObject({ title: "Hello" });
+        expect(tab.doc.document.title).toBe("Hello");
+      }
+    });
+
+    test("with the layout shown or hidden, the root carries no title", async () => {
+      resetStudioState({ isSiteProject: true, projectConfig: {} });
+      installMockPlatform({}, { "layouts/base.json": JSON.stringify(TITLED_LAYOUT) });
+      const tab = resetWorkspaceWithTab(WRAPPED, { documentPath: "pages/home.json" });
+      const shown = await resolveCanvasDocument(tab.doc.document, tab);
+      expect(shown.mapperCtx.layoutWrapped).toBe(true);
+      expect(shown.renderDoc.title).toBeUndefined();
+      tab.session.ui.showLayout = false;
+      const hidden = await resolveCanvasDocument(tab.doc.document, tab);
+      expect(hidden.mapperCtx.layoutWrapped).toBe(false);
+      expect(hidden.renderDoc.title).toBeUndefined();
+    });
+
+    test("a layout opened on its own renders without its title", async () => {
+      resetStudioState({ isSiteProject: true, projectConfig: {} });
+      const result = await resolve(TITLED_LAYOUT, { documentPath: "layouts/base.json" });
+      expect(result.renderDoc.title).toBeUndefined();
+    });
+
+    test("a component's title stays its tooltip", async () => {
+      resetStudioState({ isSiteProject: true, projectConfig: {} });
+      const result = await resolve(
+        { children: ["Card"], tagName: "x-card", title: "A card" },
+        { documentPath: "components/x-card.json" },
+      );
+      expect(result.renderDoc.title).toBe("A card");
+    });
+
+    test("chosen route parameters still give the page context its title", async () => {
+      resetStudioState({ isSiteProject: true, projectConfig: {} });
+      const tab = resetWorkspaceWithTab(
+        { children: [], tagName: "div", title: "Hello" },
+        { documentPath: "pages/products/[sku].json" },
+      );
+      tab.session.ui.previewParams = { sku: "mini-trencher" };
+      const result = await resolveCanvasDocument(tab.doc.document, tab);
+      expect(result.renderDoc.state?.$page).toMatchObject({ title: "Hello" });
+      expect(result.renderDoc.title).toBeUndefined();
+    });
+  });
+
   test("Edit resolves the collection a repeater reads, and every mode an extension class", async () => {
     const asked: string[] = [];
     installMockPlatform({

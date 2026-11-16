@@ -94,7 +94,12 @@ import {
 import { layoutChain, resolveLayout } from "./layout-resolver.ts";
 import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
 import type { DedupedServerEntries, ServerEntryRecord } from "./server-entries.ts";
-import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-merger";
+import {
+  unrenderedHeadWarnings,
+  mergeHead,
+  renderHead,
+  withPageDescription,
+} from "@jxsuite/site/head-merger";
 import type { PagePagination } from "@jxsuite/site/pagination";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
@@ -1061,6 +1066,9 @@ export async function buildSite(
    * therefore on every page.
    */
   const warnedRelations = new Set<string>();
+  /* Head material the build does not render (a flat attribute key, a `<title>` entry) is as silent
+     as a mistyped `rel`, and lives in the same shared heads, so it is warned once per message too. */
+  const warnedUnrenderedHead = new Set<string>();
   for (const route of routes) {
     const mismatch = undeclaredLocalePrefix(route.urlPattern, i18n);
     if (mismatch && !warnedLocalePrefixes.has(mismatch.segment)) {
@@ -1106,6 +1114,13 @@ export async function buildSite(
               `relation nobody recognizes does nothing. Check the spelling, or use an absolute ` +
               `URI if it is an extension relation (RFC 8288 §2.1.2).`,
           );
+        }
+      }
+
+      for (const message of result.unrenderedHeadMaterial) {
+        if (!warnedUnrenderedHead.has(message)) {
+          warnedUnrenderedHead.add(message);
+          console.warn(message);
         }
       }
 
@@ -1840,6 +1855,11 @@ async function compilePage(
   // Inject $site and $page context
   const declaredStateKeys = new Set(Object.keys(layoutDoc.state ?? {}));
   injectContext(layoutDoc, projectConfig, route, projectRoot, locale.i18n, locale.translations);
+  /* The title is page metadata and never the root's `title` attribute, which would be a tooltip over
+     the whole page. `pageTitle` was read above and `injectContext` has just read `$page.title`; with
+     no layout this is `pageDoc` itself, and with one it is a clone of the outermost layout, whose own
+     `title` is no more the page's (site-architecture.md §8.1). */
+  delete layoutDoc.title;
   /* The project `state` entries this page did not declare, nor its layout: the ones the injection
      just copied in, which the page keeps only while something on it reads them (compiler.md §8.1). */
   const inheritedStateKeys = Object.keys(projectConfig.state ?? {}).filter(
@@ -2197,6 +2217,13 @@ async function compilePage(
      * say it once instead of four hundred times.
      */
     unregisteredRelations: unregisteredHeadRelations(mergedHead),
+    /* Over the authored arrays, not the resolved ones: the extension, manifest and service-worker
+       entries are generated, and a flat key the author wrote is what the warning is for. */
+    unrenderedHeadMaterial: unrenderedHeadWarnings([
+      ...(projectConfig.$head ?? []),
+      ...layoutHead,
+      ...pageHead,
+    ]),
     serverEntries,
   };
 }

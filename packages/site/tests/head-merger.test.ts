@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mergeHead, renderHead, withPageDescription } from "../src/head-merger.ts";
+import {
+  unrenderedHeadWarnings,
+  mergeHead,
+  renderHead,
+  withPageDescription,
+} from "../src/head-merger.ts";
 import type { AuthoredHeadEntry } from "../src/head-merger.ts";
 import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
 import { parseJxDocument } from "@jxsuite/schema/parse";
@@ -453,5 +458,59 @@ describe("mergeHead singletons and alternates", () => {
     const alternates = result.filter((entry) => entry.attributes?.rel === "alternate");
     expect(alternates).toHaveLength(1);
     expect(alternates[0]?.attributes?.title).toBe("Français");
+  });
+});
+
+describe("unrenderedHeadWarnings (§8.1)", () => {
+  test("names each top-level attribute-like key once, with its tag", () => {
+    const warnings = unrenderedHeadWarnings([
+      { content: "a", name: "description", tagName: "meta" },
+      { content: "b", name: "author", tagName: "meta" },
+    ]);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain('<meta> has a top-level "content"');
+    expect(warnings[1]).toContain('<meta> has a top-level "name"');
+  });
+
+  test("the same flat key on the same tag is one sentence", () => {
+    const warnings = unrenderedHeadWarnings([
+      { name: "a", tagName: "meta" },
+      { name: "b", tagName: "meta" },
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('<meta> has a top-level "name", which is not rendered');
+  });
+
+  test("a flat type on a JSON-LD script is named", () => {
+    const warnings = unrenderedHeadWarnings([
+      { tagName: "script", textContent: { "@type": "Article" }, type: "application/ld+json" },
+    ]);
+    expect(warnings).toEqual([expect.stringContaining('<script> has a top-level "type"')]);
+  });
+
+  test("a title entry is named as discarded, and its own keys are not", () => {
+    const warnings = unrenderedHeadWarnings([{ lang: "en", tagName: "title", textContent: "x" }]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("a <title> entry is discarded");
+    expect(warnings[0]).not.toContain("lang");
+  });
+
+  test("the rendered shape, annotations, strings and malformed entries say nothing", () => {
+    expect(
+      unrenderedHeadWarnings([
+        { attributes: { content: "x", name: "description" }, tagName: "meta" },
+        { tagName: "script", textContent: { "@type": "Article" } },
+        { $description: "an annotation", children: ["x"], tagName: "style" },
+        "<meta name=x>",
+        null,
+        42,
+      ]),
+    ).toEqual([]);
+  });
+
+  test("an entry with no tagName is named by the tag it lacks", () => {
+    expect(unrenderedHeadWarnings([{ name: "x" }])).toEqual([
+      expect.stringContaining("<undefined> has a top-level"),
+    ]);
   });
 });

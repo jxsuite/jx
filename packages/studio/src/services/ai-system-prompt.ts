@@ -652,8 +652,8 @@ A layout uses { "tagName": "slot" } as the insertion point for page content:
 Use standard anchor links: { "tagName": "a", "attributes": { "href": "/about" }, "textContent": "About" }
 
 ### Page metadata
-"$head" is an ARRAY of element definitions for <head> entries (title, meta, link tags):
-{ "$head": [{ "tagName": "title", "textContent": "About Us" }, { "tagName": "meta", "attributes": { "name": "description", "content": "Learn about our team" } }] }
+"$head" is an ARRAY of element definitions for <head> entries (meta, link, script tags). The page title is the top-level "title", never a $head entry:
+{ "title": "About Us", "$head": [{ "tagName": "meta", "attributes": { "name": "description", "content": "Learn about our team" } }] }
 
 ### Multi-page workflow
 When asked to build a site with multiple pages:

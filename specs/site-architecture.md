@@ -1013,44 +1013,47 @@ Every page compiles with proper SEO metadata. The system is declarative — no i
 
 ### 8.1 Page-Level `$head`
 
-> **Status: Partial.** Page-level `$head` ships (`mergeHead` in `packages/site/src/head-merger.ts`), but not in this example's shape: an entry's HTML attributes are read only from `attributes`, so the top-level `name`, `property`, `content`, `rel` and `href` below are dropped, and a `title` entry is discarded because the title comes from the document's `title` property. `docs/framework/site/seo.md` documents the shipped shape. On a page with no layout that property also stays on the root element, which ships as `<div title="Blog">`, a tooltip over the whole page: only `resolveLayout` (`packages/site/src/layout.ts`) moves a page's `title` off its root, and `title` is not in `RESERVED_KEYS` (`packages/runtime/src/runtime.ts`), so `buildAttrs` in `packages/compiler/src/shared.ts` and the runtime both write it as the element's `title`.
-
-Pages declare metadata via `$head`. The compiler resolves these into `<head>` elements:
+Pages declare their title as a top-level `title`, and the rest of their metadata via `$head`. The compiler resolves these into `<head>` elements:
 
 ```json
 {
+  "title": "My Blog Post — My Site",
   "$head": [
-    { "tagName": "title", "textContent": "My Blog Post — My Site" },
     {
       "tagName": "meta",
-      "name": "description",
-      "content": "A great blog post about things"
-    },
-    { "tagName": "meta", "property": "og:title", "content": "My Blog Post" },
-    {
-      "tagName": "meta",
-      "property": "og:description",
-      "content": "A great blog post about things"
+      "attributes": { "name": "description", "content": "A great blog post about things" }
     },
     {
       "tagName": "meta",
-      "property": "og:image",
-      "content": "https://example.com/blog/images/hero.jpg"
+      "attributes": { "property": "og:title", "content": "My Blog Post" }
     },
-    { "tagName": "meta", "property": "og:type", "content": "article" },
     {
       "tagName": "meta",
-      "name": "twitter:card",
-      "content": "summary_large_image"
+      "attributes": { "property": "og:description", "content": "A great blog post about things" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": {
+        "property": "og:image",
+        "content": "https://example.com/blog/images/hero.jpg"
+      }
+    },
+    { "tagName": "meta", "attributes": { "property": "og:type", "content": "article" } },
+    {
+      "tagName": "meta",
+      "attributes": { "name": "twitter:card", "content": "summary_large_image" }
     },
     {
       "tagName": "link",
-      "rel": "canonical",
-      "href": "https://example.com/blog/my-post"
+      "attributes": { "rel": "canonical", "href": "https://example.com/blog/my-post" }
     }
   ]
 }
 ```
+
+**An entry is an element with attributes.** Each `$head` entry is `{ tagName, attributes, textContent?, children? }`, and its HTML attributes go under `attributes`, as on any element (`spec.md` §8.3). A head entry's keys never become DOM properties: the build writes the entry as markup, and the interpreting runtime sets only the keys of `attributes` on the element it creates. So a key at the top level of an entry is not an attribute and is not rendered: `{ "tagName": "meta", "name": "description" }` ships as a bare `<meta>`. The build warns about such a key, once per tag and key across the build.
+
+**The title is a property, not an entry.** A page's title is its top-level `title`, from which the build writes `<title>` (§8.4). It is page metadata and never the root element's `title` attribute, whether the root is the page's own (`$layout: false`, or no default layout) or its layout's. A tooltip over the root is written `"attributes": { "title": … }`. A `<title>` entry in `$head` is discarded (§8.3), and the build warns about it.
 
 ### 8.2 Templated Metadata
 
@@ -1082,7 +1085,7 @@ The compiler assembles `<head>` content from three sources, in order:
 2. **Layout-level** (the layout document's `$head`, and when layouts nest every layout's, outermost first, §5.1 and §5.4) — shared stylesheets, scripts and other structural tags
 3. **Page-level** (the page's `$head`) — the page's description, Open Graph tags and canonical link
 
-Before them come the two entries the build injects itself, `<meta charset>` and the viewport (§8.4), and a later entry replaces an earlier one under the same key. The title is not merged from these layers: `<title>` is written from the page's `title` property after them (§8.4), so a `<title>` entry in any level's `$head` is discarded. Studio's Search appearance modal reports one (§8.6).
+Before them come the two entries the build injects itself, `<meta charset>` and the viewport (§8.4), and a later entry replaces an earlier one under the same key. The title is not merged from these layers: `<title>` is written from the page's `title` property after them (§8.4), so a `<title>` entry in any level's `$head` is discarded. The build warns about one, and Studio's Search appearance modal reports it (§8.6).
 
 Deduplication is by `tagName` plus the attribute, read from the entry's `attributes`, that identifies the element: `name` for a `<meta name>`, `property` for a `<meta property>`, and for a `<link>`, `rel` **plus `href` plus whichever of `hreflang`, `type`, `media` or `sizes` is present**. That last part is not pedantry — `rel` and `href` alone are not identity, and the cases where they collide are ones a real site needs: `hreflang="x-default"` conventionally points at the same href as the default locale's alternate, and an RSS and an Atom feed are both `rel="alternate"` differing only in `type`.
 
