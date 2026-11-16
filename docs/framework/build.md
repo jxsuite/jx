@@ -44,6 +44,8 @@ Running `jx build` (see [CLI commands](/docs/framework/build/cli)) orchestrates 
 5. **Compile each route**: resolve its layout, merge `$head` from site + layout + page, inject the read-only `$site`/`$page` context, resolve build-time data, transform images for responsive output, then hand the assembled document to the compiler.
 6. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `custom-elements.json` (when at least one component compiled), `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in the project file), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
 
+A generated file with no date of its own to report, such as the `<updated>` of a feed with no entries, is stamped with the build time. Set `SOURCE_DATE_EPOCH` (seconds since the Unix epoch) and that time is the one you give, so rebuilding a commit writes the same bytes; leave it unset and it is the clock. A value that is not a non-negative integer fails the build.
+
 The build finishes with a summary (`Done: 12 routes → 34 files`) and exits non-zero if any route or component failed.
 
 ## Static detection

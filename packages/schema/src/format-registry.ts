@@ -339,6 +339,12 @@ export interface EmitRoute {
 
 /** Host context passed to a section owner's `emit` (specs/extensions.md §8.4). */
 export interface EmitHostContext extends SectionContext {
+  /**
+   * The build's timestamp, RFC 3339 in UTC at second precision: `SOURCE_DATE_EPOCH` when it is set,
+   * the clock otherwise, and the same value for every emitter in one build. For a derived file with
+   * no date of its own to report; a date the content has is never replaced by it.
+   */
+  buildTime: string;
   /** Every loaded project section, by section key. */
   sections: Readonly<Record<string, ProjectSectionData>>;
   /** The expanded route table. */

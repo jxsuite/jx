@@ -138,7 +138,7 @@ export const Feed = {
   /** Serialize every configured feed, plus its RFC 5005 archives when enabled. */
   emit(
     sectionValue: JsonValue | undefined,
-    ctx: Partial<Pick<EmitHostContext, "projectConfig" | "sections">>,
+    ctx: Partial<Pick<EmitHostContext, "buildTime" | "projectConfig" | "sections">>,
   ): { path: string; content: string }[] {
     const siteUrl = siteUrlOf(ctx.projectConfig);
     if (siteUrl === null) {
@@ -164,7 +164,7 @@ export const Feed = {
       }
       const { i18n, locales } = feedLocales(ctx.projectConfig, feed.collection);
       if (locales.length === 0) {
-        files.push(...renderFeed(feed, entries, siteUrl, trailingSlash));
+        files.push(...renderFeed(feed, entries, siteUrl, trailingSlash, ctx.buildTime));
         continue;
       }
       /*
@@ -175,7 +175,15 @@ export const Feed = {
       for (const locale of locales) {
         const own = entries.filter((e) => canonicalizeLocale(e._meta?.locale) === locale);
         if (own.length > 0) {
-          files.push(...renderFeed(localeVariant(feed, locale, i18n), own, siteUrl, trailingSlash));
+          files.push(
+            ...renderFeed(
+              localeVariant(feed, locale, i18n),
+              own,
+              siteUrl,
+              trailingSlash,
+              ctx.buildTime,
+            ),
+          );
         }
       }
     }
@@ -188,6 +196,7 @@ function renderFeed(
   entries: readonly ContentLoaderEntry[],
   siteUrl: string,
   trailingSlash: string,
+  buildTime: string | undefined,
 ): { path: string; content: string }[] {
   const items = sortItems(entries.map((e) => entryToItem(e, feed, siteUrl, trailingSlash)));
   const files: { path: string; content: string }[] = [];
@@ -211,7 +220,12 @@ function renderFeed(
         items: current,
         selfUrl: url(siteUrl, feed.output),
         siteUrl,
-        updated: feedUpdated(items),
+        /*
+         * The newest item, and only a feed with no dated item at all reports the build instead: it
+         * has no newer fact to give, and the Unix epoch it used to fall back to reads as 1970 in a
+         * reader. A feed with a dated item keeps that date, so a redeploy still re-notifies no one.
+         */
+        updated: feedUpdated(items) ?? buildTime ?? null,
       };
       if (archives.length > 0) {
         subscription.prevArchiveUrl = url(siteUrl, feed.output, archives.length - 1);

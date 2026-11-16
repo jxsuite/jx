@@ -103,3 +103,93 @@ describe("feeds through a real build", () => {
     expect(read("dist/feed.xml")).toContain("<id>https://feeds.example/blog/second/</id>");
   });
 });
+
+/*
+ * An empty collection has no newest item to report. The feed used to fall back to the Unix epoch,
+ * which a reader shows as 1970; it now reports the build time, and `SOURCE_DATE_EPOCH` pins that
+ * time so a reproducible build stays byte-identical.
+ */
+describe("an empty feed through a real build", () => {
+  const roots: string[] = [];
+  afterAll(() => {
+    for (const r of roots) {
+      rmSync(r, { force: true, recursive: true });
+    }
+  });
+
+  async function buildEmpty(env: string | null) {
+    const dir = mkdtempSync(join(tmpdir(), "jx-feed-empty-"));
+    roots.push(dir);
+    installWorkspaceExtension(dir, "@jxsuite/parser", "@jxsuite/feed");
+    mkdirSync(join(dir, "pages"), { recursive: true });
+    mkdirSync(join(dir, "content/posts"), { recursive: true });
+    writeFileSync(
+      join(dir, "project.json"),
+      JSON.stringify({
+        build: { outDir: "./dist" },
+        content: {
+          posts: {
+            format: "Markdown",
+            schema: { properties: { title: { type: "string" } }, type: "object" },
+            source: "./content/posts",
+          },
+        },
+        extensions: ["@jxsuite/parser", "@jxsuite/feed"],
+        feed: { blog: { basePath: "/blog/", collection: "posts", title: "Empty Blog" } },
+        imports: { Markdown: "@jxsuite/parser/Markdown.class.json" },
+        name: "Empty Feed Site",
+        url: "https://feeds.example",
+      }),
+    );
+    writeFileSync(
+      join(dir, "pages/index.json"),
+      JSON.stringify({ children: ["home"], tagName: "div" }),
+    );
+    const before = process.env.SOURCE_DATE_EPOCH;
+    if (env === null) {
+      delete process.env.SOURCE_DATE_EPOCH;
+    } else {
+      process.env.SOURCE_DATE_EPOCH = env;
+    }
+    try {
+      const result = await buildSite(dir, { verbose: false });
+      return { dir, result, xml: readFileSync(join(dir, "dist/feed.xml"), "utf8") };
+    } finally {
+      if (before === undefined) {
+        delete process.env.SOURCE_DATE_EPOCH;
+      } else {
+        process.env.SOURCE_DATE_EPOCH = before;
+      }
+    }
+  }
+
+  it("is stamped with SOURCE_DATE_EPOCH when it is set", async () => {
+    // 2025-06-02T00:00:00Z
+    const { xml } = await buildEmpty("1748822400");
+    expect(xml).toContain("<updated>2025-06-02T00:00:00Z</updated>");
+    expect(xml).not.toContain("1970-01-01");
+    expect(xml).not.toContain("<entry>");
+  });
+
+  it("is byte-identical across two builds that share SOURCE_DATE_EPOCH", async () => {
+    const a = await buildEmpty("1748822400");
+    const b = await buildEmpty("1748822400");
+    expect(a.xml).toBe(b.xml);
+  });
+
+  it("is stamped with the clock, not 1970, when it is unset", async () => {
+    const started = Date.now();
+    const { xml } = await buildEmpty(null);
+    const stamp = /<updated>([^<]+)<\/updated>/.exec(xml)?.[1] ?? "";
+    expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    const parsed = Date.parse(stamp);
+    expect(parsed).toBeGreaterThanOrEqual(Math.floor(started / 1000) * 1000 - 1000);
+    expect(parsed).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("reports a malformed SOURCE_DATE_EPOCH as a build error and still writes the feed", async () => {
+    const { result, xml } = await buildEmpty("not-a-number");
+    expect(result.errors.some((e) => e.includes("SOURCE_DATE_EPOCH"))).toBe(true);
+    expect(xml).not.toContain("1970-01-01");
+  });
+});

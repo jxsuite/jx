@@ -44,7 +44,7 @@ Two classes, one schema fragment:
 `emit` runs at build time, after routes and components compile (extensions.md §8.4). The host passes the section value and a context carrying the **already-loaded** project sections, so the emitter never re-reads source files:
 
 ```ts
-emit(sectionValue, { projectConfig, root, sections, routes })
+emit(sectionValue, { projectConfig, root, sections, routes, buildTime })
   → [{ path: "/search-index.json", content: "…json…" }]
 ```
 

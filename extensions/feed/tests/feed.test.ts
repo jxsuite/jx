@@ -76,11 +76,15 @@ function parseJsonObject(text: string): JsonObject {
   return parsed;
 }
 
-function emit(section: JsonValue, entries: ContentLoaderEntry[]) {
-  return Feed.emit(section, {
+function emit(section: JsonValue, entries: ContentLoaderEntry[], buildTime?: string) {
+  const ctx: Parameters<typeof Feed.emit>[1] = {
     projectConfig: PROJECT,
     sections: { content: new Map([["posts", entries]]) },
-  });
+  };
+  if (buildTime !== undefined) {
+    ctx.buildTime = buildTime;
+  }
+  return Feed.emit(section, ctx);
 }
 
 describe("configuration", () => {
@@ -404,8 +408,55 @@ describe("failure modes", () => {
       siteUrl: SITE,
       updated: null,
     });
+    // The serializer's own last resort, for a host that supplies no build time.
     expect(xml).toContain("<updated>1970-01-01T00:00:00Z</updated>");
     expect(xml).toContain("</feed>");
+  });
+
+  describe("a feed with no dated item reports the build time", () => {
+    const BUILD = "2026-11-16T09:30:00Z";
+    const atomOf = (files: { path: string; content: string }[]) =>
+      files.find((f) => f.path === "/feed.xml")!.content;
+
+    test("an empty collection is stamped with the build time, not 1970", () => {
+      const xml = atomOf(emit(SECTION, [], BUILD));
+      expect(xml).toContain(`<updated>${BUILD}</updated>`);
+      expect(xml).not.toContain("1970");
+      expect(xml).not.toContain("<entry>");
+    });
+
+    test("entries with no readable date at all are stamped the same way", () => {
+      const xml = atomOf(emit(SECTION, [post("a", null)], BUILD));
+      expect(xml).toContain(`<updated>${BUILD}</updated>`);
+    });
+
+    test("a feed with entries keeps the newest item, never the build time", () => {
+      const xml = atomOf(emit(SECTION, [post("a", "2025-01-01"), post("b", "2025-06-01")], BUILD));
+      expect(xml).toContain("<updated>2025-06-01T00:00:00Z</updated>");
+      expect(xml).not.toContain(BUILD);
+    });
+
+    test("RFC 5005 archives of a feed with entries are never stamped with it", () => {
+      const files = emit(
+        { blog: { ...SECTION.blog, archive: true, pageSize: 1 } },
+        [post("a", "2025-01-01"), post("b", "2025-06-01")],
+        BUILD,
+      );
+      for (const f of files.filter((x) => x.path.endsWith(".xml"))) {
+        expect(f.content).not.toContain(BUILD);
+      }
+    });
+
+    test("JSON Feed has no feed-level date and is unchanged", () => {
+      const files = emit(SECTION, [], BUILD);
+      const json = parseJsonObject(files.find((f) => f.path === "/feed.json")!.content);
+      expect(json.items).toEqual([]);
+      expect(JSON.stringify(json)).not.toContain(BUILD);
+    });
+
+    test("a host that supplies no build time still gets a valid document", () => {
+      expect(atomOf(emit(SECTION, []))).toContain("<updated>1970-01-01T00:00:00Z</updated>");
+    });
   });
 });
 

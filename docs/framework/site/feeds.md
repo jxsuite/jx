@@ -58,7 +58,7 @@ Feed timestamps come from your frontmatter. Declare the field with a `format` so
 { "properties": { "date": { "type": "string", "format": "date" } } }
 ```
 
-An entry with no date falls back to the source file's modification time. The feed's own timestamp is the newest entry, never the build time, so redeploying does not re-notify everyone who subscribes.
+An entry with no date falls back to the source file's modification time. The feed's own timestamp is the newest entry, never the build time, so redeploying does not re-notify everyone who subscribes. A feed with no dated entry, including an empty one, has no such timestamp to give, so it reports the build time instead of a 1970 date. When `SOURCE_DATE_EPOCH` is set the build time is that instant and the clock is never read, so a reproducible build stays byte-identical.
 
 ## Long histories
 
