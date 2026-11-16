@@ -48,6 +48,7 @@ import {
   siteBasePath,
   withBase,
 } from "@jxsuite/schema/asset-paths";
+import { resolveBuildTime } from "./build-time.ts";
 import { rebaseDocument, rewriteCssUrls, rewriteHtmlBase } from "./base-path.ts";
 import {
   CLIENT_EXTERNALS,
@@ -1501,6 +1502,19 @@ export async function buildSite(
   // (search indexes, feeds, …). The host writes the returned files so extensions stay pure;
   // Paths are outDir-relative and guarded against traversal. Note the `public/` copy (7c)
   // Runs later and can shadow emitted files — same semantics as sitemap.xml.
+  /*
+   * One timestamp for every emitter, resolved before the first runs so two emitters in one build
+   * agree. A malformed SOURCE_DATE_EPOCH is a reported build error rather than a silent switch to
+   * the clock, and the build still finishes with the clock so the other errors are reported too.
+   */
+  let buildTime: string;
+  try {
+    buildTime = resolveBuildTime(process.env);
+  } catch (error) {
+    errors.push(errorMessage(error));
+    console.error(errorMessage(error));
+    buildTime = resolveBuildTime({});
+  }
   for (const entry of registry.emitters()) {
     const sectionKey = entry.project?.key;
     const sectionValue = sectionKey ? projectConfig[sectionKey] : undefined;
@@ -1515,6 +1529,7 @@ export async function buildSite(
       /* The emit contract (extensions.md §8.4) answers outDir-relative files, or null for none; each
          `path` is still checked for traversal below before anything is written. */
       const emitted = await entry.call("emit", sectionValue ?? null, {
+        buildTime,
         projectConfig,
         root: projectRoot,
         routes,

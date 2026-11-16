@@ -304,7 +304,7 @@ Capabilities are declared in `$defs.methods` using well-known `role` values. All
 | `projectData`  | `project`   | `(sectionValue, { projectConfig, root, registry, io, lazy?, includeHeld? }) → unknown`              | compiler site build, dev server resolve — result stored as `_project[<key>]`       |
 | `resolvePaths` | `project`   | `(pathsDef, { data, projectConfig, root, locale, urlPattern, params }) → Record<string, unknown>[]` | pages discovery (`$paths` expansion), studio preview                               |
 | `lower`        | any         | `(def, context) → JxStateDefinition`                                                                | compiler — rewrites a state def into a core shape for client output                |
-| `emit`         | `project`   | `(sectionValue, { projectConfig, root, sections, routes }) → EmitFile[]`                            | compiler site build — writes derived assets into the build output (§8.4)           |
+| `emit`         | `project`   | `(sectionValue, { projectConfig, root, sections, routes, buildTime }) → EmitFile[]`                 | compiler site build — writes derived assets into the build output (§8.4)           |
 | `assets`       | `project`   | `(sectionValue, { projectConfig, root }) → AssetMount[]`                                            | compiler site build, dev server — publishes source directories at site URLs (§8.5) |
 | `mount`        | `server`    | `(options, ctx) → (request: Request, env) => Promise<Response>`                                     | generated site worker, dev server                                                  |
 | `dialect`      | `connector` | `(connection, env) → Kysely Dialect`                                                                | data mounts, auth, deploy                                                          |
@@ -361,10 +361,11 @@ A lowered def may carry a `$bundle: string[]` key naming client modules it depen
 `emit` lets a section-owner class contribute derived build artifacts — search indexes, feeds, export manifests — to the compiled site:
 
 ```
-emit(sectionValue, { projectConfig, root, sections, routes })
+emit(sectionValue, { projectConfig, root, sections, routes, buildTime })
   → { path: string, content: string | Uint8Array }[]
 ```
 
+- **`buildTime`** is the build's timestamp as RFC 3339 in UTC at second precision, for a derived file with no date of its own to report (an empty feed's `<updated>`). It is `SOURCE_DATE_EPOCH` when that is set, so a reproducible build writes the same bytes, and the clock otherwise; the host resolves it once, so every emitter in a build agrees. A `SOURCE_DATE_EPOCH` that is not a non-negative integer number of seconds is a reported build error. A date the content carries is never replaced by it.
 - **Timing** is `["compiler"]`; the site build invokes it after routes, components, and the worker are generated, before redirects and the `public/` copy.
 - **Gating**: when the class owns a project section (`project.key`), `emit` runs only if the project declares a non-empty value for that key — the same gating as section loading and server mounts. Classes without a `project` block always run.
 - **The host writes the files.** `path` is outDir-relative (a leading `/` is tolerated); the host creates directories, guards against path traversal (a path escaping the build output is a build error), and counts the files in the build summary. Extensions return data and never touch the filesystem, keeping `emit` pure and testable.

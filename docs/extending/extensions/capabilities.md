@@ -62,7 +62,7 @@ To find and invoke a capability, a host scans `$defs.methods` for the `role`, ta
 | `projectData`    | `project`   | `(sectionValue, { projectConfig, root, registry, io, lazy?, includeHeld? }) → unknown`                | site build, dev server (result stored as `_project[<key>]`) |
 | `resolvePaths`   | `project`   | `(pathsDef, { data, projectConfig, root, urlPattern, params, patterns }) → Record<string, unknown>[]` | pages discovery (`$paths` expansion), Studio preview        |
 | `lower`          | any         | `(def, context) → JxStateDefinition`                                                                  | compiler (rewrites a state def into a core shape)           |
-| `emit`           | `project`   | `(sectionValue, { projectConfig, root, sections, routes }) → EmitFile[]`                              | site build (writes derived assets into the build output)    |
+| `emit`           | `project`   | `(sectionValue, { projectConfig, root, sections, routes, buildTime }) → EmitFile[]`                   | site build (writes derived assets into the build output)    |
 | `assets`         | `project`   | `(sectionValue, { projectConfig, root }) → AssetMount[]`                                              | site build, dev server (publishes directories at site URLs) |
 | `mount`          | `server`    | `(options, ctx) → (request, env) => Promise<Response>`                                                | generated site worker, dev server                           |
 | `dialect`        | `connector` | `(connection, env) → Kysely Dialect`                                                                  | data mounts, auth, deploy                                   |
