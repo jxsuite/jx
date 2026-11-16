@@ -59,6 +59,17 @@ describe("resolveI18n", () => {
     expect(i18n?.locales).toEqual(["de", "en", "fr"]);
   });
 
+  // `*` negotiation, `$site.locales` and every locale menu read `locales[0]` as the default.
+  test("a default declared later moves to the front", () => {
+    const { i18n } = resolveI18n(project({ defaultLocale: "en", locales: ["fr", "en", "de"] }));
+    expect(i18n?.locales).toEqual(["en", "fr", "de"]);
+  });
+
+  test("the default is matched canonically when it moves", () => {
+    const { i18n } = resolveI18n(project({ defaultLocale: "EN-us", locales: ["fr", "en-US"] }));
+    expect(i18n?.locales).toEqual(["en-US", "fr"]);
+  });
+
   test("duplicates collapse after canonicalization", () => {
     const { i18n } = resolveI18n(project({ defaultLocale: "en", locales: ["en", "EN", "en-us"] }));
     expect(i18n?.locales).toEqual(["en", "en-US"]);

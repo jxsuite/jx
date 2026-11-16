@@ -23,6 +23,7 @@
  * @docs framework/site/i18n
  */
 
+import { withBase } from "@jxsuite/schema/asset-paths";
 import type { ResolvedI18n } from "./i18n.ts";
 
 /** One `Accept-Language` entry: a language range and the quality it was offered at. */
@@ -109,12 +110,14 @@ export function lookupRange(range: string, available: readonly string[]): string
 /**
  * The locale to serve a request carrying this `Accept-Language`, always one of `available`.
  *
- * `*` selects the first available locale, which is the declared default: the range means "anything
- * is acceptable", and the site's own preference is the only tie-break there is.
+ * `*` is skipped, because RFC 4647 §3.4 says so: a `*` followed by other ranges defers to them, and
+ * a `*` that nothing follows takes the default value, which is `fallback`. The answer therefore
+ * never depends on the order of `available`.
  *
  * @param {string | null | undefined} header - The raw `Accept-Language`, if any
- * @param {readonly string[]} available - Canonical tags, default first
- * @param {string} fallback - The locale to serve when nothing matches
+ * @param {readonly string[]} available - Canonical tags; the answer does not depend on their order
+ * @param {string} fallback - The site's `defaultLocale`: the answer when nothing matches, and to a
+ *   trailing `*`
  * @returns {string}
  */
 export function negotiateLocale(
@@ -127,7 +130,9 @@ export function negotiateLocale(
   }
   for (const { range } of parseAcceptLanguage(header)) {
     if (range === "*") {
-      return available[0] ?? fallback;
+      // RFC 4647 §3.4 reads: "If the language range `*` is followed by other language ranges, it
+      // Is skipped. If it is the only one, or none follows, the default value is computed."
+      continue;
     }
     const match = lookupRange(range, available);
     if (match !== null) {
@@ -135,6 +140,20 @@ export function negotiateLocale(
     }
   }
   return fallback;
+}
+
+/**
+ * Whether the site root has something to negotiate, and so whether a worker answers it.
+ *
+ * The root has a choice to make with two locales, and under `prefix-always` it has no page of its
+ * own even with one (site-architecture.md §13.6). The middleware, the Pages worker exemption and
+ * the `_routes.json` root entry all read this one definition.
+ *
+ * @param {ResolvedI18n | null} i18n
+ * @returns {boolean}
+ */
+export function negotiatesRoot(i18n: ResolvedI18n | null): boolean {
+  return i18n !== null && (i18n.locales.length > 1 || i18n.routing === "prefix-always");
 }
 
 /**
@@ -172,23 +191,34 @@ export function localeHome(locale: string, i18n: ResolvedI18n): string {
  * in one language for every later reader. That is worse than not negotiating at all, and it is
  * invisible to the author — whose own browser was the first visitor.
  *
+ * **Under the deployment base.** Every other worker route is registered under the base
+ * (site-architecture.md §14.7), so the middleware registers at the based root and every home it
+ * redirects to carries the base too. An unbased `app.use('/')` matches no request a based site
+ * receives.
+ *
  * @param {ResolvedI18n | null} i18n
- * @returns {string} JS source, or "" when the site declares fewer than two locales
+ * @param {string} [base] - The deployment base path (`""` or `/m/site`)
+ * @returns {string} JS source, or "" when the root has nothing to negotiate
+ *   ({@link negotiatesRoot})
  */
-export function localeNegotiationMiddleware(i18n: ResolvedI18n | null): string {
-  if (i18n === null || i18n.locales.length < 2) {
+export function localeNegotiationMiddleware(i18n: ResolvedI18n | null, base = ""): string {
+  if (i18n === null || !negotiatesRoot(i18n)) {
     return "";
   }
   const locales = JSON.stringify(i18n.locales);
   const fallback = JSON.stringify(i18n.defaultLocale);
   const homes = JSON.stringify(
-    Object.fromEntries(i18n.locales.map((locale) => [locale, localeHome(locale, i18n)])),
+    Object.fromEntries(
+      i18n.locales.map((locale) => [locale, withBase(base, localeHome(locale, i18n))]),
+    ),
   );
+  const root = JSON.stringify(withBase(base, "/"));
 
   return `
 // ─── Locale negotiation (RFC 4647 Lookup over Accept-Language) ───────────────
 const JX_LOCALES = ${locales}
 const JX_DEFAULT_LOCALE = ${fallback}
+const JX_ROOT = ${root}
 const JX_LOCALE_HOMES = ${homes}
 
 function jxParseAcceptLanguage(header) {
@@ -229,24 +259,24 @@ function jxLookupRange(range, available) {
 function jxNegotiateLocale(header, available, fallback) {
   if (typeof header !== 'string' || header.trim() === '') return fallback
   for (const range of jxParseAcceptLanguage(header)) {
-    if (range === '*') return available[0] || fallback
+    if (range === '*') continue
     const match = jxLookupRange(range, available)
     if (match !== null) return match
   }
   return fallback
 }
 
-app.use('/', async (c, next) => {
+app.use(JX_ROOT, async (c, next) => {
   const locale = jxNegotiateLocale(c.req.header('accept-language'), JX_LOCALES, JX_DEFAULT_LOCALE)
-  const home = JX_LOCALE_HOMES[locale] || '/'
-  if (home !== '/') {
+  const home = JX_LOCALE_HOMES[locale] || JX_ROOT
+  if (home !== JX_ROOT) {
     // 302, never 301: the target depends on the request, so it must never be cached as permanent.
     return new Response(null, {
       headers: { 'Content-Language': locale, Location: home, Vary: 'Accept-Language' },
       status: 302,
     })
   }
-  // '/' already holds this locale (prefix-except-default). Let the chain serve it, then say the
+  // The root already holds this locale (prefix-except-default). Let the chain serve it, then say the
   // Response depended on the header — a cache that missed this would pin every visitor to it.
   await next()
   const res = new Response(c.res.body, c.res)

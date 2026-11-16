@@ -27,47 +27,66 @@ interface WorkerModule {
   default: { fetch: (req: Request, env: typeof ENV) => Promise<Response> };
 }
 
-let root = "";
-let worker: WorkerModule["default"] | null = null;
+type Worker = WorkerModule["default"];
 
-function writeJson(path: string, value: JsonValue) {
+function writeJson(root: string, path: string, value: JsonValue) {
   const full = join(root, path);
   mkdirSync(join(full, ".."), { recursive: true });
   writeFileSync(full, JSON.stringify(value), "utf8");
 }
 
-async function get(path: string, acceptLanguage?: string): Promise<Response> {
-  const headers = acceptLanguage === undefined ? {} : { "Accept-Language": acceptLanguage };
-  return worker!.fetch(new Request(`https://i18n.example${path}`, { headers }), ENV);
-}
-
-beforeAll(async () => {
-  root = mkdtempSync(join(tmpdir(), "jx-locale-worker-"));
-  writeJson("project.json", {
-    build: { adapter: "cloudflare-workers", outDir: "./dist" },
-    i18n: { defaultLocale: "en", locales: ["en", "fr", "de"], routing: "prefix-except-default" },
-    name: "I18n Worker",
-    url: "https://i18n.example",
-  });
-  writeJson("pages/index.json", { children: ["Home"], tagName: "h1", title: "Home" });
-  writeJson("pages/fr/index.json", { children: ["Accueil"], tagName: "h1", title: "Accueil" });
-  writeJson("pages/de/index.json", { children: ["Start"], tagName: "h1", title: "Start" });
-
-  // `hono` is a bare specifier the worker bundle resolves from the PROJECT root, so the temp
-  // Project needs it on disk exactly as a real one would.
+/**
+ * `hono` is a bare specifier the worker bundle resolves from the PROJECT root, so a temp project
+ * needs it on disk exactly as a real one would.
+ */
+async function linkHono(root: string) {
   mkdirSync(join(root, "node_modules"), { recursive: true });
   const hono = join(import.meta.dir, "../../../node_modules/hono");
   if (existsSync(hono)) {
     await Bun.$`ln -sfn ${hono} ${join(root, "node_modules/hono")}`.quiet();
   }
+}
+
+async function loadWorker(bundled: string): Promise<Worker | null> {
+  if (!existsSync(bundled)) {
+    return null;
+  }
+  /* SAFETY: the bundle is the Hono worker a build just emitted; its default export is the app,
+     whose `fetch(request, env)` reads only `env.ASSETS` for the static fallthrough. */
+  return ((await import(bundled)) as WorkerModule).default;
+}
+
+async function request(worker: Worker | null, path: string, acceptLanguage?: string) {
+  const headers = acceptLanguage === undefined ? {} : { "Accept-Language": acceptLanguage };
+  return worker!.fetch(new Request(`https://i18n.example${path}`, { headers }), ENV);
+}
+
+let root = "";
+let worker: Worker | null = null;
+
+async function get(path: string, acceptLanguage?: string): Promise<Response> {
+  return request(worker, path, acceptLanguage);
+}
+
+beforeAll(async () => {
+  root = mkdtempSync(join(tmpdir(), "jx-locale-worker-"));
+  writeJson(root, "project.json", {
+    build: { adapter: "cloudflare-workers", outDir: "./dist" },
+    i18n: { defaultLocale: "en", locales: ["en", "fr", "de"], routing: "prefix-except-default" },
+    name: "I18n Worker",
+    url: "https://i18n.example",
+  });
+  writeJson(root, "pages/index.json", { children: ["Home"], tagName: "h1", title: "Home" });
+  writeJson(root, "pages/fr/index.json", {
+    children: ["Accueil"],
+    tagName: "h1",
+    title: "Accueil",
+  });
+  writeJson(root, "pages/de/index.json", { children: ["Start"], tagName: "h1", title: "Start" });
+  await linkHono(root);
 
   await buildSite(root, { verbose: false });
-  const bundled = join(root, "dist/worker.js");
-  if (existsSync(bundled)) {
-    /* SAFETY: `dist/worker.js` is the Hono worker this build just emitted; its default export is
-       the app, whose `fetch(request, env)` reads only `env.ASSETS` for the static fallthrough. */
-    worker = ((await import(bundled)) as WorkerModule).default;
-  }
+  worker = await loadWorker(join(root, "dist/worker.js"));
 });
 
 afterAll(() => {
@@ -148,5 +167,73 @@ describe("the bundled worker negotiates a locale", () => {
       expect(await res.text()).toBe(`served ${path}`);
       expect(res.headers.get("vary")).toBeNull();
     }
+  });
+});
+
+describe("a cloudflare-pages site with no server tier negotiates its root", () => {
+  let pagesRoot = "";
+  let pagesWorker: Worker | null = null;
+  const getPages = (path: string, acceptLanguage?: string) =>
+    request(pagesWorker, path, acceptLanguage);
+
+  beforeAll(async () => {
+    pagesRoot = mkdtempSync(join(tmpdir(), "jx-locale-worker-pages-"));
+    writeJson(pagesRoot, "project.json", {
+      build: { adapter: "cloudflare-pages", outDir: "./dist" },
+      // The default is declared second, which is what a wildcard must still answer.
+      i18n: { defaultLocale: "en", locales: ["fr", "en"], routing: "prefix-except-default" },
+      name: "Pages Worker",
+      url: "https://pages.example/m/site/",
+    });
+    writeJson(pagesRoot, "pages/index.json", { children: ["Home"], tagName: "h1", title: "Home" });
+    writeJson(pagesRoot, "pages/fr/index.json", {
+      children: ["Accueil"],
+      tagName: "h1",
+      title: "Accueil",
+    });
+    await linkHono(pagesRoot);
+
+    await buildSite(pagesRoot, { verbose: false });
+    pagesWorker = await loadWorker(join(pagesRoot, "dist/_worker.js"));
+  });
+
+  afterAll(() => {
+    rmSync(pagesRoot, { force: true, recursive: true });
+  });
+
+  it("emits _worker.js and wakes it for the based root", () => {
+    expect(existsSync(join(pagesRoot, "dist/_worker.js"))).toBe(true);
+    // SAFETY: `_routes.json` is the file the build just wrote; `include` is its array of paths.
+    const routes = JSON.parse(readFileSync(join(pagesRoot, "dist/_routes.json"), "utf8")) as {
+      include: string[];
+    };
+    expect(routes.include).toEqual(["/m/site/", "/m/site/_jx/*"]);
+  });
+
+  it("sends a French reader to the French home under the base", async () => {
+    const res = await getPages("/m/site/", "fr");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/m/site/fr/");
+    expect(res.headers.get("vary")).toBe("Accept-Language");
+  });
+
+  it("answers a lone wildcard with the default declared second", async () => {
+    const res = await getPages("/m/site/", "*");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("served /m/site/");
+    expect(res.headers.get("content-language")).toBe("en");
+  });
+
+  it("lets a range after the wildcard decide", async () => {
+    const res = await getPages("/m/site/", "*, fr");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/m/site/fr/");
+  });
+
+  it("leaves the origin's own root alone", async () => {
+    const res = await getPages("/", "fr");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("served /");
+    expect(res.headers.get("content-language")).toBeNull();
   });
 });

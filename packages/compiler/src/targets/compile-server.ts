@@ -71,7 +71,8 @@ export interface SiteConnectorSpec {
  *   `"cloudflare-pages"`, `"node"`, `"bun"`
  * @param {SiteMountSpec[]} [opts.mounts] - Extension server mounts, already sorted by order
  * @param {SiteConnectorSpec[]} [opts.connectors] - Connector classes used by the mounts
- * @param {ResolvedI18n | null} [opts.i18n] - Locale routing; drives the `/` negotiation middleware
+ * @param {ResolvedI18n | null} [opts.i18n] - Locale routing; drives the root negotiation
+ *   middleware, registered at `base`
  * @returns {string | null} Complete worker/server source string, or null
  */
 export function compileSiteServer(
@@ -121,7 +122,7 @@ export function compileSiteServer(
    * fallthrough. It has to be: on `/` it either redirects or hands the request straight back to
    * whatever would have served it, and it cannot do the second from behind a terminal handler.
    */
-  const localeBlock = localeNegotiationMiddleware(i18n);
+  const localeBlock = localeNegotiationMiddleware(i18n, base);
 
   const gateBlock =
     entries.length === 0 && mounts.length === 0 ? "" : buildRequestGate(base, baseUrl);
