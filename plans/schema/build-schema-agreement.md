@@ -36,7 +36,7 @@ The contracts are schema.md §3.2's inequality ("the pattern accepts every tag t
 - `packages/compiler/src/site/site-build.ts` declares `REDIRECT_HTML_POLICY: Record<number, …>` over the same five statuses (line 2384). `generateRedirects` validates a rule against its keys (line 2438), lists them in the error, and later reads `REDIRECT_HTML_POLICY[status]!` (line 2474). A sixth status added to the schema would pass `jx validate` and fail the build as "not an RFC 9110 §15.4 redirection status". An orphaned JSDoc block ("Generate redirect files…", `@returns {number}`) sits above the policy's own comment.
 - `packages/compiler/tests/site-build.test.ts` covers 301, 302, 303, 308, a rewrite and an off-enum 418 ("an off-enum status is a build error naming the rule"). No case builds a 307.
 
-**Related.** `plan:site-architecture/locale-negotiation-gaps` also edits `resolveI18n` (the `defaultLocale` order), a textual neighbour with no ordering between the two. `plan:spec/expression-build-checks` owns the open question of whether `jx build` runs schema validation; see Decisions.
+**Related.** `resolveI18n` now lists `defaultLocale` first (landed, site-architecture.md §13.6), which this plan's edits to it rebase over. `plan:spec/expression-build-checks` owns the open question of whether `jx build` runs schema validation; see Decisions.
 
 ## Outcome
 

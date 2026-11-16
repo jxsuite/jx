@@ -59,6 +59,7 @@ import {
   resolveSidecarEntry,
 } from "./bundler.ts";
 import type { BundleRequest } from "./bundler.ts";
+import { negotiatesRoot } from "./locale-negotiation.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import type { ResolvedProjectConfig } from "./site-loader.ts";
 import {
@@ -1028,8 +1029,9 @@ export async function buildSite(
    * `prefix-always` with no adapter, and no page at `/`. The mode leaves the root for negotiation
    * to answer (§13.6), negotiation needs a request, and a static deployment never sees one — so the
    * site's front door is a 404 and nothing else in the build says so. `unprefixedRoutes` above
-   * deliberately never reports `/`, because under an adapter it is handled; this is the one shape
-   * where it is not.
+   * deliberately never reports `/`, because under an adapter it is handled: `negotiatesRoot` is
+   * true for every `prefix-always` site, so any adapter's worker answers the root, and `!adapter`
+   * is exactly the unhandled shape.
    *
    * A warning rather than a generated redirect: which URL the root should send a visitor to is a
    * deployment decision, and inventing one would be the compiler overruling a choice it cannot see.
@@ -1306,9 +1308,13 @@ export async function buildSite(
 
     // Cloudflare Pages uses advanced mode (_worker.js inside the build output) — the
     // Functions/ directory convention only works from the project root, not from dist/.
-    // A static-only Pages site needs no worker at all; sites with mounts always get one.
+    // A Pages site with no server tier and no root to negotiate needs no worker; one with mounts,
+    // Server entries or a negotiating root (site-architecture.md §13.6) always gets one.
     const skipWorker =
-      adapter === "cloudflare-pages" && serverEntries.length === 0 && mounts.length === 0;
+      adapter === "cloudflare-pages" &&
+      serverEntries.length === 0 &&
+      mounts.length === 0 &&
+      !negotiatesRoot(i18n);
     const workerSource = skipWorker
       ? null
       : compileSiteServer(serverEntries, {
@@ -1345,7 +1351,7 @@ export async function buildSite(
         writeFileSync(
           resolve(outDir, "_routes.json"),
           /*
-           * `/` joins the include list only when there is a locale to negotiate: Pages invokes the
+           * `/` joins the include list only when the worker negotiates the root: Pages invokes the
            * worker for included paths only, so an uninvoked middleware is an inert one. Both carry
            * the deployment base, because Pages matches them against the request path, and the
            * worker's own routes are registered under it (site-architecture.md §14.7).
@@ -1353,8 +1359,8 @@ export async function buildSite(
           `${JSON.stringify(
             {
               exclude: [],
-              include: (i18n && i18n.locales.length > 1 ? ["/", "/_jx/*"] : ["/_jx/*"]).map(
-                (pattern) => withBase(basePath, pattern),
+              include: (negotiatesRoot(i18n) ? ["/", "/_jx/*"] : ["/_jx/*"]).map((pattern) =>
+                withBase(basePath, pattern),
               ),
               version: 1,
             },

@@ -116,6 +116,34 @@ describe("buildSite — prefix-always with no runtime to answer the root", () =>
   });
 });
 
+describe("buildSite — prefix-always under an adapter", () => {
+  const DIR = resolve(import.meta.dir, "__test-site-adapter-root__");
+
+  beforeAll(() => {
+    scaffold(DIR, {
+      build: { adapter: "cloudflare-pages", outDir: "./dist" },
+      i18n: { defaultLocale: "en", locales: ["en"], routing: "prefix-always" },
+      name: "Adapter Root",
+    });
+    rmSync(resolve(DIR, "pages/index.json"), { force: true });
+    mkdirSync(resolve(DIR, "pages/en"), { recursive: true });
+    writeFileSync(
+      resolve(DIR, "pages/en/index.json"),
+      JSON.stringify({ $children: ["Hello"], tagName: "main" }),
+      "utf8",
+    );
+  });
+  afterAll(() => rmSync(DIR, { force: true, recursive: true }));
+
+  // A one-locale prefix-always site has no page at `/`; the worker answers it on every adapter.
+  it("says nothing under an adapter, even with one locale", async () => {
+    const { warnings } = await captured(() => buildSite(DIR));
+
+    expect(warnings.some((w) => w.includes('no page claims "/"'))).toBe(false);
+    expect(existsSync(resolve(DIR, "dist/_worker.js"))).toBe(true);
+  });
+});
+
 describe("buildSite — two pages claiming one language", () => {
   const DIR = resolve(import.meta.dir, "__test-site-translation-conflict__");
 

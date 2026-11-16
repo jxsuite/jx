@@ -15,9 +15,11 @@ import {
   localeNegotiationMiddleware,
   lookupRange,
   negotiateLocale,
+  negotiatesRoot,
   parseAcceptLanguage,
 } from "../src/site/locale-negotiation.ts";
 import type { ResolvedI18n } from "../src/site/i18n.ts";
+import { withBase } from "@jxsuite/schema/asset-paths";
 
 const SITE: ResolvedI18n = {
   defaultLocale: "en",
@@ -44,6 +46,11 @@ const CORPUS: (string | null)[] = [
   "zh-Hant-TW",
   "zh-Hans-CN",
   "*",
+  "*, fr",
+  "*, ja",
+  "ja, *",
+  "*;q=0.5, de",
+  "fr;q=0, *",
   "en;q=0.1, de;q=0.9",
   "de;q=0, fr",
   "de;q=0",
@@ -133,10 +140,17 @@ describe("negotiateLocale", () => {
     expect(negotiateLocale("ja, ko", SITE.locales, "en")).toBe("en");
   });
 
-  // `*` means "anything is acceptable"; the site's own first-declared locale is the only tie-break.
-  test("a wildcard takes the site's default", () => {
+  // RFC 4647 §3.4: a `*` nothing follows computes the default value, wherever `available` lists it.
+  test("a trailing wildcard takes the declared default, wherever it is declared", () => {
     expect(negotiateLocale("*", SITE.locales, "en")).toBe("en");
     expect(negotiateLocale("*", ["de", "en"], "de")).toBe("de");
+    expect(negotiateLocale("*", ["fr-CA", "en"], "en")).toBe("en");
+  });
+
+  test("a wildcard followed by other ranges is skipped", () => {
+    expect(negotiateLocale("*, fr-CA", SITE.locales, "en")).toBe("fr-CA");
+    expect(negotiateLocale("*, ja", SITE.locales, "en")).toBe("en");
+    expect(negotiateLocale("*;q=0.5, de", SITE.locales, "en")).toBe("de");
   });
 
   test("the result is always one of the available locales", () => {
@@ -160,6 +174,30 @@ describe("localeHome", () => {
   });
 });
 
+describe("negotiatesRoot", () => {
+  test("a site with no i18n has nothing to negotiate", () => {
+    expect(negotiatesRoot(null)).toBe(false);
+  });
+
+  test("one locale under prefix-except-default keeps a page at /", () => {
+    expect(
+      negotiatesRoot({ defaultLocale: "en", locales: ["en"], routing: "prefix-except-default" }),
+    ).toBe(false);
+  });
+
+  // Under prefix-always nothing else lives at `/`, even with one locale.
+  test("one locale under prefix-always still negotiates", () => {
+    expect(negotiatesRoot({ defaultLocale: "en", locales: ["en"], routing: "prefix-always" })).toBe(
+      true,
+    );
+  });
+
+  test("two locales negotiate under either routing", () => {
+    expect(negotiatesRoot(SITE)).toBe(true);
+    expect(negotiatesRoot({ ...SITE, routing: "prefix-always" })).toBe(true);
+  });
+});
+
 describe("localeNegotiationMiddleware", () => {
   test("emits nothing when there is nothing to negotiate", () => {
     expect(localeNegotiationMiddleware(null)).toBe("");
@@ -167,9 +205,19 @@ describe("localeNegotiationMiddleware", () => {
       localeNegotiationMiddleware({
         defaultLocale: "en",
         locales: ["en"],
-        routing: "prefix-always",
+        routing: "prefix-except-default",
       }),
     ).toBe("");
+  });
+
+  test("a single-locale prefix-always site still answers its root", () => {
+    const source = localeNegotiationMiddleware({
+      defaultLocale: "en",
+      locales: ["en"],
+      routing: "prefix-always",
+    });
+    expect(source).toContain('"en":"/en/"');
+    expect(source).toContain("status: 302");
   });
 
   /*
@@ -191,7 +239,8 @@ describe("localeNegotiationMiddleware", () => {
 
   test("it registers as middleware on / so the chain can still serve the page", () => {
     const source = localeNegotiationMiddleware(SITE);
-    expect(source).toContain("app.use('/'");
+    expect(source).toContain('const JX_ROOT = "/"');
+    expect(source).toContain("app.use(JX_ROOT");
     expect(source).toContain("await next()");
   });
 
@@ -200,6 +249,13 @@ describe("localeNegotiationMiddleware", () => {
     expect(source).toContain(JSON.stringify(SITE.locales));
     expect(source).toContain('"fr-CA":"/fr-ca/"');
     expect(source).toContain('"en":"/"');
+  });
+
+  test("under a deployment base, the root and every home carry it", () => {
+    const source = localeNegotiationMiddleware(SITE, "/m/site");
+    expect(source).toContain('const JX_ROOT = "/m/site/"');
+    expect(source).toContain('"fr-CA":"/m/site/fr-ca/"');
+    expect(source).toContain('"en":"/m/site/"');
   });
 });
 
@@ -251,16 +307,31 @@ describe("the emitted worker copy agrees with the implementation", () => {
     }
   });
 
+  test("and when the default is not first in the list", () => {
+    const available = ["fr-CA", "en", "de"];
+    const emitted = emittedNegotiator(SITE);
+    for (const header of CORPUS) {
+      expect({ answer: emitted(header, available, "en"), header }).toEqual({
+        answer: negotiateLocale(header, available, "en"),
+        header,
+      });
+    }
+  });
+
   test("the baked-in home map matches localeHome for every locale", () => {
     for (const routing of ["prefix-except-default", "prefix-always"] as const) {
-      const i18n: ResolvedI18n = { ...SITE, routing };
-      const source = localeNegotiationMiddleware(i18n);
-      // SAFETY: the emitter writes `JX_LOCALE_HOMES` as `JSON.stringify` of a locale-to-home-path map of strings.
-      const baked = JSON.parse(
-        source.match(/const JX_LOCALE_HOMES = (\{.*?\})\n/)?.[1] ?? "{}",
-      ) as Record<string, string>;
-      for (const locale of i18n.locales) {
-        expect({ [locale]: baked[locale] }).toEqual({ [locale]: localeHome(locale, i18n) });
+      for (const base of ["", "/m/site"]) {
+        const i18n: ResolvedI18n = { ...SITE, routing };
+        const source = localeNegotiationMiddleware(i18n, base);
+        // SAFETY: the emitter writes `JX_LOCALE_HOMES` as `JSON.stringify` of a locale-to-home-path map of strings.
+        const baked = JSON.parse(
+          source.match(/const JX_LOCALE_HOMES = (\{.*?\})\n/)?.[1] ?? "{}",
+        ) as Record<string, string>;
+        for (const locale of i18n.locales) {
+          expect({ [locale]: baked[locale] }).toEqual({
+            [locale]: withBase(base, localeHome(locale, i18n)),
+          });
+        }
       }
     }
   });

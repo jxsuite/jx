@@ -1053,6 +1053,63 @@ describe("buildSite — cloudflare-pages adapter", () => {
   });
 });
 
+describe("buildSite — cloudflare-pages with locales and no server tier", () => {
+  const LOCALE_TMP = resolve(import.meta.dir, "__test-site-pages-locales__");
+
+  /** A Pages project with no server entries, one page and the given `i18n`. */
+  function scaffoldPages(i18n: JsonObject, extraPages: string[] = []) {
+    rmSync(LOCALE_TMP, { force: true, recursive: true });
+    const write = (p: string, obj: JsonValue) => {
+      mkdirSync(resolve(LOCALE_TMP, ...p.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(resolve(LOCALE_TMP, p), JSON.stringify(obj, null, 2), "utf8");
+    };
+    write("project.json", {
+      build: { adapter: "cloudflare-pages", outDir: "./dist" },
+      defaults: { lang: "en" },
+      i18n,
+      name: "Pages Locales",
+      url: "https://test.com",
+    });
+    write("pages/index.json", { children: ["Home"], tagName: "main", title: "Home" });
+    for (const page of extraPages) {
+      write(page, { children: ["Home"], tagName: "main", title: "Home" });
+    }
+  }
+
+  afterAll(() => {
+    rmSync(LOCALE_TMP, { force: true, recursive: true });
+  });
+
+  it("two locales get a worker and a root entry", async () => {
+    scaffoldPages({ defaultLocale: "en", locales: ["en", "fr"] }, ["pages/fr/index.json"]);
+    await buildSite(LOCALE_TMP, { verbose: false });
+
+    const worker = resolve(LOCALE_TMP, "dist/_worker.js");
+    expect(existsSync(worker)).toBe(true);
+    expect(readFileSync(worker, "utf8")).toContain("Accept-Language");
+    const routes = JSON.parse(readFileSync(resolve(LOCALE_TMP, "dist/_routes.json"), "utf8"));
+    expect(routes.include).toEqual(["/", "/_jx/*"]);
+  });
+
+  it("one locale with prefix-always gets a worker", async () => {
+    scaffoldPages({ defaultLocale: "en", locales: ["en"], routing: "prefix-always" }, [
+      "pages/en/index.json",
+    ]);
+    rmSync(resolve(LOCALE_TMP, "pages/index.json"));
+    await buildSite(LOCALE_TMP, { verbose: false });
+
+    expect(existsSync(resolve(LOCALE_TMP, "dist/_worker.js"))).toBe(true);
+  });
+
+  it("one locale with prefix-except-default stays static", async () => {
+    scaffoldPages({ defaultLocale: "en", locales: ["en"] });
+    await buildSite(LOCALE_TMP, { verbose: false });
+
+    expect(existsSync(resolve(LOCALE_TMP, "dist/_worker.js"))).toBe(false);
+    expect(existsSync(resolve(LOCALE_TMP, "dist/_routes.json"))).toBe(false);
+  });
+});
+
 // ── Cloudflare Images service ───────────────────────────────────────────────
 
 describe("buildSite — cloudflare images service", () => {

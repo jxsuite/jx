@@ -178,7 +178,7 @@ export type LocaleRouting = "prefix-except-default" | "prefix-always";
 /** A project's `i18n` block after validation, or null when the project declares none. */
 export interface ResolvedI18n {
   defaultLocale: string;
-  /** Canonical tags, default first, in declaration order. */
+  /** Canonical tags: the default first, then the rest in declaration order. */
   locales: string[];
   routing: LocaleRouting;
 }
@@ -232,18 +232,20 @@ export function resolveI18n(projectConfig: ProjectConfig): I18nResolution {
     errors.push("i18n is declared with no usable locale — set `defaultLocale` or `locales`.");
     return { errors, i18n: null };
   }
-  if (!locales.includes(defaultLocale)) {
-    // A default outside the list is a config the author cannot have meant either way round, so it
-    // Joins the list rather than being rejected: the pages under it exist regardless.
-    locales.unshift(defaultLocale);
-  }
+  /*
+   * A default outside the list is a config the author cannot have meant either way round, so it
+   * joins the list rather than being rejected: the pages under it exist regardless. The default
+   * leads whether it was declared first, later or not at all, because `*` negotiation, `$site.locales`
+   * (site-architecture.md §5.5) and every locale menu read `locales[0]` as the default.
+   */
+  const ordered = [defaultLocale, ...locales.filter((tag) => tag !== defaultLocale)];
 
   const routing: LocaleRouting =
     raw.routing === "prefix-always" || raw.routing === "prefix-except-default"
       ? raw.routing
       : DEFAULT_ROUTING;
 
-  return { errors, i18n: { defaultLocale, locales, routing } };
+  return { errors, i18n: { defaultLocale, locales: ordered, routing } };
 }
 
 /**

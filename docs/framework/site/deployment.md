@@ -262,16 +262,16 @@ A `404.html` in `public/` is copied over the built one, for a page you would rat
 
 Without an adapter (the **Static** choice in Studio), the build is just `dist/`: HTML, CSS, JS, and assets for any static host or CDN. Setting `build.adapter` additionally packages the site's server tier, meaning state entries with `timing: "server"` plus the server mounts of enabled extensions, into a single deployable worker:
 
-| Adapter                | Extra output                                                              |
-| ---------------------- | ------------------------------------------------------------------------- |
-| _(none / static)_      | Nothing; plain `dist/`                                                    |
-| `"cloudflare-workers"` | `dist/worker.js`, a Hono server that also serves the static assets        |
-| `"cloudflare-pages"`   | `dist/_worker.js` + `dist/_routes.json`, only when there is a server tier |
-| `"node"` / `"bun"`     | `dist/worker.js`, a Hono server for that runtime                          |
+| Adapter                | Extra output                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| _(none / static)_      | Nothing; plain `dist/`                                                                           |
+| `"cloudflare-workers"` | `dist/worker.js`, a Hono server that also serves the static assets                               |
+| `"cloudflare-pages"`   | `dist/_worker.js` + `dist/_routes.json`, only when there is a server tier or a root to negotiate |
+| `"node"` / `"bun"`     | `dist/worker.js`, a Hono server for that runtime                                                 |
 
 ### What the worker serves
 
-Three route families, and nothing else:
+Three route families:
 
 | Route                  | Served by                                                      |
 | ---------------------- | -------------------------------------------------------------- |
@@ -279,13 +279,15 @@ Three route families, and nothing else:
 | `/_jx/data/*`          | The connector extension: table CRUD                            |
 | `/_jx/server/<export>` | One route per server function export name                      |
 
+On a site with more than one locale, or with `prefix-always`, it also answers the site root, sending a visitor to their language before the page is served (see [Locales and languages](/docs/framework/site/i18n#sending-a-visitor-to-their-language)).
+
 **Pages are never rendered per request.** Every route is prerendered at build time and served as static HTML; the worker answers the `/_jx/*` API surface and falls through to the assets for everything else. Interactivity arrives by hydration, so a page that shows signed-in content ships its signed-out state in the HTML and swaps once the session resolves in the browser. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 
 Worker deployment details:
 
 - Server functions are collected from every page, the layouts it uses, the project file's `state` and every component, and bundled once into the worker; no build writes per-route server files. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files.
 - The worker is **self-contained**: hono, extension mounts, database connectors, and your server modules are inlined at build time, so `dist/` deploys and runs with no `node_modules` and no deploy-time bundling step.
-- On Cloudflare Pages, `_routes.json` limits worker invocation to `/_jx/*`, plus `/` when the site has more than one locale so the worker can choose a language for the root, and static assets are served without waking the worker. A Pages site with no server functions and no mounts gets no worker at all, and the deployment stays purely static.
+- On Cloudflare Pages, `_routes.json` limits worker invocation to `/_jx/*`, plus `/` when the site has more than one locale or uses `prefix-always` so the worker can choose a language for the root, and static assets are served without waking the worker. A Pages site with no server functions, no mounts and a single locale without `prefix-always` gets no worker at all, and the deployment stays purely static.
 - A project with a non-empty `data` or `auth` section (served by extension mounts) or any `timing: "server"` entry **must** set a server-capable adapter. On static the build stops with an error naming the offending sections or entries, since a static site has nothing to serve them with.
 - Switching hosts means switching the adapter; your source never changes.
 
