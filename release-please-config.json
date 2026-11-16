@@ -3,6 +3,8 @@
   "include-v-in-tag": true,
   "include-component-in-tag": true,
   "separate-pull-requests": false,
+  "draft": true,
+  "force-tag-creation": true,
   "plugins": ["node-workspace"],
   "bootstrap-sha": "d0fb3b62813404a01d612e6ecbd4c8a356d225ee",
   "packages": {
@@ -110,7 +112,8 @@
     },
     "packages/desktop": {
       "release-type": "node",
-      "component": "desktop"
+      "component": "desktop",
+      "draft": false
     },
     "packages/protocol": {
       "release-type": "node",

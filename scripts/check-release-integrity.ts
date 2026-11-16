@@ -1,6 +1,13 @@
 /**
- * Every version in `.release-please-manifest.json` must have actually shipped a GitHub release at
- * its tag.
+ * Every version in `.release-please-manifest.json` must have actually shipped: a git TAG for every
+ * component, and a published GitHub RELEASE for the ones that are not configured `draft`.
+ *
+ * Only `desktop` is a published release. Every library component is configured `draft` with
+ * `force-tag-creation` (`release-please-config.json`), and `release-please.yml` deletes the draft
+ * once release-please has used it, so a library is a tag and nothing else on the Releases page.
+ * What each component owes is therefore derived from the config rather than assumed, and a gap
+ * names which of the two is missing. Everything below that says "release" about a library means its
+ * tag.
  *
  * NOTHING ASKED THIS QUESTION BEFORE, and the answer was no for six weeks. Two independent ways to
  * lose a release, both of which exit 0:
@@ -80,12 +87,14 @@ export const RELEASE_PLEASE_MANIFEST = ".release-please-manifest.json";
 
 interface PackageConfig {
   component?: string;
+  draft?: boolean;
   "include-v-in-tag"?: boolean;
   "include-component-in-tag"?: boolean;
   "tag-separator"?: string;
 }
 interface Config {
   packages: Record<string, PackageConfig>;
+  draft?: boolean;
   "include-v-in-tag"?: boolean;
   "include-component-in-tag"?: boolean;
   "tag-separator"?: string;
@@ -97,6 +106,11 @@ export interface ReleaseTarget {
   /** The tag release-please would have created, e.g. `starters-v1.5.0`. */
   tag: string;
   version: string;
+  /**
+   * Whether a published GitHub release is owed at the tag. `false` for a component configured
+   * `draft`: it owes the tag alone, and its draft release is deleted on purpose.
+   */
+  release: boolean;
 }
 
 /**
@@ -114,6 +128,14 @@ export function tagFor(path: string, version: string, config: Config): string {
 
   const prefix = includeComponent ? `${component}${separator}` : "";
   return `${prefix}${includeV ? "v" : ""}${version}`;
+}
+
+/**
+ * Does the component publish a GitHub release (not a draft), by the same per-package-then-root rule
+ * release-please applies.
+ */
+export function publishesRelease(path: string, config: Config): boolean {
+  return !(config.packages[path]?.draft ?? config.draft ?? false);
 }
 
 /**
@@ -145,23 +167,31 @@ export async function readTargets(root = "."): Promise<ReleaseTarget[]> {
       path,
       tag: tagFor(path, version, config),
       version,
+      release: publishesRelease(path, config),
     }));
 }
 
 /**
- * Does a GitHub RELEASE exist at this tag? A bare tag is not enough — the bundlers attach to the
- * release, and release-please creates both or neither.
+ * Does something exist at this tag? Asked as a GitHub RELEASE of a component that publishes one (a
+ * bare tag is not enough there: the bundlers attach to the release), and as a git TAG of one that
+ * does not.
  */
 export type ReleaseExists = (tag: string) => Promise<boolean>;
 
-/** The manifest entries whose release release-please never actually created. */
-export async function findGaps(
-  targets: ReleaseTarget[],
-  releaseExists: ReleaseExists,
-): Promise<ReleaseTarget[]> {
+/** The two questions a target can owe an answer to. */
+export interface Probes {
+  /** Is there a published GitHub release at the tag? */
+  release: ReleaseExists;
+  /** Is there a git tag? */
+  tag: ReleaseExists;
+}
+
+/** The manifest entries whose release (or, for a draft component, tag) was never actually created. */
+export async function findGaps(targets: ReleaseTarget[], probes: Probes): Promise<ReleaseTarget[]> {
   const gaps: ReleaseTarget[] = [];
   for (const target of targets) {
-    if (!(await releaseExists(target.tag))) {
+    const exists = target.release ? probes.release : probes.tag;
+    if (!(await exists(target.tag))) {
       gaps.push(target);
     }
   }
@@ -170,17 +200,20 @@ export async function findGaps(
 
 export function report(gaps: ReleaseTarget[]): string {
   const lines = gaps.map(
-    (g) => `- **${g.path}** claims ${g.version} in the manifest — no GitHub release \`${g.tag}\``,
+    (g) =>
+      `- **${g.path}** claims ${g.version} in the manifest — no ${
+        g.release ? "GitHub release" : "git tag"
+      } \`${g.tag}\``,
   );
 
   return [
     ...lines,
     "",
-    "A missing GitHub release means release-please skipped the component. Check the " +
+    "A missing GitHub release or tag means release-please skipped the component. Check the " +
       "`release-please` job log for “Pull request contains releases, but not for component” " +
       "and read the header of `commitlint.config.ts`.",
     "",
-    "Nothing was published for a component with no release, so once the release exists, " +
+    "Nothing was published for a component with no release, so once the release (or tag) exists, " +
       "publish it with `gh workflow run release-please.yml -f backfill_paths='[\"<path>\"]' " +
       "-f backfill_sha=<tag>` — it is idempotent.",
   ].join("\n");
@@ -263,7 +296,7 @@ export function npmReport(absent: readonly NpmTarget[], now: Date): string {
   return [
     ...absent.map(
       (a) =>
-        `- **${a.name}@${a.version}** has had a GitHub release (\`${a.tag}\`) for ${hours(a.releasedAt)}h ` +
+        `- **${a.name}@${a.version}** has had a release tag (\`${a.tag}\`) for ${hours(a.releasedAt)}h ` +
         "and is NOT on npm",
     ),
     "",
@@ -278,11 +311,9 @@ export function npmReport(absent: readonly NpmTarget[], now: Date): string {
 if (import.meta.main) {
   const checkNpm = process.argv.includes("--npm");
   const releasedAt = new Map<string, Date>();
-  const releaseExists: ReleaseExists = async (tag) => {
-    const proc = Bun.spawnSync(
-      ["gh", "release", "view", tag, "--json", "publishedAt", "--jq", ".publishedAt"],
-      { stderr: "ignore" },
-    );
+  /** Run `gh`, and when it succeeds record the date it printed as when `tag` was released. */
+  const probe = (tag: string, args: string[]): boolean => {
+    const proc = Bun.spawnSync(["gh", ...args], { stderr: "ignore" });
     if (proc.exitCode !== 0) {
       return false;
     }
@@ -292,13 +323,35 @@ if (import.meta.main) {
     }
     return true;
   };
+  const probes: Probes = {
+    release: (tag) =>
+      Promise.resolve(
+        probe(tag, ["release", "view", tag, "--json", "publishedAt", "--jq", ".publishedAt"]),
+      ),
+    // A tag has no publish date, so the release moment is the date of the commit it points at:
+    // The release pull request's merge. `gh api` fills `{owner}/{repo}` from GH_REPO. It is
+    // Read-after-write consistent like `gh release view`, so a 404 is a genuinely absent tag.
+    tag: (tag) =>
+      Promise.resolve(
+        probe(tag, [
+          "api",
+          `repos/{owner}/{repo}/commits/${tag}`,
+          "--jq",
+          ".commit.committer.date",
+        ]),
+      ),
+  };
 
   const targets = await readTargets();
-  const gaps = await findGaps(targets, releaseExists);
+  const gaps = await findGaps(targets, probes);
   let failed = false;
 
   if (gaps.length === 0) {
-    console.log(`All ${targets.length} released components have a GitHub release.`);
+    console.log(
+      `All ${targets.length} released components have what they owe: a GitHub release for ${
+        targets.filter((t) => t.release).length
+      }, a git tag for the rest.`,
+    );
   } else {
     failed = true;
     console.error(`${gaps.length} of ${targets.length} released components never shipped:\n`);
