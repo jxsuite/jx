@@ -66,6 +66,28 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # Only `desktop` is a public GitHub release. Every other component is configured `draft` with
+      # `force-tag-creation` (release-please-config.json), so release-please creates its tag and a
+      # draft release, which keeps every output above and the release PR's `autorelease: tagged`
+      # label exactly as before. The draft is the only thing left to remove: it is invisible to the
+      # public but crowds the Releases page of everyone with push access, and it has no job to do,
+      # because release-please finds the previous release by tag when no release is there. Deleting
+      # a draft keeps its tag. A sweep rather than "the drafts this run made" so a run that died
+      # after creating them is cleaned by the next one, and it never touches a published release.
+      - name: Delete the draft releases of library components (their tags stay)
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GH_REPO}/releases" \
+            --jq '.[] | select(.draft) | select(.tag_name | startswith("desktop-v") | not) | "\(.id) \(.tag_name)"' |
+            while read -r id tag; do
+              echo "Deleting draft release for ${tag} (the tag stays)"
+              gh api -X DELETE "repos/${GH_REPO}/releases/${id}"
+            done
+
   # The release tags are created by release-please using GITHUB_TOKEN, which does
   # NOT trigger `on: push: tags` workflows. So we invoke the (now reusable)
   # publish + desktop-bundler workflows directly once releases exist.
@@ -233,9 +255,10 @@ jobs:
           gh release edit "$TAG" --notes-file notes.md
 
   # electron-updater fetches relatively off `releases/latest/download/`, so the
-  # desktop release MUST be GitHub's "latest". Every component release created this run
-  # shares the merge commit's created_at, so default "latest" selection is
-  # non-deterministic. The bundlers force `make_latest: true`, but on a batch that bumps
+  # desktop release MUST be GitHub's "latest". Library components no longer publish a release
+  # (they are drafts that are deleted, leaving a tag), so desktop is the only release a run
+  # creates, but the older per-package releases are still published and one of them can be
+  # "latest" (`ui-v0.14.0` was). The bundlers force `make_latest: true`, but on a batch that bumps
   # only ai/runtime (outside desktop's closure) no desktop build runs — this guard
   # re-pins the newest existing desktop release so "latest = desktop" holds every time.
   # Desktop bundlers are non-blocking (a flaky platform build must not sink the release), so a

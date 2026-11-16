@@ -20,12 +20,13 @@ import {
   findUnpublished,
   npmCandidates,
   npmReport,
+  publishesRelease,
   readTargets,
   registryProbe,
   report,
   tagFor,
 } from "./check-release-integrity.ts";
-import type { NpmTarget, ReleaseTarget } from "./check-release-integrity.ts";
+import type { NpmTarget, Probes, ReleaseTarget } from "./check-release-integrity.ts";
 import { readWorkspaces } from "./lib/workspaces.ts";
 
 const CONFIG = {
@@ -44,14 +45,19 @@ const target = (over: Partial<ReleaseTarget> = {}): ReleaseTarget => ({
   path: "packages/starters",
   tag: "starters-v1.5.0",
   version: "1.5.0",
+  release: true,
   ...over,
 });
 
+/** GitHub with exactly `releases` published and, beyond those, exactly `tags` present as bare tags. */
+const github = (releases: string[], tags: string[] = []): Probes => ({
+  release: (tag) => Promise.resolve(releases.includes(tag)),
+  // A published release carries its tag.
+  tag: (tag) => Promise.resolve(tags.includes(tag) || releases.includes(tag)),
+});
+
 /** GitHub with exactly `releases` present. */
-const released =
-  (...releases: string[]) =>
-  (tag: string) =>
-    Promise.resolve(releases.includes(tag));
+const released = (...releases: string[]) => github(releases);
 
 describe("tagFor", () => {
   test("matches the tags release-please actually created", () => {
@@ -131,6 +137,51 @@ describe("findGaps", () => {
   });
 });
 
+describe("a draft component owes a tag, not a release", () => {
+  const lib = target({ path: "packages/ui", tag: "ui-v0.14.0", version: "0.14.0", release: false });
+
+  test("its tag alone is enough, because its draft release is deleted on purpose", async () => {
+    expect(await findGaps([lib], github([], ["ui-v0.14.0"]))).toEqual([]);
+  });
+
+  test("no tag is a gap, and the report says tag, not release", async () => {
+    const gaps = await findGaps([lib], github([]));
+    expect(gaps).toEqual([lib]);
+    const text = report(gaps);
+    expect(text).toContain("no git tag `ui-v0.14.0`");
+    expect(text).not.toContain("no GitHub release");
+  });
+
+  test("a published release still has to exist for a component that publishes one", async () => {
+    const desktop = target({ path: "packages/desktop", tag: "desktop-v9.3.2", release: true });
+    // Its tag alone is NOT enough: the bundlers attach to the release.
+    const gaps = await findGaps([desktop, lib], github([], ["desktop-v9.3.2", "ui-v0.14.0"]));
+    expect(gaps).toEqual([desktop]);
+    expect(report(gaps)).toContain("no GitHub release `desktop-v9.3.2`");
+  });
+});
+
+describe("publishesRelease", () => {
+  test("a package overrides the root, and the root defaults to publishing", () => {
+    expect(publishesRelease("packages/a", { packages: { "packages/a": {} } })).toBe(true);
+    expect(publishesRelease("packages/a", { draft: true, packages: { "packages/a": {} } })).toBe(
+      false,
+    );
+    expect(
+      publishesRelease("packages/a", {
+        draft: true,
+        packages: { "packages/a": { draft: false } },
+      }),
+    ).toBe(true);
+  });
+
+  test("this repository: desktop is the one published release, every library is a tag", async () => {
+    const targets = await readTargets();
+    const published = targets.filter((t) => t.release).map((t) => t.path);
+    expect(published).toEqual(["packages/desktop"]);
+  });
+});
+
 describe("report", () => {
   test("points at the cause, and at the publish that never ran either", async () => {
     const text = report(await findGaps([target()], released()));
@@ -186,7 +237,7 @@ describe("the npm half (--npm, scheduled sweep only)", () => {
     expect(npmCandidates([runtime], WORKSPACES, edge, NOW)).toEqual([]);
   });
 
-  test("skips what npm never receives, and what has no GitHub release (the other half's finding)", () => {
+  test("skips what npm never receives, and what has no release or tag (the other half's finding)", () => {
     const at = new Map([["desktop-v3.0.0", hoursAgo(48)]]);
     expect(npmCandidates([desktop, runtime], WORKSPACES, at, NOW)).toEqual([]);
     const stranger = target({ path: "packages/unknown", tag: "unknown-v1.0.0" });
@@ -214,7 +265,7 @@ describe("the npm half (--npm, scheduled sweep only)", () => {
     expect(unknown).toEqual([]);
     const text = npmReport(absent, NOW);
     expect(text).toContain(
-      "**@jxsuite/runtime@5.0.0** has had a GitHub release (`runtime-v5.0.0`) for 12h",
+      "**@jxsuite/runtime@5.0.0** has had a release tag (`runtime-v5.0.0`) for 12h",
     );
     expect(text).toContain(
       `gh workflow run release-please.yml -f backfill_paths='["packages/site"]' -f backfill_sha=site-v2.0.5`,

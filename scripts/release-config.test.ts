@@ -39,11 +39,14 @@ const NON_NPM_COMPONENTS = new Map([
 interface PackageConfig {
   "release-type"?: string;
   component?: string;
+  draft?: boolean;
   "extra-files"?: { type: string; path: string; jsonpath?: string; glob?: boolean }[];
 }
 interface Config {
   packages: Record<string, PackageConfig>;
   "extra-files"?: unknown;
+  draft?: boolean;
+  "force-tag-creation"?: boolean;
 }
 
 /* SAFETY: this reads the committed release-please-config.json, which release-please validates against
@@ -124,6 +127,30 @@ describe("release-please config", () => {
       }
     }
     expect(wrong).toEqual([]);
+  });
+
+  test("desktop is the only component that publishes a GitHub release; every other one is a tag", () => {
+    // The Releases page is the desktop app's. A library is configured `draft` with
+    // `force-tag-creation` at the ROOT, so release-please still creates its tag and keeps every
+    // Output and the release pull request's label, and release-please.yml deletes the draft.
+    // Put at the root, a package added tomorrow is quiet by default instead of by remembering.
+    expect(config.draft).toBe(true);
+    expect(config["force-tag-creation"]).toBe(true);
+
+    const publishing = Object.entries(config.packages)
+      .filter(([, entry]) => !(entry.draft ?? config.draft ?? false))
+      .map(([dir]) => dir);
+    expect(publishing).toEqual(["packages/desktop"]);
+  });
+
+  test("release-please.yml deletes the library drafts and never a desktop release", () => {
+    // `draft` alone would leave one draft per library on every release, crowding the Releases page
+    // Of everyone with push access. The sweep keeps the tag (deleting a draft does not delete it).
+    const workflow = readFileSync(".github/workflows/release-please.yml", "utf8");
+    expect(workflow).toContain("Delete the draft releases of library components");
+    expect(workflow).toContain(
+      'select(.draft) | select(.tag_name | startswith("desktop-v") | not)',
+    );
   });
 
   test("extra-files is never declared at the config root", () => {
