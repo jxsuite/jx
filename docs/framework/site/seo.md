@@ -6,6 +6,7 @@ spec:
 code:
   - packages/site/src/head-merger.ts
   - packages/compiler/src/site/link-relations.ts
+  - packages/compiler/src/site/social-image.ts
   - packages/compiler/src/site/site-build.ts
   - packages/schema/src/asset-paths.ts
 ---
@@ -113,6 +114,45 @@ Two tags are added automatically: `<link rel="canonical">` (built from `url` in 
 ```
 
 `dir` is omitted entirely when neither is set. Nothing is guessed. On a site with [locales](/docs/framework/site/i18n) configured, both are derived from the route's language, and translated pages also gain `rel="alternate"` links pointing at each other.
+
+## Social image size and alt text
+
+A link preview is drawn before the image arrives, so `og:image:width` and `og:image:height` let a chat app or a feed reserve the card's box up front. You do not have to write them. When a page's `og:image` is a file the build can open, the build reads the image and adds both tags right after it:
+
+```html
+<meta content="https://example.com/og/default.png" property="og:image" />
+<meta content="1200" property="og:image:width" />
+<meta content="630" property="og:image:height" />
+```
+
+The image counts when its content is a site-absolute path such as `/og/default.png`, or an absolute URL that starts with your project's `url`, and the file sits in `public/` or an [asset mount](/docs/extending/extensions/capabilities). A remote image, a `data:` URI, a missing file and a format whose header cannot be read (an SVG, say) get no size, because a wrong size is worse than none. PNG, JPEG, WebP, TIFF, BMP and GIF are read. If your head already has `og:image:width` or `og:image:height`, at any level, the build leaves it exactly as you wrote it.
+
+The alt text is yours to write, since it describes the picture and only you know what it shows. A layout that gives every page a default card, and lets a page replace it, templates both from state:
+
+```json
+{
+  "state": {
+    "ogImage": { "timing": "compiler", "default": "/og/default.png" },
+    "ogImageAlt": { "timing": "compiler", "default": "The Example card" }
+  },
+  "$head": [
+    {
+      "tagName": "meta",
+      "attributes": { "property": "og:image", "content": "${state.$site.url}${state.ogImage}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": { "property": "og:image:alt", "content": "${state.ogImageAlt}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": { "name": "twitter:image:alt", "content": "${state.ogImageAlt}" }
+    }
+  ]
+}
+```
+
+A page that sets its own `ogImage` and `ogImageAlt` in state changes the image, the alt text and, because the build reads the new file, the size.
 
 ## Package files in `$head`
 
