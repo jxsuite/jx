@@ -637,6 +637,16 @@ export interface CspConfig {
    * an addition means restating the default's sources alongside the new one.
    */
   directives?: Record<string, string | false>;
+  /**
+   * Add sources to a computed directive without restating it. Each entry is appended after the
+   * derived sources, in the order written, and skipped when the directive already names it, so the
+   * generated script hashes and collected origins stay. A directive the policy does not carry is
+   * created from the directive a browser would fall back to (`default-src` for the fetch
+   * directives), so adding to `connect-src` keeps `'self'`. For origins that arrive only at
+   * runtime, such as a widget's second script. A directive named here and in `directives` is a
+   * build error: the replacement is wholesale, so list the sources in it.
+   */
+  sources?: Record<string, string | string[]>;
   /** Where violation reports go. Emits `report-to`, `report-uri` and `Reporting-Endpoints`. */
   reportUri?: string;
 }

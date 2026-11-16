@@ -14,7 +14,7 @@
 import { withBase } from "@jxsuite/schema/asset-paths";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildCspHeaders, normalizeCspConfig } from "./csp.ts";
+import { buildCspHeaders, cspConfigErrors, normalizeCspConfig } from "./csp.ts";
 import type { CspSources } from "./csp.ts";
 import type { HeadersConfig, ProjectConfig } from "@jxsuite/schema/types";
 
@@ -125,6 +125,7 @@ export function buildHeaderRules(
           "policy would block every one of them.",
       );
     } else {
+      errors.push(...cspConfigErrors(cspConfig));
       Object.assign(wide, buildCspHeaders(cspSources, cspConfig, security.frameOptions));
     }
   }

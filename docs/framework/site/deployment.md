@@ -144,6 +144,68 @@ Start with `"csp": "report-only"`. You get `Content-Security-Policy-Report-Only`
 
 A string replaces a directive wholesale, so restate the defaults you still want, and `false` removes it. `reportUri` emits `report-to`, the deprecated-but-widely-implemented `report-uri`, and the `Reporting-Endpoints` header that the first of those needs to mean anything.
 
+### Adding sources to a directive
+
+A string in `directives` replaces a directive wholesale, so using it to add one origin means restating the generated script hashes, which you cannot know. To add without restating, use `sources`. It appends to the policy the build derived and leaves the hashes and the origins it found in place.
+
+This is how you allow something that only appears at runtime. Cloudflare Turnstile loads a script and opens a frame, and Cloudflare Web Analytics is injected at the edge, so neither is in your pages when the build scans them:
+
+```json
+{
+  "build": {
+    "headers": {
+      "security": {
+        "frameOptions": "DENY",
+        "csp": {
+          "sources": {
+            "script-src": [
+              "https://challenges.cloudflare.com",
+              "https://static.cloudflareinsights.com"
+            ],
+            "frame-src": "https://challenges.cloudflare.com"
+          },
+          "directives": { "frame-ancestors": "'none'" }
+        }
+      }
+    }
+  }
+}
+```
+
+The policy that results keeps everything the build derived and adds your origins after it:
+
+```text
+Content-Security-Policy: base-uri 'self'; default-src 'self'; font-src 'self'; form-action 'self';
+  frame-ancestors 'none'; frame-src 'self' https://challenges.cloudflare.com; img-src 'self' data:;
+  object-src 'none'; script-src 'self' 'sha256-…' https://challenges.cloudflare.com https://static.cloudflareinsights.com;
+  style-src 'self' 'unsafe-inline'
+```
+
+A few rules govern it:
+
+- Sources are appended in the order you write them, and one the directive already names is skipped, so listing an origin the build already found does no harm.
+- A value is one source, a space-separated string of sources, or a list.
+- A directive the policy does not have, such as `connect-src`, starts from the directive a browser would fall back to (`default-src` for these), so `'self'` stays. Directives that never fall back, such as `base-uri` or `frame-ancestors`, start from your sources alone.
+- `'none'` is dropped from a directive that gains a source, because a browser ignores it next to anything else.
+- Naming the same directive in `sources` and `directives` is a build error, because the replacement is wholesale. Put the sources in that string instead.
+- A source containing `;` or `,` is a build error. It would end the directive and start another.
+
+### Tightening frame-ancestors
+
+`frame-ancestors` follows `frameOptions`, so `"frameOptions": "DENY"` already gives `frame-ancestors 'none'` and keeps the two framing headers in agreement. To tighten the directive without changing `X-Frame-Options`, or to set it to a specific parent, replace it:
+
+```json
+{
+  "build": {
+    "headers": {
+      "security": { "csp": { "directives": { "frame-ancestors": "'none'" } } }
+    }
+  }
+}
+```
+
+`frame-ancestors` is the one a browser obeys when both headers are present, so make sure the two say the same thing.
+
 ## Manifest and security.txt
 
 Two files a site is usually expected to publish. Both are generated from the project file, and both step aside if you put your own copy in `public/`.

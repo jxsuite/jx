@@ -2345,6 +2345,94 @@ describe("buildSite — the emitted policy authorizes the page it was built from
   }, 30_000);
 });
 
+// ── csp.sources over a real build, on every adapter ──────────────────────────
+
+describe("buildSite — csp.sources reaches _headers on every adapter", () => {
+  const SRC_TMP = resolve(import.meta.dir, "__test-site-csp-sources__");
+
+  /*
+   * A site that needs Turnstile and Cloudflare Web Analytics, which arrive at runtime and so are
+   * not in the markup the build scans, and that forbids framing outright.
+   */
+  const security = {
+    csp: {
+      directives: { "frame-ancestors": "'none'" },
+      sources: {
+        "frame-src": "https://challenges.cloudflare.com",
+        "script-src": [
+          "https://challenges.cloudflare.com",
+          "https://static.cloudflareinsights.com",
+        ],
+      },
+    },
+    frameOptions: "DENY",
+  };
+
+  const buildWith = async (adapter: string | undefined) => {
+    rmSync(SRC_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(SRC_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(SRC_TMP, "project.json"),
+      JSON.stringify({
+        $media: { dark: "(prefers-color-scheme: dark)" },
+        build: { adapter, headers: { security }, outDir: "./dist" },
+        name: "CSP Sources",
+        url: "https://csp-sources.example",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(SRC_TMP, "pages/index.json"),
+      JSON.stringify({
+        children: [{ tagName: "p", textContent: "hi" }],
+        tagName: "main",
+        title: "Home",
+      }),
+      "utf8",
+    );
+    const result = await buildSite(SRC_TMP, { verbose: false });
+    const html = readFileSync(resolve(SRC_TMP, "dist/index.html"), "utf8");
+    const headers = readFileSync(resolve(SRC_TMP, "dist/_headers"), "utf8");
+    return { headers, html, result };
+  };
+
+  afterAll(() => {
+    rmSync(SRC_TMP, { force: true, recursive: true });
+  });
+
+  for (const adapter of [
+    undefined,
+    "static",
+    "cloudflare-pages",
+    "cloudflare-workers",
+    "node",
+    "bun",
+  ]) {
+    it(`emits the full policy under adapter ${String(adapter)}`, async () => {
+      const warn = spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { headers, html, result } = await buildWith(adapter);
+        expect(result.errors).toHaveLength(0);
+        const csp = /\n {2}Content-Security-Policy: (.*)/.exec(headers)?.[1] ?? "";
+        const hashes = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
+          .flatMap((m) =>
+            /\bsrc\s*=/.test(m[0]) || /ld\+json/.test(m[0]) ? [] : [hashOf(m[1] ?? "")],
+          )
+          .toSorted();
+        expect(hashes.length).toBeGreaterThan(0);
+        expect(csp).toContain(
+          `script-src 'self' ${hashes.join(" ")} https://challenges.cloudflare.com https://static.cloudflareinsights.com`,
+        );
+        expect(csp).toContain("frame-src 'self' https://challenges.cloudflare.com;");
+        expect(csp).toContain("frame-ancestors 'none'");
+        expect(headers).toContain("X-Frame-Options: DENY");
+      } finally {
+        warn.mockRestore();
+      }
+    }, 60_000);
+  }
+});
+
 // ── Locale routing ───────────────────────────────────────────────────────────
 
 describe("buildSite — locale routing", () => {

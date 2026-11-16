@@ -190,6 +190,24 @@ export const projectConfigSchema = {
                         },
                         mode: { default: "enforce", enum: ["enforce", "report-only"] },
                         reportUri: { format: "uri-reference", type: "string" },
+                        sources: {
+                          additionalProperties: {
+                            oneOf: [
+                              { type: "string" },
+                              { items: { type: "string" }, type: "array" },
+                            ],
+                          },
+                          description:
+                            "Add sources to a computed directive without restating it. Each " +
+                            "entry is appended after the derived sources (the script hashes and " +
+                            "collected origins stay), skipped if already present. A directive " +
+                            "the policy does not carry is created from the one a browser falls " +
+                            "back to, `default-src` for the fetch directives. For origins that " +
+                            "arrive only at runtime. A directive named here and in `directives` " +
+                            "is a build error.",
+                          propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9-]*$" },
+                          type: "object",
+                        },
                       },
                       type: "object",
                     },
