@@ -6,6 +6,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
+import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
 import type { ImageConfig, JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { parseProjectSource } from "@jxsuite/schema/project-file";
@@ -43,7 +44,7 @@ const DEFAULTS = {
     trailingSlash: "always",
   },
   defaults: {
-    charset: "utf8",
+    charset: DEFAULT_CHARSET,
     lang: "en",
     layout: null,
   },

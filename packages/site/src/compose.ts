@@ -398,6 +398,9 @@ export async function composePage(
   if (config.name !== undefined) {
     headContext.siteName = config.name;
   }
+  if (config.defaults?.charset !== undefined) {
+    headContext.charset = config.defaults.charset;
+  }
   const head = mergeHead(siteHead, layoutHead, pageHead, headContext);
 
   /* `$head` is merged out of the document and rendered into the shell, so leaving it on the

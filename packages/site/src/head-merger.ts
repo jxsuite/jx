@@ -19,6 +19,7 @@
  */
 
 import { siteAbsoluteUrl } from "@jxsuite/schema/asset-paths";
+import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocumentValue, JxHeadEntry } from "@jxsuite/schema/types";
 
@@ -35,6 +36,10 @@ export interface HeadMergeContext {
   title?: string;
   siteName?: string;
   lang?: string;
+  /**
+   * The `<meta charset>` value; the HTML Standard's `utf-8` when absent (site-architecture.md
+   * §3.1).
+   */
   charset?: string;
   url?: string;
   siteUrl?: string;
@@ -94,7 +99,7 @@ export function mergeHead(
 ) {
   // Start with auto-injected defaults
   const defaults: JxHeadEntry[] = [
-    { attributes: { charset: context.charset ?? "utf8" }, tagName: "meta" },
+    { attributes: { charset: context.charset ?? DEFAULT_CHARSET }, tagName: "meta" },
     {
       attributes: {
         content: "width=device-width, initial-scale=1",

@@ -456,7 +456,8 @@ export type JxStateDefinition =
 
 /** An expanded signal (`{ default }`), pure type definition, or naked plain object. */
 export interface JxStateObject {
-  type?: string;
+  /** A primitive's name, or a JSON Schema: a `#/$defs/<Name>` reference or an inline schema. */
+  type?: string | JsonObject;
   default?: JsonValue;
   properties?: Record<string, JxStateObject>;
   items?: JxStateObject | JxStateObject[];

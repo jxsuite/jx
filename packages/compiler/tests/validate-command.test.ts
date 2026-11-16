@@ -448,3 +448,154 @@ describe("validateProjectTree", () => {
     }
   });
 });
+
+describe("validateProjectTree: type references", () => {
+  const ROOT = resolve(import.meta.dir, "__test-validate-typerefs__");
+  const baseProject = {
+    $defs: {
+      Address: { properties: { zip: { type: "string" } }, type: "object" },
+      Count: { type: "integer" },
+      List: { items: { $ref: "#/$defs/Address" }, type: "array" },
+    },
+    extensions: ["@jxsuite/parser"],
+    name: "Type References Fixture",
+  };
+
+  function put(relPath: string, content: JsonValue) {
+    const abs = resolve(ROOT, relPath);
+    mkdirSync(resolve(abs, ".."), { recursive: true });
+    writeFileSync(abs, JSON.stringify(content, null, 2), "utf8");
+  }
+
+  beforeAll(async () => {
+    rmSync(ROOT, { force: true, recursive: true });
+    put("project.json", baseProject);
+    put("pages/index.json", {
+      $defs: { Count: { type: "number" } },
+      children: [],
+      state: {
+        address: { default: {}, type: { $ref: "#/$defs/Address" } },
+        count: { default: 0, type: { $ref: "#/$defs/Count" } },
+        zip: { default: "", type: { $ref: "#/$defs/Address/properties/zip" } },
+      },
+      tagName: "main",
+    });
+    put("components/x-card.json", {
+      children: [],
+      state: { address: { default: {}, type: { $ref: "#/$defs/Address" } } },
+      tagName: "x-card",
+    });
+    await writeProjectSchemas(ROOT);
+  });
+
+  afterAll(() => {
+    rmSync(ROOT, { force: true, recursive: true });
+  });
+
+  it("a reference resolves in the document's $defs, then the project's, in pages and components alike", async () => {
+    const result = await validateProjectTree(ROOT);
+    expect(result.issues).toEqual([]);
+    expect(result.valid).toBe(true);
+  });
+
+  it("a reference neither defines is an issue at its instance path", async () => {
+    put("pages/broken.json", {
+      children: [],
+      state: {
+        tags: {
+          default: [],
+          type: { items: { $ref: "#/$defs/Tag" }, type: "array" },
+        },
+      },
+      tagName: "main",
+    });
+    try {
+      const result = await validateProjectTree(ROOT);
+      expect(result.valid).toBe(false);
+      const issue = result.issues.find((entry) => entry.file === "pages/broken.json");
+      expect(issue?.errors).toEqual([
+        {
+          instancePath: "/state/tags/type/items/$ref",
+          message:
+            "type reference \"#/$defs/Tag\" names no definition in this document's $defs or in project.json's $defs",
+        },
+      ]);
+      expect(formatProjectTreeIssues(result).join("\n")).toContain(
+        '  - /state/tags/type/items/$ref: type reference "#/$defs/Tag"',
+      );
+    } finally {
+      rmSync(resolve(ROOT, "pages/broken.json"), { force: true });
+    }
+  });
+
+  it("a document's definition shadows the project's whole definition", async () => {
+    put("pages/shadow.json", {
+      $defs: { Address: { type: "string" } },
+      children: [],
+      state: { zip: { default: "", type: { $ref: "#/$defs/Address/properties/zip" } } },
+      tagName: "main",
+    });
+    try {
+      const result = await validateProjectTree(ROOT);
+      expect(result.issues.map((issue) => issue.file)).toEqual(["pages/shadow.json"]);
+    } finally {
+      rmSync(resolve(ROOT, "pages/shadow.json"), { force: true });
+    }
+  });
+
+  it("project.json's own definitions resolve against the project alone", async () => {
+    put("project.json", {
+      ...baseProject,
+      $defs: { ...baseProject.$defs, List: { items: { $ref: "#/$defs/Nope" }, type: "array" } },
+    });
+    try {
+      const result = await validateProjectTree(ROOT);
+      expect(result.valid).toBe(false);
+      expect(result.issues.map((issue) => issue.file)).toEqual(["project.json"]);
+      const text = formatProjectTreeIssues(result).join("\n");
+      expect(text).toContain('  - /$defs/List/items/$ref: type reference "#/$defs/Nope"');
+      expect(text.match(/project\.json:/g)).toHaveLength(1);
+    } finally {
+      put("project.json", baseProject);
+    }
+  });
+
+  it("an invalid project.json that also has a dangling reference is printed once", async () => {
+    put("project.json", {
+      ...baseProject,
+      $defs: { Bad: { $ref: "#/$defs/Nope" } },
+      name: 42,
+    });
+    try {
+      const result = await validateProjectTree(ROOT);
+      const issues = result.issues.filter((issue) => issue.file === "project.json");
+      expect(issues).toHaveLength(1);
+      expect(JSON.stringify(issues[0]?.errors)).toContain("type reference");
+    } finally {
+      put("project.json", baseProject);
+    }
+  });
+
+  it("a project.json the loader refuses does not stop the walks before walk 5", async () => {
+    put("project.json", { ...baseProject, build: { adapter: "nope" } });
+    try {
+      // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+      await expect(validateProjectTree(ROOT)).rejects.toThrow("Unknown build adapter");
+    } finally {
+      put("project.json", baseProject);
+    }
+  });
+
+  it("a project.json with no object $defs judges a document against its own", async () => {
+    put("project.json", { extensions: ["@jxsuite/parser"], name: "No Defs" });
+    try {
+      const result = await validateProjectTree(ROOT);
+      expect(result.issues.map((issue) => issue.file)).toEqual([
+        "components/x-card.json",
+        "pages/index.json",
+      ]);
+    } finally {
+      put("project.json", baseProject);
+    }
+  });
+});

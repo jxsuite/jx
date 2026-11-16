@@ -39,6 +39,7 @@ import {
 } from "@jxsuite/schema/guards";
 import { cemManifest, cemManifestText } from "@jxsuite/schema/cem-manifest";
 import type { CemDefinition } from "@jxsuite/schema/cem-manifest";
+import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
 import { errorMessage } from "@jxsuite/schema/parse";
 import {
   isNpmSpecifier,
@@ -2064,7 +2065,7 @@ async function compilePage(
   // Merge $head from site + layout + page
   const mergedHeadBase = mergeHead(resolvedSiteHead, resolvedLayoutHead, resolvedPageHead, {
     title,
-    charset: projectConfig.defaults.charset ?? "utf8",
+    charset: projectConfig.defaults.charset ?? DEFAULT_CHARSET,
     siteName: projectConfig.name,
     siteUrl: projectConfig.url,
     ...(locale.alternates.length > 0 && { alternates: locale.alternates }),

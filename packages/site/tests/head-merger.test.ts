@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mergeHead, renderHead, withPageDescription } from "../src/head-merger.ts";
 import type { AuthoredHeadEntry } from "../src/head-merger.ts";
+import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
 import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { JxHeadEntry } from "@jxsuite/schema/types";
 
@@ -10,11 +11,12 @@ describe("mergeHead", () => {
   test("auto-injects charset and viewport defaults", () => {
     const result = mergeHead();
     const charsetEntry = result.find(
-      (e) => e.tagName === "meta" && e.attributes?.charset === "utf8",
+      (e) => e.tagName === "meta" && e.attributes?.charset === DEFAULT_CHARSET,
     );
     const viewportEntry = result.find((e) => e.attributes?.name === "viewport");
     expect(charsetEntry).toBeDefined();
     expect(viewportEntry).toBeDefined();
+    expect(renderHead(mergeHead())).toContain('<meta charset="utf-8">');
   });
 
   test("injects title from context", () => {

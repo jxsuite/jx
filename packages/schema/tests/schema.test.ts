@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_CHARSET } from "../defs";
 import { isJsonObject } from "../src/guards";
 import {
   generateClassSchema,
@@ -18,6 +19,15 @@ function pick(value: JsonValue | undefined, ...keys: string[]): JsonValue | unde
 }
 
 // ─── generateProjectSchema ──────────────────────────────────────────────────
+
+// oxlint-disable-next-line unicorn/text-encoding-identifier-case -- an HTML charset label, not a Buffer encoding.
+const HTML_CHARSET = "utf-8";
+
+test("the project schema's charset default is the HTML Standard's utf-8", () => {
+  expect(DEFAULT_CHARSET).toBe(HTML_CHARSET);
+  const { charset } = generateProjectSchema().properties.defaults.properties;
+  expect(charset.default).toBe(DEFAULT_CHARSET);
+});
 
 describe("generateProjectSchema", () => {
   const schema = generateProjectSchema();

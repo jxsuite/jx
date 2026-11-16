@@ -16,6 +16,7 @@ import {
   unionElements,
 } from "../src/compose.ts";
 import type { PageRoute, SiteIO } from "../src/compose.ts";
+import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
@@ -147,6 +148,18 @@ describe("composePage", () => {
   test("a page with no layout composes to itself", async () => {
     const page = await compose({ "pages/index.json": PAGE });
     expect(page.doc.tagName).toBe("main");
+  });
+
+  test("defaults.charset reaches the merged head, and utf-8 when it is unset", async () => {
+    const charsets = (head: Awaited<ReturnType<typeof compose>>["head"]) =>
+      head.filter((e) => e.attributes?.charset !== undefined).map((e) => e.attributes?.charset);
+    const declared = await compose(
+      { "pages/index.json": PAGE },
+      { defaults: { charset: "iso-8859-1" } },
+    );
+    expect(charsets(declared.head)).toEqual(["iso-8859-1"]);
+    const unset = await compose({ "pages/index.json": PAGE });
+    expect(charsets(unset.head)).toEqual([DEFAULT_CHARSET]);
   });
 
   test("a page-declared $element survives layout resolution", async () => {

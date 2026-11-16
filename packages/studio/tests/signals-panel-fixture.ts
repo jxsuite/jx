@@ -90,6 +90,8 @@ export interface DrawOptions {
   refreshData?: boolean;
   /** The document's path, which is what `$params` are derived from. */
   documentPath?: string;
+  /** The document's own `$defs`, which its data shapes are read from. */
+  defs?: JsonObject;
 }
 
 /**
@@ -106,6 +108,7 @@ export async function drawSignals(
      draw would keep painting into a container this test has moved on from. */
   clearSignalPanels();
   resetWorkspaceWithTab({
+    ...(options.defs !== undefined && { $defs: options.defs }),
     children: [],
     state,
     tagName: options.tagName ?? "div",

@@ -110,7 +110,7 @@
   "description": "Schema for Jx project.json files. A project.json file is the root anchor file for a Jx project, declaring site metadata, default settings, global styles, extensions, and build configuration. Open by design: extension-contributed sections are opaque top-level keys; the generated per-project entry document (project.schema.json) closes the composition.",
   "properties": {
     "$defs": {
-      "description": "Global type definitions available to all pages.",
+      "description": "JSON Schema type definitions, tooling only. A document's #/$defs/Name reference resolves here when the document does not define Name itself.",
       "type": "object"
     },
     "$elements": {
@@ -461,8 +461,8 @@
       "description": "Default settings applied to all pages unless overridden.",
       "properties": {
         "charset": {
-          "default": "utf8",
-          "description": "Default charset for the page.",
+          "default": "utf-8",
+          "description": "The <meta charset> every page declares. The HTML Standard allows only utf-8, which is the default.",
           "type": "string"
         },
         "dir": {

@@ -7,6 +7,7 @@ spec:
 code:
   - packages/site/src/context.ts
   - packages/compiler/src/site/context-injection.ts
+  - packages/schema/src/type-refs.ts
   - packages/schema/schemas/project.core.schema.json
   - extensions/connector/schemas/project.fragment.schema.json
   - extensions/auth/schemas/project.fragment.schema.json
@@ -83,7 +84,7 @@ Enabled extensions add sections of their own alongside these. The first-party on
 
 ## Identity and defaults
 
-`name` and `url` identify the site: `name` is the fallback `<title>` and is exposed to every page as `$site.name`; `url` anchors canonical URLs and sitemap entries. `defaults.layout` wraps every page that doesn't declare its own `$layout` (a page can opt out with `"$layout": false`), and `defaults.lang` sets `<html lang>` site-wide.
+`name` and `url` identify the site: `name` is the fallback `<title>` and is exposed to every page as `$site.name`; `url` anchors canonical URLs and sitemap entries. `defaults.layout` wraps every page that doesn't declare its own `$layout` (a page can opt out with `"$layout": false`), and `defaults.lang` sets `<html lang>` site-wide. `defaults.charset` sets `<meta charset>` on every page and defaults to `utf-8`, the only encoding the HTML Standard allows.
 
 ## Global head entries
 
@@ -135,7 +136,7 @@ Every component in the project can reference `var(--color-accent)` and use `"@--
 }
 ```
 
-`$defs` holds reusable [JSON Schema type definitions](/docs/framework/concepts/documents), such as shapes for API responses, CMS payloads, or shared value types, that any document in the project can reference, the project-wide counterpart of a document's own `$defs`.
+`$defs` holds reusable [JSON Schema type definitions](/docs/framework/concepts/documents), such as shapes for API responses, CMS payloads, or shared value types. A document that references `#/$defs/<Name>` without defining `<Name>` itself gets the project's definition, so a shape declared here is available in every page, layout and component, and a document's own definition of the same name wins. Types are for tooling only and never reach the built page: `jx validate` fails a reference that neither the document nor `project.json` defines, and Studio's Data panel offers these shapes as a value's type.
 
 ## Content types
 
