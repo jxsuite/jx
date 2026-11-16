@@ -220,7 +220,8 @@
       "aiChatUrl()",
       "writeFile(\"project.json\")",
       "readFile(\"project.json\")",
-      "listExtensionCatalog()"
+      "listExtensionCatalog()",
+      "gitStatus()"
     ],
     "projectRoot": "/proj",
     "sessions": {

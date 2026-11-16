@@ -50,6 +50,7 @@ Document edits follow Studio's normal editing rules:
 
 - They go into the page's undo history as **one step per request**, so :kbd[⌘Z] (macOS) or :kbd[Ctrl+Z] (Windows/Linux) rolls back the assistant's whole last reply on that page. If a request switched between pages, each page gets its own single step, including the second page. If you edit the same page yourself while the assistant is still working, your edit is a step of its own, between the assistant's changes made before it and those made after it, and undo takes them back one at a time, newest first.
 - They live in the open editor, not on disk: the tab is marked unsaved until you save it, and closing without saving discards them.
+- Whatever the assistant writes to disk shows up in the **Publish** workspace as soon as the tool call finishes: the change count and the Review changes list update on their own, with no need to press refresh.
 
 The full review workflow (including the file-level changes that _don't_ work this way) is covered in **[Review and undo edits](/docs/studio/ai/chat#review-and-undo-edits)**.
 

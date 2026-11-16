@@ -220,6 +220,7 @@
       "writeFile(\"project.json\")",
       "readFile(\"project.json\")",
       "listExtensionCatalog()",
+      "gitStatus()",
       "writeFile(\"project.json\")"
     ],
     "projectRoot": "/proj",
