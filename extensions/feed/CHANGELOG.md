@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.12](https://github.com/jxsuite/jx/compare/feed-v0.5.11...feed-v0.5.12) (2026-11-17)
+
+
+### Bug Fixes
+
+* **feed:** stamp an empty feed's updated with the build time, not 1970 ([#693](https://github.com/jxsuite/jx/issues/693)) ([6d82a6c](https://github.com/jxsuite/jx/commit/6d82a6c70960a099c1e14497f58aee4f09f53920))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.1.0
+
 ## [0.5.11](https://github.com/jxsuite/jx/compare/feed-v0.5.10...feed-v0.5.11) (2026-11-15)
 
 

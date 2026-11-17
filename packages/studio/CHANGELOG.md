@@ -1,5 +1,38 @@
 # Changelog
 
+## [13.1.0](https://github.com/jxsuite/jx/compare/studio-v13.0.0...studio-v13.1.0) (2026-11-17)
+
+
+### Features
+
+* **compiler:** csp.sources adds origins to a derived directive ([#694](https://github.com/jxsuite/jx/issues/694)) ([6a6d072](https://github.com/jxsuite/jx/commit/6a6d0725a95c41e629e38461480382ebe7868a34))
+* **site:** $page describes the page, so a layout reads its own title and description ([#699](https://github.com/jxsuite/jx/issues/699)) ([08f24b3](https://github.com/jxsuite/jx/commit/08f24b313a170dd453898f942e13ea19f2fdff1c))
+* **site:** every layout in a nested chain contributes its head, and a layout cycle is an error ([#695](https://github.com/jxsuite/jx/issues/695)) ([1227f29](https://github.com/jxsuite/jx/commit/1227f295c6374221f6248fadd2170ea286381012))
+* **site:** resolve project defs and default the page charset to utf-8 ([#696](https://github.com/jxsuite/jx/issues/696)) ([41b54fc](https://github.com/jxsuite/jx/commit/41b54fc23c806cee10f85e915d3f2f50d52c69a3))
+
+
+### Bug Fixes
+
+* **site:** keep a page's title off its root element and warn on unrendered head keys ([#698](https://github.com/jxsuite/jx/issues/698)) ([84f1971](https://github.com/jxsuite/jx/commit/84f1971d88a8efeecf3a217daefe0e26e5bdfda1))
+* **studio:** refresh source control after every assistant tool call ([#689](https://github.com/jxsuite/jx/issues/689)) ([7358425](https://github.com/jxsuite/jx/commit/73584251b87e1cf02e65ff0f95a6a5a1bf59bdc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.1
+    * @jxsuite/collab bumped to 0.12.5
+    * @jxsuite/create bumped to 1.8.6
+    * @jxsuite/erase bumped to 0.3.5
+    * @jxsuite/formulas bumped to 0.0.38
+    * @jxsuite/markup bumped to 1.0.14
+    * @jxsuite/protocol bumped to 6.6.1
+    * @jxsuite/runtime bumped to 9.0.1
+    * @jxsuite/schema bumped to 8.1.0
+    * @jxsuite/site bumped to 4.1.0
+    * @jxsuite/ui bumped to 0.15.0
+
 ## [13.0.0](https://github.com/jxsuite/jx/compare/studio-v12.0.0...studio-v13.0.0) (2026-11-15)
 
 

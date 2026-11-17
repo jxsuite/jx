@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.9.10-draft\
+**Version:** 0.9.19-draft\
 **Status:** Partial\
-**Updated:** 2026-11-15\
+**Updated:** 2026-11-17\
 **License:** MIT
 
 ---
@@ -2477,6 +2477,15 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.9.19-draft** (2026-11-17) — §5.5: $page describes the page and never its layout, so $page.title is the page's own title as its title element shows it, resolved in the build before a layout reads it, $page.description carries the page's description meta and $page.locale follows the page's own $lang; the live preview gives a dynamic page its concrete URL and named parameters; the $page.$head, $page.frontmatter and $site.$head rows are dropped because nothing reads them.
+- **0.9.18-draft** (2026-11-17) — A page's title property is never rendered as its root element's title attribute, with or without a layout, and the build warns once about a head entry key it does not render: a top-level attribute-like key, or a title entry.
+- **0.9.17-draft** (2026-11-17) — §5.4: every layout in a nested chain contributes its head entries to the layout level of the head merge, outermost first, a layout's title is never the page title at any depth, and a layout cycle is an error naming the chain.
+- **0.9.16-draft** (2026-11-17) — §3.1: a document's #/$defs/Name type reference resolves against project.json's $defs when the document does not define the name, checked by jx validate and offered by Studio's Data panel; defaults.charset defaults to utf-8 in the schema, the build and the live preview; the property table names every core key; §10.2 lists type definitions, and §16 records the JSON Schema divergence and binds the HTML Standard's charset rule to §3.1.
+- **0.9.15-draft** (2026-11-17) — §14.3.1: csp.sources appends origins to a derived directive without restating its hashes, creating one from its fallback when absent, and composes with directives; naming a directive in both is a build error.
+- **0.9.14-draft** (2026-11-17) — §6.7: a feed with no dated item, an empty collection included, reports the build time (SOURCE_DATE_EPOCH when set) in its Atom updated element instead of the Unix epoch.
+- **0.9.13-draft** (2026-11-17) — §13.6: every adapter's worker negotiates the root of a site with more than one locale or with prefix-always, cloudflare-pages included and under the deployment base, and a wildcard is skipped when another range follows it and otherwise answers defaultLocale, which resolved locales now always list first.
+- **0.9.12-draft** (2026-11-17) — §8.4.4: the build states og:image:width and og:image:height from the local image file named by og:image (an author-supplied size wins), and the og:image:alt recipe is state-templated head entries.
+- **0.9.11-draft** (2026-11-17) — The project, layout, page, templated-metadata and structured-data examples use the head-entry shape the build reads, with HTML attributes under attributes and the page title as the document's title property; a layout is body content that registers its chrome in its elements list, and a title entry in any head list is discarded.
 - **0.9.10-draft** (2026-11-15) — content asset references: an entry may name its collection's asset by published address, which is remapped when the file is on disk (parser.md §9.2).
 - **0.9.9-draft** (2026-11-15) — 8.7: every page import map carries the prefix keys, and the subpath scan covers compiled component and page modules.
 - **0.9.8-draft** (2026-11-15) — §12.4 a page also uses a component when a live component the page loads renders it.

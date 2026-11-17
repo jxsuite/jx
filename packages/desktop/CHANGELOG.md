@@ -1,5 +1,28 @@
 # Changelog
 
+## [9.4.0](https://github.com/jxsuite/jx/compare/desktop-v9.3.2...desktop-v9.4.0) (2026-11-17)
+
+
+### Features
+
+* **desktop:** declare the Mac App Store build's export compliance in the app ([9158522](https://github.com/jxsuite/jx/commit/91585227d5b98bdca093af1f02611a7e8192d9e7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 11.1.0
+    * @jxsuite/create bumped to 1.8.6
+    * @jxsuite/protocol bumped to 6.6.1
+    * @jxsuite/schema bumped to 8.1.0
+    * @jxsuite/server bumped to 9.2.1
+    * @jxsuite/starters bumped to 5.1.0
+    * @jxsuite/studio bumped to 13.1.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.2.1
+    * @jxsuite/ui bumped to 0.15.0
+
 ## [9.3.2](https://github.com/jxsuite/jx/compare/desktop-v9.3.1...desktop-v9.3.2) (2026-11-15)
 
 

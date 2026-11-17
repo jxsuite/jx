@@ -1,5 +1,27 @@
 # Changelog
 
+## [4.1.0](https://github.com/jxsuite/jx/compare/site-v4.0.0...site-v4.1.0) (2026-11-17)
+
+
+### Features
+
+* **site:** $page describes the page, so a layout reads its own title and description ([#699](https://github.com/jxsuite/jx/issues/699)) ([08f24b3](https://github.com/jxsuite/jx/commit/08f24b313a170dd453898f942e13ea19f2fdff1c))
+* **site:** every layout in a nested chain contributes its head, and a layout cycle is an error ([#695](https://github.com/jxsuite/jx/issues/695)) ([1227f29](https://github.com/jxsuite/jx/commit/1227f295c6374221f6248fadd2170ea286381012))
+* **site:** resolve project defs and default the page charset to utf-8 ([#696](https://github.com/jxsuite/jx/issues/696)) ([41b54fc](https://github.com/jxsuite/jx/commit/41b54fc23c806cee10f85e915d3f2f50d52c69a3))
+
+
+### Bug Fixes
+
+* **site:** keep a page's title off its root element and warn on unrendered head keys ([#698](https://github.com/jxsuite/jx/issues/698)) ([84f1971](https://github.com/jxsuite/jx/commit/84f1971d88a8efeecf3a217daefe0e26e5bdfda1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 9.0.1
+    * @jxsuite/schema bumped to 8.1.0
+
 ## [4.0.0](https://github.com/jxsuite/jx/compare/site-v3.0.0...site-v4.0.0) (2026-11-15)
 
 

@@ -1,5 +1,38 @@
 # Changelog
 
+## [11.1.0](https://github.com/jxsuite/jx/compare/compiler-v11.0.0...compiler-v11.1.0) (2026-11-17)
+
+
+### Features
+
+* **compiler:** csp.sources adds origins to a derived directive ([#694](https://github.com/jxsuite/jx/issues/694)) ([6a6d072](https://github.com/jxsuite/jx/commit/6a6d0725a95c41e629e38461480382ebe7868a34))
+* **compiler:** state og:image:width and og:image:height from the local image file ([#691](https://github.com/jxsuite/jx/issues/691)) ([bb8d269](https://github.com/jxsuite/jx/commit/bb8d2691ed1f00213ed3f591f72158e735d3d67d))
+* **site:** $page describes the page, so a layout reads its own title and description ([#699](https://github.com/jxsuite/jx/issues/699)) ([08f24b3](https://github.com/jxsuite/jx/commit/08f24b313a170dd453898f942e13ea19f2fdff1c))
+* **site:** every layout in a nested chain contributes its head, and a layout cycle is an error ([#695](https://github.com/jxsuite/jx/issues/695)) ([1227f29](https://github.com/jxsuite/jx/commit/1227f295c6374221f6248fadd2170ea286381012))
+* **site:** resolve project defs and default the page charset to utf-8 ([#696](https://github.com/jxsuite/jx/issues/696)) ([41b54fc](https://github.com/jxsuite/jx/commit/41b54fc23c806cee10f85e915d3f2f50d52c69a3))
+
+
+### Bug Fixes
+
+* **compiler:** negotiate a multilingual site's root under every adapter and base ([#692](https://github.com/jxsuite/jx/issues/692)) ([8e1adbe](https://github.com/jxsuite/jx/commit/8e1adbe75a22fd2bb28dd1f81ffba070825eb5f4))
+* **compiler:** write no whitespace between inline siblings or beside text ([#697](https://github.com/jxsuite/jx/issues/697)) ([b6c045e](https://github.com/jxsuite/jx/commit/b6c045e2264ac6610841baa2a5ecb390ee06ba9a))
+* **feed:** stamp an empty feed's updated with the build time, not 1970 ([#693](https://github.com/jxsuite/jx/issues/693)) ([6d82a6c](https://github.com/jxsuite/jx/commit/6d82a6c70960a099c1e14497f58aee4f09f53920))
+* **site:** keep a page's title off its root element and warn on unrendered head keys ([#698](https://github.com/jxsuite/jx/issues/698)) ([84f1971](https://github.com/jxsuite/jx/commit/84f1971d88a8efeecf3a217daefe0e26e5bdfda1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.8.6
+    * @jxsuite/erase bumped to 0.3.5
+    * @jxsuite/runtime bumped to 9.0.1
+    * @jxsuite/schema bumped to 8.1.0
+    * @jxsuite/site bumped to 4.1.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.14
+    * @jxsuite/parser bumped to 5.2.1
+
 ## [11.0.0](https://github.com/jxsuite/jx/compare/compiler-v10.0.0...compiler-v11.0.0) (2026-11-15)
 
 
