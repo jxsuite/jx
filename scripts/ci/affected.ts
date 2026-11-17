@@ -314,6 +314,30 @@ export function buildsAddon(changed: readonly string[]): boolean {
   return changed.some((path) => matches(path, ADDON_INPUTS));
 }
 
+/**
+ * What the kit's compiled distribution (`bun run build:ui`) is built from, besides the workspaces
+ * it imports. The build runs on Windows too, because a desktop release builds it there and a path
+ * that is fine on every other platform is a syntax error in a generated module on that one. Only a
+ * release exercised it before, so the first failure arrived with a desktop build.
+ */
+const KIT_INPUTS = [
+  "scripts/build-ui-dist.ts",
+  "scripts/build-ui-dist.test.ts",
+  ".github/workflows/test.yml",
+];
+
+/** The workspaces whose source `build:ui` compiles or bundles. */
+const KIT_SEEDS = ["packages/ui", "packages/compiler"];
+
+/** Whether a diff can change what the kit's build produces or how it runs on a Windows runner. */
+export function buildsKit(changed: readonly string[], workspaces: Workspace[]): boolean {
+  const inputs = dependencyClosure(workspaces, KIT_SEEDS);
+  return changed.some((path) => {
+    const owner = owningWorkspace(path, workspaces);
+    return matches(path, KIT_INPUTS) || (owner !== undefined && inputs.has(owner));
+  });
+}
+
 interface Decision {
   mode: "all" | "affected";
   reason: string;
@@ -457,6 +481,8 @@ async function main(): Promise<void> {
   let decision: Decision;
   // A release builds every platform itself (publish.yml), so only a pull request asks here.
   let addon = false;
+  // A push to main builds the kit on Windows like every other job: it is the safety net.
+  let kit = Boolean(event) && event !== "pull_request";
 
   if (event && event !== "pull_request") {
     // Push to main, the nightly cron, and manual dispatch all run everything. This is the
@@ -472,6 +498,7 @@ async function main(): Promise<void> {
   } else {
     const changed = await changedFiles();
     addon = buildsAddon(changed);
+    kit = buildsKit(changed, workspaces);
     decision =
       changed.length === 0 && event
         ? {
@@ -496,6 +523,7 @@ async function main(): Promise<void> {
     gate_lens_mutants: String(decision.lensMutants),
     gate_bundle: JSON.stringify(decision.bundles),
     gate_addon: String(addon),
+    gate_kit_windows: String(kit),
     has_bundle: String(decision.bundles.length > 0),
   } satisfies Record<string, string>;
 

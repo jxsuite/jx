@@ -57,6 +57,9 @@ Part of the compiler is written in Rust and loaded as a native addon. Today that
 - A build that optimizes an image fails without the addon, and the error names the command above. A site with no images never loads it.
 - Test suites do not need it. Every suite except that package's own and the desktop app's replaces the addon with a double, so `bun run verify` works on a machine with no Rust unless your change reaches one of those two.
 - A pull request that changes `packages/compiler-binding` builds the addon for all eight platforms a release ships, and loads it on the six that a CI runner can execute. You do not need to cross-compile locally.
+
+The UI kit's compiled distribution (`bun run build:ui`) is also built on a Windows runner by any pull request that changes the kit, the compiler, what they import or the build script, because a desktop release builds it there and a path that is fine on Linux can be a syntax error in a generated module on Windows. You do not need a Windows machine to find out.
+
 - After changing a crate, run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and `cargo test --workspace --locked` from `packages/compiler-binding`. CI runs the same three.
 
 Two tools measure a change to the compiler, and both work on every project in the repository (the starters, the sites and `examples`):
