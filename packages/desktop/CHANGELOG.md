@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.4.1](https://github.com/jxsuite/jx/compare/desktop-v9.4.0...desktop-v9.4.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **desktop:** stop declaring export compliance in the app ([#702](https://github.com/jxsuite/jx/issues/702)) ([8229b25](https://github.com/jxsuite/jx/commit/8229b255468ceeb72c3f05fca3f4b27ca3f7955d))
+
 ## [9.4.0](https://github.com/jxsuite/jx/compare/desktop-v9.3.2...desktop-v9.4.0) (2026-11-17)
 
 
