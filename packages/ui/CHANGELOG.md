@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.15.0](https://github.com/jxsuite/jx/compare/ui-v0.14.0...ui-v0.15.0) (2026-11-17)
+
+
+### Features
+
+* **compiler:** csp.sources adds origins to a derived directive ([#694](https://github.com/jxsuite/jx/issues/694)) ([6a6d072](https://github.com/jxsuite/jx/commit/6a6d0725a95c41e629e38461480382ebe7868a34))
+* **site:** resolve project defs and default the page charset to utf-8 ([#696](https://github.com/jxsuite/jx/issues/696)) ([41b54fc](https://github.com/jxsuite/jx/commit/41b54fc23c806cee10f85e915d3f2f50d52c69a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 9.0.1
+    * @jxsuite/schema bumped to 8.1.0
+
 ## [0.14.0](https://github.com/jxsuite/jx/compare/ui-v0.13.0...ui-v0.14.0) (2026-11-15)
 
 

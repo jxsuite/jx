@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.8.6](https://github.com/jxsuite/jx/compare/create-v1.8.5...create-v1.8.6) (2026-11-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.1.0
+    * @jxsuite/starters bumped to 5.1.0
+
 ## [1.8.5](https://github.com/jxsuite/jx/compare/create-v1.8.4...create-v1.8.5) (2026-11-15)
 
 

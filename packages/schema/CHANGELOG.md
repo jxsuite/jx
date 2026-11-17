@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.1.0](https://github.com/jxsuite/jx/compare/schema-v8.0.0...schema-v8.1.0) (2026-11-17)
+
+
+### Features
+
+* **compiler:** csp.sources adds origins to a derived directive ([#694](https://github.com/jxsuite/jx/issues/694)) ([6a6d072](https://github.com/jxsuite/jx/commit/6a6d0725a95c41e629e38461480382ebe7868a34))
+* **site:** resolve project defs and default the page charset to utf-8 ([#696](https://github.com/jxsuite/jx/issues/696)) ([41b54fc](https://github.com/jxsuite/jx/commit/41b54fc23c806cee10f85e915d3f2f50d52c69a3))
+
+
+### Bug Fixes
+
+* **compiler:** negotiate a multilingual site's root under every adapter and base ([#692](https://github.com/jxsuite/jx/issues/692)) ([8e1adbe](https://github.com/jxsuite/jx/commit/8e1adbe75a22fd2bb28dd1f81ffba070825eb5f4))
+* **feed:** stamp an empty feed's updated with the build time, not 1970 ([#693](https://github.com/jxsuite/jx/issues/693)) ([6d82a6c](https://github.com/jxsuite/jx/commit/6d82a6c70960a099c1e14497f58aee4f09f53920))
+
 ## [8.0.0](https://github.com/jxsuite/jx/compare/schema-v7.0.0...schema-v8.0.0) (2026-11-15)
 
 
