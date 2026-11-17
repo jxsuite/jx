@@ -32,6 +32,7 @@ jobs:
       lens_mutants: ${{ steps.affected.outputs.gate_lens_mutants }}
       bundles: ${{ steps.affected.outputs.gate_bundle }}
       addon: ${{ steps.affected.outputs.gate_addon }}
+      kit_windows: ${{ steps.affected.outputs.gate_kit_windows }}
       mode: ${{ steps.affected.outputs.mode }}
     steps:
       - uses: actions/checkout@v7
@@ -578,6 +579,27 @@ jobs:
     if: needs.changes.outputs.addon == 'true'
     uses: ./.github/workflows/addon.yml
 
+  # The kit's compiled distribution, built on the platform a desktop release builds it on.
+  #
+  # `build:ui` writes one JavaScript module per element, each importing its behaviour from an
+  # absolute path, and every other job here runs on Linux, where that path never needs escaping. On
+  # the Windows runner it is `D:\a\jx\...`, and the build died with a `Syntax Error` in every
+  # element that has a behaviour. Nothing exercised it until a desktop release did, so the failure
+  # arrived with the release: desktop-v9.3.1, 9.3.2 and 9.4.0 shipped without a Windows installer.
+  #
+  # Only the build is run: the Rust addon is not needed (the compiler's entry is its source) and the
+  # job is a runner-minute at twice the Linux rate, which is why it is gated like `addon`
+  # (`buildsKit` in scripts/ci/affected.ts). A push to main runs it unconditionally.
+  kit-windows:
+    needs: changes
+    if: needs.changes.outputs.kit_windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-bun
+      - run: bun run build:ui
+
   # The Nix build, as a job of THIS workflow rather than a workflow of its own.
   #
   # It used to be `on: pull_request` in nix.yml with a `paths:` filter, and that is exactly why it
@@ -623,6 +645,7 @@ jobs:
         lens-mutants,
         studio-dist,
         desktop-bundle,
+        kit-windows,
         nix,
         coverage-comment,
       ]

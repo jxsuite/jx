@@ -227,6 +227,20 @@ describe("the nix build", () => {
     expect(workflow).toContain("if: needs.changes.outputs.addon == 'true'");
   });
 
+  test("the kit builds on Windows for a diff that can change it, and no other", async () => {
+    const { buildsKit } = await import("./affected.ts");
+    expect(buildsKit(["scripts/build-ui-dist.ts"], workspaces)).toBe(true);
+    expect(buildsKit(["packages/ui/components/button.json"], workspaces)).toBe(true);
+    expect(buildsKit(["packages/compiler/src/shared.ts"], workspaces)).toBe(true);
+    expect(buildsKit([".github/workflows/test.yml"], workspaces)).toBe(true);
+    expect(buildsKit(["packages/studio/src/main.ts", "docs/start/install.md"], workspaces)).toBe(
+      false,
+    );
+    const workflow = await Bun.file(".github/workflows/test.yml").text();
+    expect(workflow).toContain("if: needs.changes.outputs.kit_windows == 'true'");
+    expect(workflow).toContain("runs-on: windows-latest");
+  });
+
   test("every output the changes job forwards is one this script actually writes", async () => {
     /*
      * The mirror of the rule below, and the same silent failure from the other end: a job output
