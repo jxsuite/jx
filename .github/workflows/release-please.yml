@@ -196,11 +196,15 @@ jobs:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
 
-  # Append the platform Downloads table to the desktop release notes (preserves the
-  # previous release-it footer). Runs AFTER the bundlers (with if: always()) and
-  # builds the table from the assets that actually uploaded, so a failed platform
-  # build no longer leaves dead download links. Idempotent: strips any prior
-  # Downloads section before re-appending, so re-runs don't stack duplicate tables.
+  # Fill in the desktop release notes: what changed in Studio since the previous desktop build, then
+  # the platform Downloads table (preserves the previous release-it footer). release-please's own
+  # notes for this release are a list of bumped dependencies, because `packages/desktop` holds a
+  # manifest and a bundler, and the library components are tags rather than releases, so this is
+  # the one place the Releases page can say what changed (scripts/desktop-release-notes.ts).
+  # Runs AFTER the bundlers (with if: always()) and builds the table from the assets that actually
+  # uploaded, so a failed platform build no longer leaves dead download links. Idempotent: strips
+  # any prior Downloads section and replaces the marked changes block, so re-runs don't stack
+  # duplicates.
   release-notes-downloads:
     needs: [release-please, desktop-linux, desktop-macos, desktop-windows]
     if: always() && needs.release-please.outputs.desktop_released == 'true'
@@ -208,7 +212,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Refresh Downloads table in release notes
+      # The full history and every tag: the notes are a diff of Studio's changelog and the manifest
+      # between this tag and the previous desktop tag.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.desktop_tag }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: false
+      - name: Refresh the changes and Downloads table in release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -242,6 +255,15 @@ jobs:
           # header to EOF preserves the release-it body/footer above it.
           body="$(gh release view "$TAG" --json body --jq .body)"
           body_clean="$(printf '%s' "$body" | awk 'BEGIN{keep=1} /^## Downloads[[:space:]]*$/{keep=0} keep{print}')"
+
+          # Studio's changes since the previous desktop tag, as one marked block (replaced on a re-run).
+          printf '%s\n' "$body_clean" > body.md
+          # A failure here must not cost the Downloads table below, so it warns and carries on.
+          if notes="$(bun scripts/desktop-release-notes.ts --tag "$TAG" --body-file body.md)"; then
+            body_clean="$notes"
+          else
+            echo "::warning::could not build the Studio changes for $TAG; leaving the notes as they were"
+          fi
 
           {
             printf '%s\n' "$body_clean"
