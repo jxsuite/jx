@@ -76,10 +76,6 @@ mac:
   gatekeeperAssess: false
   # The Mac App Store build reads this too: electron-builder takes `extendInfo` from the mac block.
   extendInfo:
-    # Export compliance (App Store Connect's "Missing Compliance"). The app ships Chromium's and
-    # Node's own TLS rather than Apple's, which is standard encryption in addition to the OS, so
-    # the answer is yes; the DMG ignores the key. A person made this declaration (specs/desktop.md §7.7).
-    ITSAppUsesNonExemptEncryption: true
     # `.jxn` is text, so Quick Look and TextEdit read it, and nothing else on most machines knows it.
     UTExportedTypeDeclarations:
       - UTTypeIdentifier: com.jxsuite.jxn
