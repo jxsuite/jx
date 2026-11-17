@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.8.6\
+**Version:** 0.8.8\
 **Status:** Implemented\
-**Updated:** 2026-11-15\
+**Updated:** 2026-11-17\
 **License:** MIT
 
 ---
@@ -967,6 +967,8 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.8.8** (2026-11-17) — §8.1: an emitter writes a newline and indent between siblings only where one is block-level and neither is text, so a link followed by a period no longer builds as "link .".
+- **0.8.7** (2026-11-17) — §6.3: a cloudflare-pages site whose root negotiates a locale gets a worker, and compileSiteServer registers the negotiation middleware at the deployment base whenever the site declares more than one locale or prefix-always.
 - **0.8.6** (2026-11-15) — A form-associated definition compiles to a form-associated class that inlines the runtime's form-association rule (4.10).
 - **0.8.5** (2026-11-15) — The site build passes the project shadow default and each component's stylesheet URL to its module, a shadow component's stylesheet carries the light components it renders, and the CSS extraction section names the shared host translation.
 - **0.8.4** (2026-11-15) — 4.3, 8.1: the element target attaches a definition's root-level handlers to the host from the constructor, lowered as a child's binding is, writes its root attributes in connectedCallback, and the prerender writes them on every expanded instance; a template that hands the scope itself to a helper compiles.
@@ -1056,4 +1058,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.8.6_
+_`@jxsuite/compiler` Specification v0.8.8_

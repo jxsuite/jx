@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.22-draft\
+**Version:** 0.7.23-draft\
 **Status:** Partial\
-**Updated:** 2026-11-14\
+**Updated:** 2026-11-17\
 **License:** MIT
 
 ---
@@ -1161,6 +1161,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.23-draft** (2026-11-17) — §7.7: the Mac App Store build declares its export compliance in the app (ITSAppUsesNonExemptEncryption), so the answer travels with every build.
 - **0.7.22-draft** (2026-11-14) — §7.7: a desktop release is submitted to App Review after its upload (the mas-submit job), App Review accepted 8.0.1 (483), and the export compliance answer stays a person's.
 - **0.7.21-draft** (2026-11-13) — §7.1 and §9.3: the compiler's native addon is staged as one file beside the backend bundle and built from source by the Nix package, replacing the staged and patched sharp binaries.
 - **0.7.20-draft** (2026-11-13) — §9.3: the Nix package adds sharp's RPATH with patchelfUnstable, because nixpkgs' patchelf 0.15.2 corrupts those binaries.
@@ -1268,4 +1269,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.22-draft_
+_Jx Studio Desktop Architecture Specification v0.7.23-draft_
