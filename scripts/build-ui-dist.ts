@@ -39,6 +39,35 @@ const PACKAGE_ROOT = resolve(import.meta.dir, "../packages/ui");
 /** The scheme the kit's documents spell a behaviour module's `$src` in. */
 const KIT_SCHEME = "jx-ui:/";
 
+/**
+ * A file path spelled as an import specifier.
+ *
+ * The compiler writes a specifier into a single-quoted string literal as it is, so it cannot carry
+ * a backslash: on Windows `resolve` returns `D:\a\jx\jx\packages\ui\src\...`, and a literal holding
+ * that reads `\u` as a broken unicode escape and `\a` as a bell, which failed the desktop build
+ * with a `Syntax Error` in every element module that has a behaviour. Forward slashes name the same
+ * file on every platform, and Bun resolves a drive-letter path spelled with them.
+ *
+ * @param path An absolute path in the host's own separator.
+ * @returns The same path with forward slashes.
+ */
+export function toImportSpecifier(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+/**
+ * Where a kit document's `$src` behaviour module lives.
+ *
+ * @param specifier A `$src` that starts with `jx-ui:/`, or any other specifier, which is returned
+ *   as it came.
+ * @returns The specifier to import.
+ */
+export function kitModuleSpecifier(specifier: string): string {
+  return specifier.startsWith(KIT_SCHEME)
+    ? toImportSpecifier(resolve(PACKAGE_ROOT, "src", specifier.slice(KIT_SCHEME.length)))
+    : specifier;
+}
+
 /** The stylesheet holding the kit's theme tokens, in its `@layer jx-ui`. */
 export const THEME_STYLESHEET = "theme.css";
 
@@ -82,10 +111,7 @@ export async function buildCompiledKit(
     components: resolve(PACKAGE_ROOT, "components"),
     packDir: "dist",
     // A behaviour is imported from its source file, which the bundler pass below compiles in.
-    rewriteSrc: (specifier) =>
-      specifier.startsWith(KIT_SCHEME)
-        ? resolve(PACKAGE_ROOT, "src", specifier.slice(KIT_SCHEME.length))
-        : specifier,
+    rewriteSrc: kitModuleSpecifier,
   });
 
   rmSync(outDir, { force: true, recursive: true });

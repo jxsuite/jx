@@ -19,7 +19,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CemPackageOut } from "@jxsuite/schema/cem-manifest";
 
-import { buildCompiledKit } from "./build-ui-dist.ts";
+import { buildCompiledKit, kitModuleSpecifier, toImportSpecifier } from "./build-ui-dist.ts";
 import type { CompiledKit } from "./build-ui-dist.ts";
 import { documents } from "../packages/ui/src/documents.ts";
 
@@ -74,6 +74,24 @@ afterEach(() => {
 
 afterAll(() => {
   rmSync(OUT, { force: true, recursive: true });
+});
+
+describe("a behaviour module's import specifier", () => {
+  test("holds no backslash, which a single-quoted literal would read as an escape", () => {
+    const windows = String.raw`D:\a\jx\jx\packages\ui\src\behaviors\split.ts`;
+    expect(toImportSpecifier(windows)).toBe("D:/a/jx/jx/packages/ui/src/behaviors/split.ts");
+    // Each of these is a syntax error or a control character once it sits inside '…'.
+    expect(() => new Function(`return '${toImportSpecifier(windows)}'`)()).not.toThrow();
+    expect(() => new Function(`return '${windows}'`)()).toThrow(SyntaxError);
+  });
+
+  test("a kit path resolves to the source file, and any other specifier passes through", () => {
+    const resolved = kitModuleSpecifier("jx-ui:/behaviors/split.ts");
+    expect(resolved).not.toContain("\\");
+    expect(resolved.endsWith("/packages/ui/src/behaviors/split.ts")).toBe(true);
+    expect(existsSync(resolved)).toBe(true);
+    expect(kitModuleSpecifier("lit-html")).toBe("lit-html");
+  });
 });
 
 describe("the compiled distribution", () => {
