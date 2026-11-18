@@ -91,6 +91,10 @@ updates:
     # this is belt-and-braces for anything that ever stops being one.
     ignore:
       - dependency-name: "@jxsuite/*"
+      # Pinned on purpose to the floor of `engines.vscode` in packages/vscode — the types are what
+      # stop the extension calling an API older editors lack, and manifest.test.ts asserts the two
+      # agree. Raising it is a decision to drop older VS Code versions, made together with `engines`.
+      - dependency-name: "@types/vscode"
 
   # ── Nix flake inputs ─────────────────────────────────────────────────────────────────────────
   #

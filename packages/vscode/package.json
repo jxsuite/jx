@@ -29,7 +29,7 @@
   "devDependencies": {
     "@jxsuite/content-mapper": "workspace:^",
     "@jxsuite/schema": "workspace:^",
-    "@types/vscode": "1.146.0",
+    "@types/vscode": "1.100.0",
     "vscode-oniguruma": "2.0.1",
     "vscode-textmate": "9.3.2"
   },
