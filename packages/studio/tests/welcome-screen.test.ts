@@ -21,7 +21,8 @@ const {
   shortenPath,
 } = await import("../src/surfaces/welcome");
 const { hydrateProjectList, resetProjectList } = await import("../src/project-list");
-const { beginProjectOpening, isOpeningProject } = await import("../src/project-opening");
+const projectOpeningModule = await import("../src/project-opening");
+const { beginProjectOpening, isOpeningProject } = projectOpeningModule;
 const { hydrateAccountStatus, resetAccountStatus } = await import("../src/account-status");
 
 const RECENT_KEY = "jx-studio-recent-projects";
@@ -597,6 +598,20 @@ describe("renderWelcome — while a project opens", () => {
     await flush();
     expect(host.querySelector<HTMLElement>('[part="screen"]')?.dataset["busy"]).toBeUndefined();
     expect(host.querySelector('[part="opening"]')).toBeNull();
+  });
+
+  test("a step the plan did not list is appended, and a finished open ignores late steps", () => {
+    const { projectOpening } = projectOpeningModule;
+    const handle = beginProjectOpening("a", ["one"]);
+    handle?.step("surprise");
+    expect(projectOpening.current?.steps.map((step) => step.label)).toEqual(["one", "surprise"]);
+    expect(projectOpening.current?.steps.map((step) => step.state)).toEqual(["done", "running"]);
+    expect(projectOpening.current?.status).toBe("surprise");
+
+    handle?.end();
+    handle?.step("late");
+    handle?.end();
+    expect(projectOpening.current).toBeNull();
   });
 
   test("a second open is refused while one is in flight", () => {

@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { NotifyCall } from "./notify-mock";
 import { projectState } from "../src/state";
+import { beginProjectOpening, isOpeningProject } from "../src/project-opening";
 import {
   activateTab,
   activeTab,
@@ -1141,6 +1142,47 @@ describe("openRecentProject", () => {
     expect(statusMessages).toEqual(["Could not open the project at /gone/site."]);
     // The reason is on the entry's log, which `fail()` hands to the Problem as its detail.
     expect(activities[0]?.log.join("\n")).toContain("project.json is not there");
+    // And it is said where the user is looking, not only in the Problems list.
+    await flush(4);
+    const alert = topDialog();
+    expect(alert?.getAttribute("headline")).toBe("Could not open site");
+    expect(alert?.textContent).toContain("project.json is not there");
+    alert?.dispatchEvent(new Event("close"));
+  });
+
+  test("a picker open that throws says so in a dialog, and the pane is released", async () => {
+    const original = platform.openProject;
+    platform.openProject = async () => {
+      throw new Error("the folder could not be read");
+    };
+    try {
+      await toolbarCtx.openProject();
+    } finally {
+      if (original) {
+        platform.openProject = original;
+      } else {
+        Reflect.deleteProperty(platform, "openProject");
+      }
+    }
+    await flush(4);
+    const alert = topDialog();
+    expect(alert?.getAttribute("headline")).toBe("Could not open the project");
+    expect(alert?.textContent).toContain("the folder could not be read");
+    alert?.dispatchEvent(new Event("close"));
+    expect(isOpeningProject()).toBe(false);
+  });
+
+  test("a second open is ignored while one is running", async () => {
+    const handle = beginProjectOpening("busy");
+    try {
+      const before = state.calls.filter((c) => c[0] === "openProject").length;
+      await toolbarCtx.openProject();
+      await toolbarCtx.openRecentProject("/recent/site");
+      expect(state.calls.filter((c) => c[0] === "openProject")).toHaveLength(before);
+      expect(platform.projectRoot).not.toBe("/recent/site");
+    } finally {
+      handle?.end();
+    }
   });
 
   test("expands and loads conventional directories found at the project root", async () => {

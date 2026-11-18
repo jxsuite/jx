@@ -20,7 +20,6 @@ const prompts: { headline: string; opts: PromptDialogOptions }[] = [];
 // Every other export stays real: modules this one loads draw through the layers too.
 const realLayers = await import("../src/ui/layers.js");
 void mock.module("../src/ui/layers.js", () => ({
-  showAlertDialog: async () => {},
   ...realLayers,
   showPromptDialog: async (headline: string, opts: PromptDialogOptions) => {
     prompts.push({ headline, opts });

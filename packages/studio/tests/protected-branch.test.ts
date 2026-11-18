@@ -14,7 +14,6 @@ let promptAnswer: string | null = null;
 const prompts: { headline: string; opts: PromptDialogOptions }[] = [];
 const realLayers = await import("../src/ui/layers.js");
 void mock.module("../src/ui/layers.js", () => ({
-  showAlertDialog: async () => {},
   ...realLayers,
   showPromptDialog: async (headline: string, opts: PromptDialogOptions) => {
     prompts.push({ headline, opts });
