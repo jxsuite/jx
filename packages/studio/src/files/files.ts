@@ -34,11 +34,13 @@
  * @docs studio/interface
  */
 
+import { beginProjectOpening, isOpeningProject } from "../project-opening";
+import type { OpeningHandle } from "../project-opening";
 import { nothing } from "lit-html";
 import { learnProjectFileName } from "./project-file-name";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { localeLabel, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
-import { showPromptDialog } from "../ui/layers";
+import { showAlertDialog, showPromptDialog } from "../ui/layers";
 import { projectState, requireProjectState, setProjectState } from "../store";
 import { canOpenProject, getPlatform } from "../platform";
 import { disarmPreviewOverlay } from "../preview/preview-overlay";
@@ -338,6 +340,10 @@ export async function openProject({
   renderLeftPanel: () => void;
   resetProjectCaches?: () => void;
 }): Promise<boolean> {
+  if (isOpeningProject()) {
+    return false;
+  }
+  let opening: OpeningHandle | null = null;
   try {
     const platform = getPlatform();
     // The command is gated on the capability, so a host without the member never gets here.
@@ -347,6 +353,14 @@ export async function openProject({
     } // User cancelled
 
     const { config, handle } = result;
+    // The picker has answered: from here the Start pane shows progress and stops taking clicks.
+    opening = beginProjectOpening(config.name || handle.name, [
+      "Sync with the remote",
+      "Install dependencies",
+      "Read the project",
+      "Open the home page",
+    ]);
+    opening?.step("Sync with the remote");
 
     replaceAllTabs({
       document: { children: [], tagName: "div" },
@@ -378,12 +392,14 @@ export async function openProject({
     setWorkspaceProject(handle.root, config);
 
     await autoSyncProjectOnOpen();
+    opening?.step("Install dependencies");
     if (await ensureDependenciesInstalled()) {
       // See the note in `probeRootProject`: the registry was fetched before the install ran.
       refreshFormats();
       await loadFormats();
       refreshExtensionUi(platform);
     }
+    opening?.step("Read the project");
     await loadProjectDirectories();
     await loadComponentRegistry();
 
@@ -399,6 +415,7 @@ export async function openProject({
     renderLeftPanel();
     // The project's name is permanent state in the status bar's PROJECT field now.
 
+    opening?.step("Open the home page");
     await openLastSessionOrHome();
     void maybePromptJxsuiteUpdate(requireProjectState().projectRoot);
     return true;
@@ -407,7 +424,11 @@ export async function openProject({
       detail: errorMessage(error),
       source: "Open Project",
     });
+    opening?.end();
+    void showAlertDialog("Could not open the project", errorMessage(error));
     return false;
+  } finally {
+    opening?.end();
   }
 }
 

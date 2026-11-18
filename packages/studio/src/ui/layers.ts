@@ -179,6 +179,41 @@ export function showConfirmDialog(
 }
 
 /**
+ * Show an acknowledge-only dialog: a headline, the explanation, one OK button. For a failure the
+ * user must see to know why what they asked for did not happen, where a toast or a Problems row is
+ * easy to miss. Resolves when it closes, however it closes.
+ */
+export function showAlertDialog(
+  headline: string,
+  message: string | TemplateResult,
+  opts: { okLabel?: string } = {},
+): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.close();
+      resolve();
+    };
+    const handle = openDialogSurface({
+      // The empty string takes the Cancel button away (`DialogSurfacePatch.secondaryLabel` rule).
+      cancelLabel: "",
+      confirmLabel: opts.okLabel ?? "OK",
+      destructive: false,
+      headline,
+      layer: layerHost("dialog"),
+      ...messageOptions(message),
+      onCancel: done,
+      onClosed: done,
+      onConfirm: done,
+    });
+  });
+}
+
+/**
  * Show a three-way Save / Discard / Cancel dialog. Resolves "save", "discard", or "cancel"
  * (dismiss/close counts as cancel).
  *

@@ -3,6 +3,7 @@ title: "Welcome screen"
 description: "What Jx Studio shows before a project is open, and every way to start: new project, open, clone, add a repository, and your recent projects."
 code:
   - packages/studio/src/surfaces/welcome.ts
+  - packages/studio/src/project-opening.ts
   - packages/studio/src/new-project/add-repo-modal.ts
   - packages/studio/src/surfaces/add-repo.ts
   - packages/studio/src/account/action-flow.ts
@@ -91,6 +92,10 @@ Below the Start actions:
 :::doc-tip
 You don't need the mouse: press :kbd[⌘P] (macOS) or :kbd[Ctrl+P] (Windows/Linux) on the Start pane and [Quick Access](/docs/studio/interface/quick-access) lists your recent projects to reopen.
 :::
+
+## While a project opens
+
+Opening a project can take a while: Studio syncs with the remote, installs dependencies, reads the project and opens its home page. As soon as you choose a project, the Start pane replaces its actions with an **Opening** view: a spinner, the project's name, and a checklist of those steps with the current one in bold. **Start**, **Recent** and the project list are hidden, so no link on the pane can start a second open over the first. The same rule covers :kbd[⌘O] and the toolbar: a second request while one is running is ignored. The pane returns to normal if you cancel. If the open fails, for example because `project.json` does not parse, a dialog names the project and states the error, including the file and the line when the parser reports one. The same message stays in the Problems list afterward.
 
 ## Next
 

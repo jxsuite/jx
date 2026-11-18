@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { NotifyCall } from "./notify-mock";
 import { projectState } from "../src/state";
+import { beginProjectOpening, isOpeningProject } from "../src/project-opening";
 import {
   activateTab,
   activeTab,
@@ -1141,6 +1142,59 @@ describe("openRecentProject", () => {
     expect(statusMessages).toEqual(["Could not open the project at /gone/site."]);
     // The reason is on the entry's log, which `fail()` hands to the Problem as its detail.
     expect(activities[0]?.log.join("\n")).toContain("project.json is not there");
+    // And it is said where the user is looking, not only in the Problems list.
+    await flush(4);
+    const alert = topDialog();
+    expect(alert?.getAttribute("headline")).toBe("Could not open site");
+    expect(alert?.textContent).toContain("project.json is not there");
+    alert?.dispatchEvent(new Event("close"));
+  });
+
+  test("a picker open that throws says so in a dialog, and the pane is released", async () => {
+    const original = platform.openProject;
+    platform.openProject = async () => {
+      throw new Error("the folder could not be read");
+    };
+    try {
+      await toolbarCtx.openProject();
+    } finally {
+      if (original) {
+        platform.openProject = original;
+      } else {
+        Reflect.deleteProperty(platform, "openProject");
+      }
+    }
+    await flush(4);
+    const alert = topDialog();
+    expect(alert?.getAttribute("headline")).toBe("Could not open the project");
+    expect(alert?.textContent).toContain("the folder could not be read");
+    alert?.dispatchEvent(new Event("close"));
+    expect(isOpeningProject()).toBe(false);
+  });
+
+  test("files.openProject refuses to start while another open is running", async () => {
+    const { openProject } = await import("../src/files/files");
+    const handle = beginProjectOpening("busy");
+    try {
+      const before = state.calls.filter((c) => c[0] === "openProject").length;
+      expect(await openProject({ renderLeftPanel: () => {} })).toBe(false);
+      expect(state.calls.filter((c) => c[0] === "openProject")).toHaveLength(before);
+    } finally {
+      handle?.end();
+    }
+  });
+
+  test("a second open is ignored while one is running", async () => {
+    const handle = beginProjectOpening("busy");
+    try {
+      const before = state.calls.filter((c) => c[0] === "openProject").length;
+      await toolbarCtx.openProject();
+      await toolbarCtx.openRecentProject("/recent/site");
+      expect(state.calls.filter((c) => c[0] === "openProject")).toHaveLength(before);
+      expect(platform.projectRoot).not.toBe("/recent/site");
+    } finally {
+      handle?.end();
+    }
   });
 
   test("expands and loads conventional directories found at the project root", async () => {
@@ -1242,6 +1296,14 @@ describe("openRecentProject", () => {
    * "keep editing" and leave the app pointing at a project it is not showing.
    */
   describe("unsaved documents", () => {
+    // The tests above deliberately fail an open, and a failed open now says so in a dialog that
+    // Nothing here answers; it would otherwise sit over every test below.
+    beforeEach(() => {
+      for (const leaked of document.querySelectorAll("#layer-dialog jx-dialog")) {
+        leaked.dispatchEvent(new Event("close"));
+      }
+    });
+
     function dialog(): HTMLElement | null {
       return topDialog();
     }

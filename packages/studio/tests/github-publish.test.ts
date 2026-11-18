@@ -37,6 +37,7 @@ let statusMessages: string[] = [];
 let repoAnswer: RepoOptions | null = null;
 
 void mock.module("../src/ui/layers.js", () => ({
+  showAlertDialog: async () => {},
   layerHost: () => document.body,
   showConfirmDialog: async () => true,
 }));

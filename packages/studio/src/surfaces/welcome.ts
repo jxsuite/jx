@@ -24,7 +24,8 @@ import { runOfferedAction } from "../account/action-flow";
 import { platformSupportsAddRepo } from "../new-project/add-repo-modal";
 import { canOpenProject, getPlatform } from "../platform";
 import { getProjectList } from "../project-list";
-import { reactive } from "../reactivity";
+import { projectOpening } from "../project-opening";
+import { effect, reactive } from "../reactivity";
 import { MINUTE, now } from "../services/clock";
 import { clearRecentProjects, getRecentProjects, removeRecentProject } from "../recent-projects";
 import { platformSupportsClone } from "../publish/source-control";
@@ -194,7 +195,17 @@ interface CatalogueRow {
   detail: string;
 }
 
+interface OpeningStepRow {
+  label: string;
+  state: string;
+}
+
 interface WelcomeScope {
+  /** A project is opening: the pane shows `openingName` and its steps, and nothing else works. */
+  busy: boolean;
+  openingName: string;
+  openingStatus: string;
+  openingSteps: OpeningStepRow[];
   actions: StartAction[];
   installNeeded: boolean;
   installUrl: string;
@@ -237,8 +248,13 @@ function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear" | "no
       ? [{ icon: "cube", id: "add", title: "Add Existing Repository…" } as const]
       : []),
   ];
+  const opening = projectOpening.current;
   return {
     actions,
+    busy: opening !== null,
+    openingName: opening?.name ?? "",
+    openingStatus: opening?.status ?? "",
+    openingSteps: (opening?.steps ?? []).map((step) => ({ label: step.label, state: step.state })),
     catalogue: catalogue.map((entry) => ({
       detail: entry.description ?? catalogueLabels.get(entry.root) ?? entry.root,
       name: entry.name,
@@ -295,8 +311,15 @@ function noticeAction(key: string): OfferedAction | null {
 function state(): WelcomeScope {
   _state ??= reactive<WelcomeScope>({
     actions: [],
+    busy: false,
+    openingName: "",
+    openingSteps: [],
+    openingStatus: "",
     catalogue: [],
     clear: () => {
+      if (projectOpening.current) {
+        return;
+      }
       clearRecentProjects();
       refresh();
     },
@@ -305,6 +328,9 @@ function state(): WelcomeScope {
     installNeeded: false,
     installUrl: "#",
     noticeRun: (key: string) => {
+      if (projectOpening.current) {
+        return;
+      }
       const action = noticeAction(key);
       if (action) {
         // The account status is re-read after every action, so a notice it settled goes away.
@@ -313,14 +339,24 @@ function state(): WelcomeScope {
     },
     notices: [],
     open: (root: string) => {
+      if (projectOpening.current) {
+        return;
+      }
       _ctx?.openRecentProject(root);
     },
     recent: [],
     remove: (root: string) => {
+      if (projectOpening.current) {
+        return;
+      }
       removeRecentProject(root);
       refresh();
     },
     run: (id: string) => {
+      // While a project opens nothing on the pane may start another open over it.
+      if (projectOpening.current) {
+        return;
+      }
       switch (id) {
         case "new": {
           _ctx?.openNewProject();
@@ -373,6 +409,7 @@ export function renderWelcome(host: HTMLElement): void {
   }
   disposeWelcome();
   _host = host;
+  followOpening();
   const pending = mountSurface("welcome", state(), host);
   _mount = pending;
   void pending.then((handle) => {
@@ -384,8 +421,25 @@ export function renderWelcome(host: HTMLElement): void {
   });
 }
 
+let _stopFollowing: (() => void) | null = null;
+
+/** Keep the pane's progress current as the opening record changes; the pane shows it live. */
+function followOpening(): void {
+  // `renderWelcome` disposes first, which clears `_stopFollowing`, so there is never one to replace.
+  const runner = effect(() => {
+    const opening = projectOpening.current;
+    // Read every field the projection copies, so a step change re-runs this.
+    void opening?.status;
+    void opening?.steps.map((step) => step.state);
+    refresh();
+  });
+  _stopFollowing = () => runner.effect.stop();
+}
+
 /** Take the pane down and forget its host. */
 export function disposeWelcome(): void {
+  _stopFollowing?.();
+  _stopFollowing = null;
   const pending = _mount;
   _mount = null;
   if (_handle) {
