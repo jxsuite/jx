@@ -19,6 +19,7 @@ let promptAnswer: string | null = null;
    stack through the kit, so a mock of four names would be a load error rather than a double. */
 const realLayers = await import("../src/ui/layers");
 void mock.module("../src/ui/layers.js", () => ({
+  showAlertDialog: async () => {},
   ...realLayers,
   showConfirmDialog: async () => confirmAnswer,
   showPromptDialog: async () => promptAnswer,

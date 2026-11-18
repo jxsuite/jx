@@ -104,6 +104,7 @@ import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
 import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
 import { createLiveSurfaceSaver } from "./services/live-surfaces";
+import { beginProjectOpening, isOpeningProject } from "./project-opening";
 import { beginActivity } from "./panels/activity-panel";
 import {
   exportFile,
@@ -204,7 +205,7 @@ import { registerKit } from "./ui/kit";
 import "./ui/panel-resize.js";
 // Built-in schema-form controls (schema-builder, secret) register on import
 import "./ui/form-controls.js";
-import { initLayers, isModalOpen } from "./ui/layers";
+import { initLayers, isModalOpen, showAlertDialog } from "./ui/layers";
 import { initShortcuts, registerStudioCommands } from "./editor/shortcuts";
 import type { ProjectOpenOutcome, ProjectOpenTarget } from "./editor/shortcuts";
 import { createCommandRegistry } from "./commands/registry";
@@ -1402,6 +1403,10 @@ function loadProject() {
  * the user had just said to keep.
  */
 async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<ProjectOpenOutcome> {
+  // One open at a time: ⌘O and the toolbar must not start a second over a running one.
+  if (isOpeningProject()) {
+    return "cancelled";
+  }
   // Repo-list platforms (cloud) pick from the user's writable repositories instead of a
   // Backend dialog; the choice opens through the same path as a recent project.
   if (platformUsesRepoPicker()) {
@@ -1469,6 +1474,17 @@ function resetProjectCaches(): void {
 }
 
 async function openRecentProject(root: string) {
+  // The Start pane swaps to a progress view while this runs and refuses further clicks; this is
+  // The same rule for every other caller (⌘O, the command palette, a second window message).
+  const opening = beginProjectOpening(root.split("/").pop() || root, [
+    "Sync with the remote",
+    "Install dependencies",
+    "Read the project",
+    "Open the home page",
+  ]);
+  if (!opening) {
+    return;
+  }
   // One entry for the whole sequence, not three surfaces for its three phases. Opening a project
   // Used to chain a blocking spinner (dependencies), a transient status line (git sync) and a
   // Confirm-plus-spinner (@jxsuite update), none of them cancellable and none of them surviving
@@ -1574,10 +1590,13 @@ async function openRecentProject(root: string) {
     setWorkspaceProject(root, config);
 
     activity.step("Sync with the remote");
+    opening.step("Sync with the remote");
     await autoSyncProjectOnOpen();
     activity.step("Install dependencies");
+    opening.step("Install dependencies");
     await ensureDependenciesInstalled();
     activity.step("Read the project");
+    opening.step("Read the project");
     await loadProjectDirectories();
     await loadComponentRegistry();
 
@@ -1587,6 +1606,7 @@ async function openRecentProject(root: string) {
     // The project's name is now permanent state in the status bar's PROJECT field.
 
     activity.step("Open the home page");
+    opening.step("Open the home page");
     await openLastSessionOrHome();
     if (unread) {
       await showUnreadProjectFile();
@@ -1604,6 +1624,12 @@ async function openRecentProject(root: string) {
     // Entry reports once (`studio-ui-guidelines.md` §13.3 rule 3).
     activity.log(errorMessage(error));
     activity.fail(`Could not open the project at ${root}.`, { path: root });
+    // The Problems row is a record, not an announcement: the pane the user is looking at went back
+    // To idle, so say why the open did not happen.
+    opening.end();
+    void showAlertDialog(`Could not open ${root.split("/").pop() || root}`, errorMessage(error));
+  } finally {
+    opening.end();
   }
 }
 function openFileFromTree(path: string) {

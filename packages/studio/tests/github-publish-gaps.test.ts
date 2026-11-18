@@ -30,6 +30,7 @@ const dialogLayer = document.createElement("div");
 document.body.append(dialogLayer);
 
 void mock.module("../src/ui/layers.js", () => ({
+  showAlertDialog: async () => {},
   layerHost: () => dialogLayer,
   showConfirmDialog: async () => true,
 }));

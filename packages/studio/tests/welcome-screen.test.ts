@@ -21,6 +21,7 @@ const {
   shortenPath,
 } = await import("../src/surfaces/welcome");
 const { hydrateProjectList, resetProjectList } = await import("../src/project-list");
+const { beginProjectOpening, isOpeningProject } = await import("../src/project-opening");
 const { hydrateAccountStatus, resetAccountStatus } = await import("../src/account-status");
 
 const RECENT_KEY = "jx-studio-recent-projects";
@@ -557,5 +558,52 @@ describe("renderWelcome — project catalogue", () => {
     const host = await renderScreen(makeCtx());
     expect(texts(host, '[part="recent"][data-catalogue] [part="name"]')).toEqual(["Shop"]);
     expect(texts(host, '[part="recent"] [part="name"]')).toEqual(["Portfolio", "Shop"]);
+  });
+});
+
+describe("renderWelcome — while a project opens", () => {
+  test("shows progress in place of the actions, and the actions do nothing", async () => {
+    seedRecents([{ name: "Portfolio", root: "/home/u/sites/portfolio", timestamp: 1 }]);
+    const ctx = makeCtx();
+    const host = await renderScreen(ctx);
+    const opening = beginProjectOpening("portfolio", ["Sync with the remote", "Read the project"]);
+    await flush();
+    await flush();
+
+    expect(host.querySelector<HTMLElement>('[part="screen"]')?.dataset["busy"]).toBeDefined();
+    expect(host.querySelector('[part="opening-title"]')?.textContent).toContain("portfolio");
+    expect(texts(host, '[part="opening-step"]')).toEqual([
+      "Sync with the remote",
+      "Read the project",
+    ]);
+
+    opening?.step("Read the project");
+    await flush();
+    await flush();
+    expect(host.querySelector('[part="opening-status"]')?.textContent).toBe("Read the project");
+    expect(host.querySelector('[data-state="done"]')?.textContent).toBe("Sync with the remote");
+
+    // Even a click that reached a (hidden) control is refused.
+    for (const button of actions(host)) {
+      button.click();
+    }
+    host.querySelector<HTMLElement>('[part="recent"]')?.click();
+    expect(ctx.openNewProject).not.toHaveBeenCalled();
+    expect(ctx.openProject).not.toHaveBeenCalled();
+    expect(ctx.openRecentProject).not.toHaveBeenCalled();
+
+    opening?.end();
+    await flush();
+    await flush();
+    expect(host.querySelector<HTMLElement>('[part="screen"]')?.dataset["busy"]).toBeUndefined();
+    expect(host.querySelector('[part="opening"]')).toBeNull();
+  });
+
+  test("a second open is refused while one is in flight", () => {
+    const first = beginProjectOpening("a");
+    expect(isOpeningProject()).toBe(true);
+    expect(beginProjectOpening("b")).toBeNull();
+    first?.end();
+    expect(isOpeningProject()).toBe(false);
   });
 });

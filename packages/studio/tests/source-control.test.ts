@@ -20,6 +20,7 @@ let promptAnswer: string | null = null;
 const confirms: string[] = [];
 const prompts: { headline: string; opts: PromptDialogOptions }[] = [];
 void mock.module("../src/ui/layers.js", () => ({
+  showAlertDialog: async () => {},
   getLayerSlot: (_kind: string, id: string) => {
     const el = document.createElement("div");
     el.id = id;

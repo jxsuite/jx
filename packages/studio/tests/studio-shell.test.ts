@@ -1242,6 +1242,14 @@ describe("openRecentProject", () => {
    * "keep editing" and leave the app pointing at a project it is not showing.
    */
   describe("unsaved documents", () => {
+    // The tests above deliberately fail an open, and a failed open now says so in a dialog that
+    // Nothing here answers; it would otherwise sit over every test below.
+    beforeEach(() => {
+      for (const leaked of document.querySelectorAll("#layer-dialog jx-dialog")) {
+        leaked.dispatchEvent(new Event("close"));
+      }
+    });
+
     function dialog(): HTMLElement | null {
       return topDialog();
     }

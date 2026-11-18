@@ -10,6 +10,7 @@ import {
   getLayerSlot,
   initLayers,
   isModalOpen,
+  showAlertDialog,
   showConfirmDialog,
   showPromptDialog,
   showSaveDiscardDialog,
@@ -89,6 +90,20 @@ describe("layers after init", () => {
       expect(layer("dialog").querySelector("[role='dialog']")).toBeNull();
       dialog.dispatchEvent(new Event("cancel"));
       expect(await promise).toBe(false);
+    });
+  });
+
+  describe("showAlertDialog", () => {
+    test("shows the message with a single OK, and resolves when it is acknowledged", async () => {
+      const promise = showAlertDialog("Could not open x", "Failed to parse project config at /p");
+      await flush();
+      const dialog = must(layer("dialog"), "jx-dialog", HTMLElement);
+      expect(dialog.textContent).toContain("Failed to parse project config at /p");
+      expect(dialog.getAttribute("headline")).toBe("Could not open x");
+      expect(dialog.hasAttribute("cancel-label")).toBe(false);
+      dialog.dispatchEvent(new Event("close"));
+      await promise;
+      expect(layer("dialog").children).toHaveLength(0);
     });
   });
 

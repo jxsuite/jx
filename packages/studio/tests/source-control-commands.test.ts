@@ -28,6 +28,7 @@ void mock.module("../src/platform.js", () => ({
 }));
 
 void mock.module("../src/ui/layers.js", () => ({
+  showAlertDialog: async () => {},
   /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
      here — a mock without it fails the whole file at import time. */
   layerHost: () => document.body,
