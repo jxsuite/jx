@@ -425,9 +425,7 @@ let _stopFollowing: (() => void) | null = null;
 
 /** Keep the pane's progress current as the opening record changes; the pane shows it live. */
 function followOpening(): void {
-  if (_stopFollowing) {
-    return;
-  }
+  // `renderWelcome` disposes first, which clears `_stopFollowing`, so there is never one to replace.
   const runner = effect(() => {
     const opening = projectOpening.current;
     // Read every field the projection copies, so a step change re-runs this.

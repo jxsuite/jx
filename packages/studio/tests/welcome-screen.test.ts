@@ -565,6 +565,16 @@ describe("renderWelcome — project catalogue", () => {
 describe("renderWelcome — while a project opens", () => {
   test("shows progress in place of the actions, and the actions do nothing", async () => {
     seedRecents([{ name: "Portfolio", root: "/home/u/sites/portfolio", timestamp: 1 }]);
+    const performAction = mock(async () => ({ status: "done" as const }));
+    installMockPlatform({
+      getAccountStatus: () =>
+        Promise.resolve({
+          installations: [],
+          notices: [{ actions: [JOIN_OFFER], id: "team", message: "Join to edit.", title: "Team" }],
+        }),
+      performAction,
+    });
+    await hydrateAccountStatus();
     const ctx = makeCtx();
     const host = await renderScreen(ctx);
     const opening = beginProjectOpening("portfolio", ["Sync with the remote", "Read the project"]);
@@ -589,6 +599,12 @@ describe("renderWelcome — while a project opens", () => {
       button.click();
     }
     host.querySelector<HTMLElement>('[part="recent"]')?.click();
+    host.querySelector<HTMLElement>('[part="remove"]')?.click();
+    host.querySelector<HTMLElement>('[part="clear"]')?.click();
+    host.querySelector<HTMLElement>('[part="notice-action"]')?.click();
+    await flush();
+    expect(performAction).not.toHaveBeenCalled();
+    expect(localStorage.getItem(RECENT_KEY)).toContain("Portfolio");
     expect(ctx.openNewProject).not.toHaveBeenCalled();
     expect(ctx.openProject).not.toHaveBeenCalled();
     expect(ctx.openRecentProject).not.toHaveBeenCalled();

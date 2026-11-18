@@ -1172,6 +1172,18 @@ describe("openRecentProject", () => {
     expect(isOpeningProject()).toBe(false);
   });
 
+  test("files.openProject refuses to start while another open is running", async () => {
+    const { openProject } = await import("../src/files/files");
+    const handle = beginProjectOpening("busy");
+    try {
+      const before = state.calls.filter((c) => c[0] === "openProject").length;
+      expect(await openProject({ renderLeftPanel: () => {} })).toBe(false);
+      expect(state.calls.filter((c) => c[0] === "openProject")).toHaveLength(before);
+    } finally {
+      handle?.end();
+    }
+  });
+
   test("a second open is ignored while one is running", async () => {
     const handle = beginProjectOpening("busy");
     try {
