@@ -59,6 +59,8 @@ Where an update comes from depends on how you installed. The macOS app, the Wind
 
 A fresh window greets you with the **[welcome screen](/docs/studio/interface/welcome-screen)**: create a **[new project](/docs/studio/projects/create)**, open an existing one, or pick from your recent projects, a list shared across all windows.
 
+If a recent project's folder has been moved, renamed or deleted, Studio says so in a dialog and removes it from the list. It does not open an empty window.
+
 To open an existing project:
 
 1. Choose _File > Open Project…_ or press :kbd[⌘O] (macOS) / :kbd[Ctrl+O] (Windows/Linux), or click **Open Project...** on the welcome screen.

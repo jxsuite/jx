@@ -719,7 +719,9 @@ export interface StudioPlatform {
    * announcing the intent — "opened in a new window" is a lie when the project was already open
    * somewhere and that window merely came to the front.
    */
-  openProjectInNewWindow?: (root: string) => Promise<{ declined?: true; focused: boolean }>;
+  openProjectInNewWindow?: (
+    root: string,
+  ) => Promise<{ declined?: true; focused: boolean; missing?: true }>;
   /**
    * Pick a project WITHOUT binding this window to it — the answer to "which project", separated
    * from the act of opening it here. Backs the New Window branch of Open Project: `openProject()`
@@ -735,9 +737,12 @@ export interface StudioPlatform {
    * Point THIS window's backend at a project and return its config. If the project is already open
    * in another window, that window is focused and `deduped` is true (no project is loaded here).
    */
-  setWindowProject?: (
-    root: string,
-  ) => Promise<{ declined?: true; deduped: boolean; config: ProjectConfig | null }>;
+  setWindowProject?: (root: string) => Promise<{
+    declined?: true;
+    deduped: boolean;
+    config: ProjectConfig | null;
+    missing?: true;
+  }>;
   /**
    * Be told when the operating system asks this window to show a document, by its project-relative
    * path. Includes anything asked before this was called, so a window that was opened for a

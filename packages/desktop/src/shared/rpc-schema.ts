@@ -478,11 +478,16 @@ export interface StudioRPC {
         // A window was created for the project, or one already had it and came to the front.
         // The response says which, so the caller can report what actually happened.
         params: { root: string };
-        response: { declined?: true; focused: boolean };
+        response: { declined?: true; focused: boolean; missing?: true };
       };
       setWindowProject: {
         params: { root: string };
-        response: { declined?: true; deduped: boolean; config: ProjectConfig | null };
+        response: {
+          declined?: true;
+          deduped: boolean;
+          config: ProjectConfig | null;
+          missing?: true;
+        };
       };
       takeOpenDocuments: {
         params: void;

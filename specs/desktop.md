@@ -480,6 +480,8 @@ A file named like a project file is believed only if its content agrees (`site-a
 
 On the Mac App Store build the sandbox grants the one file the OS handed over and none of the project around it, so the application asks for the folder, starting beside the file, and then replaces the backend as §7.7 describes. How much a Finder open grants has not been measured on a signed build.
 
+A project root that no longer exists opens nothing, and says so before anything else is asked. `openProjectInNewWindow` and `setWindowProject` answer `missing: true` ahead of the trust prompt and before any window or server exists, and only for `ENOENT` and `ENOTDIR`: a refusal, which the Mac App Store sandbox gives for a folder it has not granted, is not absence and goes on to the prompt. Studio reports the missing folder in a dialog and drops the entry from the recent list, in place of a window that opens and fails.
+
 ### 4.7 Trusting a Project
 
 A document is executable input (`spec.md` §21.4). On the desktop that reaches past the canvas: `/__jx_resolve__` and `/__jx_server__` import project modules into the backend (`server.md` §4.2), and the token gating them is in the canvas's own URL by design (§9.7), because the canvas calls them. A file association makes that one click on a file whose origin the user may not have thought about.

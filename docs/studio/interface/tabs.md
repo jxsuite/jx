@@ -100,7 +100,7 @@ New documents open in their natural editor: Markdown in **Edit**, spreadsheets i
 
 **A project comes back the way you left it.** Reopen one and the documents you had open reopen with it: in strip order, in both panes if you were split, with the one you were working on active and the keyboard where you left it. Each document returns in its own editor and view, at the zoom, breakpoint and color scheme you had chosen for it.
 
-If a file was renamed, moved or deleted while you were away, that one is skipped and the rest still open. If none of them survive, the project opens on its home page as it always did.
+If a file was renamed, moved or deleted while you were away, that one is skipped and the rest still open. If none of them survive, the project opens on its home page as it always did. A project with no home page opens with no tab at all, never a blank Untitled one.
 
 Naming a document in the URL still wins: `?file=` opens that file, and Studio leaves the session alone.
 

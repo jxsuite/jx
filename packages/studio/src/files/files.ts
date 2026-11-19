@@ -72,7 +72,7 @@ import {
   paneOfTab,
   receivingPane,
   renameTab,
-  replaceAllTabs,
+  closeAllTabs,
   setWorkspaceProject,
   workspace,
 } from "../workspace/workspace";
@@ -362,10 +362,11 @@ export async function openProject({
     ]);
     opening?.step("Sync with the remote");
 
-    replaceAllTabs({
-      document: { children: [], tagName: "div" },
-      id: "initial",
-    });
+    /* Closed, not swapped for a placeholder. This used to leave one blank "Untitled" tab behind
+       (`replaceAllTabs` with a `div`), which the restore or the home page then opened beside, and
+       a project with neither showed only that tab. `openRecentProject` has always emptied the
+       workspace like this. */
+    closeAllTabs();
 
     /* A different project means a different preview origin, and the published map is keyed by
        project-relative path — so carrying it across would let one project's `pages/index.json`

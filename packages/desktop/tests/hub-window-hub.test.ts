@@ -1,6 +1,6 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { afterEach, describe, expect, test } from "bun:test";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pickProjectFile } from "../src/backend/project-session";
 import { projectPartition, titleFor } from "../src/backend/window-hub";
@@ -40,6 +40,14 @@ describe("window hub", () => {
   afterEach(() => fixture.teardown());
 
   describe("opening windows", () => {
+    test("a folder that is gone opens no window, and the answer says why", async () => {
+      fixture = hubFixture();
+      const root = fixture.makeProject("alpha");
+      rmSync(root, { recursive: true });
+      expect(await fixture.open(root)).toEqual({ focused: false, missing: true });
+      expect(fixture.opened()).toEqual([]);
+    });
+
     test("a project window is a tokened Studio URL on its own server, titled for the project", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("alpha");

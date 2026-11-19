@@ -1351,7 +1351,7 @@ describe("openRecentProject", () => {
     /*
      * The directory picker is a SECOND destroyer, and it was ungated for as long as the first was.
      * `openRecentProject` asks and then calls `closeAllTabs`; this branch reaches `files.ts`'s
-     * `replaceAllTabs`, which throws the same documents away under a different name — so an
+     * `closeAllTabs`, which throws the same documents away under a different name — so an
      * enumeration of "who calls closeAllTabs" reported the matrix complete while ⌘O, the toolbar
      * button and the welcome screen all discarded unsaved work in silence. `platformUsesRepoPicker`
      * is true only for the cloud platform, so desktop and browser both arrived here.
@@ -1946,6 +1946,50 @@ describe("multi-window project routing", () => {
       expect(statusMessages).toHaveLength(0);
     } finally {
       delete platform.setWindowProject;
+    }
+  });
+
+  test("a recent project whose folder is gone says so in a dialog, and leaves Recent", async () => {
+    const { addRecentProject, getRecentProjects } = await import("../src/recent-projects");
+    const { activities, resetActivities } = await import("../src/panels/activity-panel");
+    resetActivities();
+    addRecentProject("gone", "/gone/site");
+    platform.setWindowProject = mock(async (_root: string) => ({
+      config: null,
+      deduped: false,
+      missing: true as const,
+    }));
+    try {
+      await toolbarCtx.openRecentProject("/gone/site");
+      await flush(4);
+      expect(getRecentProjects().some((entry) => entry.root === "/gone/site")).toBe(false);
+      expect(activities[0]?.state).toBe("failed");
+      const alert = topDialog();
+      expect(alert?.getAttribute("headline")).toBe("Could not open site");
+      expect(alert?.textContent).toContain("no longer exists");
+      alert?.dispatchEvent(new Event("close"));
+    } finally {
+      delete platform.setWindowProject;
+    }
+  });
+
+  test("a recent project whose folder is gone is reported when another window would have opened it", async () => {
+    const { activities, resetActivities } = await import("../src/panels/activity-panel");
+    resetActivities();
+    platform.openProjectInNewWindow = mock(async (_root: string) => ({
+      focused: false,
+      missing: true as const,
+    }));
+    try {
+      await toolbarCtx.openRecentProject("/gone/site");
+      await flush(4);
+      // Not "Opened in another window": nothing opened.
+      expect(activities[0]?.state).toBe("failed");
+      const alert = topDialog();
+      expect(alert?.textContent).toContain("no longer exists");
+      alert?.dispatchEvent(new Event("close"));
+    } finally {
+      delete platform.openProjectInNewWindow;
     }
   });
 

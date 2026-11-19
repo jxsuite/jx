@@ -22,6 +22,7 @@ import type {
   CreateProjectServerOptions,
   ProjectServerHandle,
 } from "@jxsuite/server/project-server";
+import { folderIsMissing } from "./folder-exists";
 import { setAuthorizationHost } from "./github-signin";
 import {
   createProjectSession,
@@ -318,6 +319,7 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
       const key = normalizeRoot(root);
       return [...opening.values()].some((pending) => pending.key === key);
     },
+    folderIsMissing,
     listOpenWindows: () => [...windows.values()].map((entry) => windowRow(entry)),
     openProject,
     retitle,
@@ -343,6 +345,11 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     if (existing) {
       raise(existing, file);
       return { focused: true };
+    }
+    /* A moved or deleted folder opens nothing, and the caller says so rather than a window that
+       would open and fail. */
+    if (root && folderIsMissing(root)) {
+      return { focused: false, missing: true };
     }
     const key = root ? normalizeRoot(root) : null;
     const pending = key ? [...opening.values()].find((entry) => entry.key === key) : null;

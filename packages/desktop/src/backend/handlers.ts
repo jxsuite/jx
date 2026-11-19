@@ -48,6 +48,8 @@ export interface WindowRow {
 export interface OpenOutcome {
   declined?: true;
   focused: boolean;
+  /** The folder is not there (moved, renamed or deleted), so nothing was opened. */
+  missing?: true;
 }
 
 /** What a window's handlers may ask of the hub that owns it. */
@@ -64,6 +66,8 @@ export interface HubControl {
   isOpening: (root: string) => boolean;
   /** Every open window and the project it holds. */
   listOpenWindows: () => WindowRow[];
+  /** Whether a folder a window was asked to open is gone (a moved or deleted recent project). */
+  folderIsMissing?: (root: string) => boolean;
   /** Open `root` (null for a welcome window), or raise the window that holds it. */
   openProject: (root: string | null) => Promise<OpenOutcome>;
   /** The window's project changed; retitle it. */
@@ -191,6 +195,10 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
     ),
     setSecrets: wire(session.setSecrets),
     setWindowProject: wire(async ({ root }: { root: string }) => {
+      // Before anything asks about, or binds to, a folder that is not there.
+      if (hub.folderIsMissing?.(root)) {
+        return { config: null, deduped: false, missing: true };
+      }
       /* Dedupe first: if ANOTHER window holds this project, raise it and say so rather than binding
          a second window to the same files. Studio treats `deduped` as "nothing was loaded here". */
       const existing = hub.findWindowByRoot(root, window);

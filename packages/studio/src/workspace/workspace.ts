@@ -1301,51 +1301,6 @@ export function endTabCycle() {
 }
 
 /**
- * Replace all existing tabs with a new one atomically. Ensures activeTab is never null during the
- * transition.
- *
- * @param {{
- *   id: string;
- *   documentPath?: string | null;
- *   document: JxMutableNode;
- *   frontmatter?: FormatFrontmatter;
- *   sourceFormat?: string | null;
- * }} newTabOpts
- * @returns {import("../tabs/tab.js").Tab}
- */
-export function replaceAllTabs(newTabOpts: {
-  id: string;
-  documentPath?: string | null;
-  document: JxMutableNode;
-  frontmatter?: FormatFrontmatter;
-  sourceFormat?: string | null;
-}) {
-  const oldIds = [...workspace.tabs.keys()];
-  const oldTabs = [...workspace.tabs.values()];
-
-  const newTab = createTab(newTabOpts);
-  workspace.tabs.set(newTab.id, newTab);
-  resetPanes();
-  workspace.panes[0]!.tabOrder = [newTab.id];
-  workspace.mruOrder = [];
-  resetTabCycle();
-  setActiveTab(newTab.id);
-  ensureCollab(newTab);
-
-  for (const id of oldIds) {
-    if (id === newTab.id) {
-      continue;
-    }
-    workspace.tabs.delete(id);
-  }
-  for (const tab of oldTabs) {
-    disposeTab(tab);
-  }
-
-  return newTab;
-}
-
-/**
  * Switch to an existing tab.
  *
  * Activation also points the file tree at the tab's document and promotes it in the MRU list — the
