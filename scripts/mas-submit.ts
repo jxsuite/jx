@@ -352,7 +352,11 @@ async function ensureVersion(
   return { created: true, id: created.id, kind: "ready", renamedFrom: null };
 }
 
-/** "What's New" is required on an update, and is not copied from the version before it. */
+/**
+ * "What's New" is required on an update, and is not copied from the version before it. An app's
+ * first version has none to set, and Apple answers the write with a 409 ("cannot be edited at this
+ * time"): that is the field being absent, not a failure, so it is skipped and the rest goes on.
+ */
 async function fillWhatsNew(client: AscClient, versionId: string, text: string): Promise<number> {
   const localizations = await list<LocalizationAttributes>(
     client,
@@ -361,14 +365,20 @@ async function fillWhatsNew(client: AscClient, versionId: string, text: string):
   let filled = 0;
   for (const localization of localizations) {
     if (!localization.attributes.whatsNew) {
-      await client.request("PATCH", `/v1/appStoreVersionLocalizations/${localization.id}`, {
-        data: {
-          attributes: { whatsNew: text },
-          id: localization.id,
-          type: "appStoreVersionLocalizations",
-        },
-      });
-      filled += 1;
+      try {
+        await client.request("PATCH", `/v1/appStoreVersionLocalizations/${localization.id}`, {
+          data: {
+            attributes: { whatsNew: text },
+            id: localization.id,
+            type: "appStoreVersionLocalizations",
+          },
+        });
+        filled += 1;
+      } catch (error) {
+        if (!(error instanceof AscError && error.status === 409)) {
+          throw error;
+        }
+      }
     }
   }
   return filled;

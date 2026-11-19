@@ -45,6 +45,8 @@ interface FakeAscState {
   drafts: string[];
   encryption: boolean | null;
   expired: boolean;
+  /** Refuse a write to "What's New" with a 409, as Apple does for an app's first version. */
+  refuseWhatsNew: boolean;
   submitted: boolean;
   versions: FakeVersion[];
 }
@@ -66,6 +68,7 @@ function fakeAsc(overrides: Partial<FakeAscState> = {}) {
     drafts: [],
     encryption: false,
     expired: false,
+    refuseWhatsNew: false,
     submitted: false,
     versions: [],
     ...overrides,
@@ -76,6 +79,18 @@ function fakeAsc(overrides: Partial<FakeAscState> = {}) {
       const route = path.split("?")[0] ?? path;
       state.calls.push(`${method} ${route}`);
       state.bodies[`${method} ${route}`] = body;
+      if (
+        state.refuseWhatsNew &&
+        method === "PATCH" &&
+        route.startsWith("/v1/appStoreVersionLocalizations/")
+      ) {
+        return Promise.reject(
+          new AscError(
+            409,
+            `PATCH ${route} -> 409: Attribute 'whatsNew' cannot be edited at this time`,
+          ),
+        );
+      }
       if (route === "/v1/apps") {
         return reply({
           data: state.app ? [{ attributes: { bundleId: "com.jxsuite.studio" }, id: "app1" }] : [],
@@ -217,6 +232,19 @@ describe("submitToReview", () => {
       whatsNew: "Fixes.",
     });
     expect(state.calls).not.toContain("PATCH /v1/appStoreVersionLocalizations/loc1");
+  });
+
+  test("goes on when Apple refuses What's New, as it does for an app's first version", async () => {
+    const { client, state } = fakeAsc({
+      refuseWhatsNew: true,
+      versions: [
+        { id: "v1", state: "PREPARE_FOR_SUBMISSION", versionString: "8.0.2", whatsNew: [null] },
+      ],
+    });
+    const report = await submitToReview(client, OPTIONS);
+
+    expect(report.lines).not.toContain('Set "What\'s New" for 1 localization(s).');
+    expect(state.submitted).toBe(true);
   });
 
   test("reuses a draft review submission rather than opening a second", async () => {
