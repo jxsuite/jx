@@ -109,15 +109,15 @@
     "husky": "^9.1.7",
     "metafile-codecov-bundle": "^0.1.1",
     "nano-staged": "^1.0.2",
-    "oxfmt": "^0.78.0",
-    "oxlint": "^1.93.0",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.94.0",
     "oxlint-tsgolint": "^7.0.2007",
     "puppeteer-core": "^25.17.0",
     "release-please": "^17.11.2",
     "ts-migrate": "^0.1.35",
     "ts-migrate-plugins": "^0.1.35",
     "typescript": "7.1.0-dev.20261115.1",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   },
   "nano-staged": {
     "*.md": [

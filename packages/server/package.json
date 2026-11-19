@@ -68,11 +68,11 @@
     "@jxsuite/schema": "workspace:^",
     "@jxsuite/site": "workspace:^",
     "@jxsuite/starters": "workspace:^",
-    "@npmcli/arborist": "^10.0.4",
+    "@npmcli/arborist": "^10.0.5",
     "chokidar": "^6.0.0",
     "kysely": "^0.29.9",
     "npm-package-arg": "^14.0.0",
-    "oxfmt": "^0.78.0",
+    "oxfmt": "^0.79.0",
     "ws": "^8.23.0",
     "zod": "^4.6.7"
   },
