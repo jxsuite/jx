@@ -156,7 +156,8 @@ export interface PaneContextView {
   bindingState: "shown" | "hidden";
   bindings: PaneContextChoice[];
 
-  exportState: "shown" | "hidden";
+  /** Download and Upload: drawn in the Grid and Code views of a document that is a file. */
+  fileState: "shown" | "hidden";
 }
 
 /** What a control can ask the pane to do. Every one of them is a decision the flow owns. */
@@ -177,7 +178,10 @@ export interface PaneContextActions {
   setProp: (name: string, raw: string) => void;
   /** Draw the surface with a variant of its specimen; `default` is the specimen's own scope. */
   setSpecimenVariant: (variant: string) => void;
-  exportFile: () => void;
+  /** Save the file's current text, unsaved edits included, to the person's disk. */
+  downloadFile: () => void;
+  /** Replace the file with one the person picks. */
+  uploadFile: () => void;
 }
 
 export interface PaneContextSurfaceHandle {
@@ -264,7 +268,7 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.layoutOn = view.layoutOn;
   scope.bindingState = view.bindingState;
   scope.bindings = view.bindings;
-  scope.exportState = view.exportState;
+  scope.fileState = view.fileState;
 }
 
 /** The projection a pane's chrome starts from — a bar with nothing in it yet. */
@@ -284,7 +288,7 @@ export function emptyPaneContextView(): PaneContextView {
     editorMode: "static",
     editorState: "hidden",
     editors: [],
-    exportState: "hidden",
+    fileState: "hidden",
     featureState: "hidden",
     features: [],
     layoutOn: true,

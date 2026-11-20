@@ -144,7 +144,8 @@ describe("uniqueness with two stages standing", () => {
    * renderer actually emitted.
    */
   const paneCtx = {
-    exportFile: () => {},
+    downloadFile: () => {},
+    uploadFile: () => {},
     parseMediaEntries: () => ({ baseWidth: 1280, featureQueries: [], sizeBreakpoints: [] }),
     setCanvasMode: () => {},
   };

@@ -99,8 +99,8 @@ declare module "tabulator-tables" {
     clipboardCopyStyled?: boolean;
     clipboardCopyConfig?: ClipboardCopyConfig;
     clipboardCopyRowRange?: string;
-    clipboardPasteParser?: string;
-    clipboardPasteAction?: string;
+    clipboardPasteParser?: string | ((clipboard: string) => { matrix: string[][] });
+    clipboardPasteAction?: string | ((parsed: { matrix: string[][] }) => never[]);
     movableColumns?: boolean;
     columnDefaults?: Partial<ColumnDefinition<Value>>;
     rowFormatter?: (row: RowComponent<Value>) => void;

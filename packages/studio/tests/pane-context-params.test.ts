@@ -58,7 +58,8 @@ type Ctx = Parameters<typeof paneContext.mount>[1];
 
 function makeCtx(): Ctx {
   return {
-    exportFile: mock(() => {}),
+    downloadFile: mock(() => {}),
+    uploadFile: mock(() => {}),
     parseMediaEntries: mock((): ReturnType<Ctx["parseMediaEntries"]> => ({
       baseWidth: 1200,
       featureQueries: [],

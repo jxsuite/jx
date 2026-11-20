@@ -71,9 +71,6 @@
     "& [part=\"resolving-trigger-caret\"]": {
       "--jx-icon-size": "12px"
     },
-    "& [part=\"export\"]": {
-      "flexShrink": "0"
-    },
     "& [part=\"banner\"]": {
       "$description": "A standing statement, not an after-the-fact refusal: a guest without write access used to watch their edits apply locally and vanish at the publish gate. Inside the band the stage is offset by, so it pushes the document down instead of covering the one it is warning about.",
       "padding": "6px 10px",
@@ -151,6 +148,11 @@
     },
     "& [part=\"sizes\"], & [part=\"schemes\"]": {
       "$description": "Segmented strips that hold their width; the bar clips at its trailing end rather than squeezing a segment.",
+      "flexShrink": "0"
+    },
+    "& [part=\"file\"]": {
+      "display": "flex",
+      "gap": "4px",
       "flexShrink": "0"
     }
   },
@@ -807,41 +809,78 @@
                     {
                       "tagName": "div",
                       "attributes": {
-                        "part": "export-slot",
+                        "part": "file-slot",
                         "role": "none"
                       },
                       "style": {
                         "display": "contents"
                       },
                       "$switch": {
-                        "$ref": "#/state/exportState"
+                        "$ref": "#/state/fileState"
                       },
                       "cases": {
                         "shown": {
-                          "tagName": "jx-action-button",
+                          "tagName": "div",
                           "attributes": {
-                            "part": "export"
-                          },
-                          "$props": {
-                            "size": "sm",
-                            "icon": "export"
-                          },
-                          "onclick": {
-                            "$prototype": "Function",
-                            "body": [
-                              {
-                                "operator": "call",
-                                "target": {
-                                  "$ref": "#/state/exportFile"
-                                },
-                                "value": []
-                              }
-                            ]
+                            "part": "file",
+                            "role": "none"
                           },
                           "children": [
                             {
-                              "tagName": "span",
-                              "textContent": "Export"
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "download"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "icon": "download-simple"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/downloadFile"
+                                    },
+                                    "value": []
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Download"
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "upload"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "icon": "upload-simple"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/uploadFile"
+                                    },
+                                    "value": []
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Upload"
+                                }
+                              ]
                             }
                           ]
                         }

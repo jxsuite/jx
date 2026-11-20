@@ -70,7 +70,7 @@ import { paneRegion } from "../ui/regions";
 import { isString } from "@jxsuite/schema/guards";
 import { CANVAS_VIEWS, canvasViewOf, canvasViewsFor, setCanvasView } from "../canvas/canvas-utils";
 import { isPlainStateEntry } from "../canvas/state-values";
-import { editorKindOf, editorKindsOf, modeForEditorKind } from "../tabs/tab";
+import { editorKindOf, editorKindsOf, isFileTab, modeForEditorKind } from "../tabs/tab";
 import { collabState } from "../collab/collab-state";
 import { activeRegistry } from "../commands/active-registry";
 import {
@@ -116,7 +116,10 @@ export const PANE_CONTEXT_VAR = "--pane-context-h";
 const PANE_CONTEXT_HEIGHT = 28;
 
 export interface PaneContextCtx {
-  exportFile: () => void;
+  /** Save a file tab's current text, unsaved edits included, to the person's disk. */
+  downloadFile: (tab: Tab) => void | Promise<void>;
+  /** Replace a file tab's file with one the person picks. */
+  uploadFile: (tab: Tab) => void | Promise<void>;
   /*
    * There is no `getCanvasMode` here, and there cannot be one.
    *
@@ -713,7 +716,13 @@ function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView
   /* THIS tab's effective mode. `ctx.getCanvasMode()` answered for the focused pane, so a document
      opened as Code in either pane put an Export button in the OTHER pane's bar as well — over a
      document that is not the one the button exports. */
-  view.exportState = canvasModeOfTab(tab) === "source" ? "shown" : "hidden";
+  const mode = canvasModeOfTab(tab);
+  view.fileState = isFileTab(tab) && (mode === "source" || mode === "grid") ? "shown" : "hidden";
+  /* A grid's "show beside" menu offers a document's Code, Diff, Layout and breakpoints: a data table
+     has no layout or breakpoint, and Code is already the segment beside Grid. */
+  if (mode === "grid") {
+    view.presetState = "hidden";
+  }
   return view;
 }
 
@@ -1090,7 +1099,18 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
         setCanvasView(tab, view, ctx.setCanvasMode);
       }
     },
-    exportFile: ctx.exportFile,
+    downloadFile: () => {
+      const tab = tabNow();
+      if (tab) {
+        void ctx.downloadFile(tab);
+      }
+    },
+    uploadFile: () => {
+      const tab = tabNow();
+      if (tab) {
+        void ctx.uploadFile(tab);
+      }
+    },
     /* The flow directly rather than `pane.backToHome`: the command's `when` keeps Escape away from
        a text field and the code editor, and the CONTROL must work in both (Back from Code is the
        Styles case). The pane is focused first, because the view going back is this pane's. */

@@ -131,11 +131,22 @@ beforeEach(() => {
 });
 
 describe("createGridView — construction", () => {
+  test("the paste parser drops the newline a spreadsheet appends, so no extra row clears a cell", async () => {
+    const { table } = await setupView();
+    // SAFETY: `createGridView` hands the engine a function parser, never the engine's named one.
+    const parse = table.options.clipboardPasteParser as (text: string) => { matrix: string[][] };
+    expect(parse("3061\r\n3291\r\n").matrix).toEqual([["3061"], ["3291"]]);
+    expect(parse("a\tb\nc\td").matrix).toEqual([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+  });
+
   test("builds Tabulator with spreadsheet options and initial data", async () => {
     const { table } = await setupView();
     expect(table.options.index).toBe(ROW_KEY_FIELD);
     expect(table.options.selectableRange).toBe(1);
-    expect(table.options.clipboardPasteAction).toBe("range");
+    expect(table.options.clipboardPasteAction).not.toBe("range");
     expect(table.options.editTriggerEvent).toBe("dblclick");
     expect(table.options.history).toBeFalse();
     expect(table.data).toHaveLength(2);

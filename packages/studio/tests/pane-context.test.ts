@@ -77,7 +77,8 @@ type Ctx = Parameters<typeof paneContext.mount>[1];
  */
 function makeCtx(overrides: Partial<Ctx> = {}): Ctx {
   return {
-    exportFile: mock(() => {}),
+    downloadFile: mock(() => {}),
+    uploadFile: mock(() => {}),
     parseMediaEntries: mock((): ReturnType<Ctx["parseMediaEntries"]> => ({
       baseWidth: 1200,
       featureQueries: [],
@@ -511,12 +512,12 @@ describe("a logic editor open in the dock", () => {
     expect(hasBtn("Back")).toBe(false);
   });
 
-  test("the Export control survives too, in the view that owns it", async () => {
+  test("the Download control survives too, in the view that owns it", async () => {
     const tab = openTestTab();
     await mountBar(ctxInMode("source"));
     tab.session.ui.editingFormula = { eventKey: "onclick", type: "event" };
     await flush(4);
-    expect(hasBtn("Export")).toBe(true);
+    expect(hasBtn("Download")).toBe(true);
   });
 });
 
@@ -1485,17 +1486,21 @@ describe("zoom", () => {
 
 // ─── The mode action ──────────────────────────────────────────────────────────
 
-describe("export", () => {
-  test("shows in the Code view only, and invokes ctx.exportFile", async () => {
-    openTestTab();
+describe("download and upload", () => {
+  test("show in the Code view of a file, and invoke ctx.downloadFile / ctx.uploadFile", async () => {
+    const tab = openTestTab();
     const ctx = ctxInMode("source");
     await mountBar(ctx);
-    pointer(btn("Export"), "click");
-    expect(ctx.exportFile).toHaveBeenCalledTimes(1);
+    pointer(btn("Download"), "click");
+    expect(ctx.downloadFile).toHaveBeenCalledTimes(1);
+    pointer(btn("Upload"), "click");
+    expect(ctx.uploadFile).toHaveBeenCalledTimes(1);
+    expect(ctx.downloadFile).toHaveBeenCalledWith(tab);
 
     paneContext.unmount();
     await mountBar(ctxInMode("design"));
-    expect(hasBtn("Export")).toBe(false);
+    expect(hasBtn("Download")).toBe(false);
+    expect(hasBtn("Upload")).toBe(false);
   });
 });
 
@@ -1603,18 +1608,18 @@ describe("two bars, two panes", () => {
     );
   });
 
-  test("Export appears in the bar of the pane that is in Code — and in no other", async () => {
+  test("Download appears in the bar of the pane that is in Code — and in no other", async () => {
     const [home, away] = await twoBars(makeCtx());
     home.session.ui.canvasMode = "source";
     away.session.ui.canvasMode = "design";
     paneContext.render();
     await flush(4);
 
-    expect(part("export")).not.toBeNull();
-    expect(part("export", sideHost)).toBeNull();
+    expect(part("download")).not.toBeNull();
+    expect(part("download", sideHost)).toBeNull();
     console.log(
-      `[pane-context] primary=source side=design → Export in primary bar: ` +
-        `${part("export") !== null}, in side bar: ${part("export", sideHost) !== null}`,
+      `[pane-context] primary=source side=design → Download in primary bar: ` +
+        `${part("download") !== null}, in side bar: ${part("download", sideHost) !== null}`,
     );
 
     // And the other way round, with focus left where it is: the answer follows the DOCUMENT.
@@ -1622,8 +1627,8 @@ describe("two bars, two panes", () => {
     away.session.ui.canvasMode = "source";
     paneContext.render();
     await flush(4);
-    expect(part("export")).toBeNull();
-    expect(part("export", sideHost)).not.toBeNull();
+    expect(part("download")).toBeNull();
+    expect(part("download", sideHost)).not.toBeNull();
   });
 
   test("the SIDE bar's Design segment leaves the primary's mode alone", async () => {

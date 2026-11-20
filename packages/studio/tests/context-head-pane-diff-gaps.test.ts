@@ -75,7 +75,8 @@ type PaneCtx = Parameters<typeof paneContext.mount>[1];
 
 function makeCtx(): PaneCtx {
   return {
-    exportFile: () => {},
+    downloadFile: () => {},
+    uploadFile: () => {},
     parseMediaEntries: () => ({
       baseWidth: 1200,
       featureQueries: [],

@@ -56,6 +56,8 @@ import {
 } from "../format/format-host";
 import type { StudioFormat } from "../format/format-host";
 import type { Tab } from "../tabs/tab.js";
+import { isFileTab } from "../tabs/tab";
+import { markLocalMutation } from "./fs-events";
 import { mediaTypeEssence } from "@jxsuite/schema/media-type";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -518,6 +520,108 @@ export async function exportFile() {
         source: "Export",
       });
     }
+  }
+}
+
+/** Media type for a downloaded file, from its extension; plain text for anything unknown. */
+function downloadMediaType(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase();
+  const known = new Map([
+    ["csv", "text/csv"],
+    ["json", "application/json"],
+    ["md", "text/markdown"],
+    ["tsv", "text/tab-separated-values"],
+  ]);
+  return (ext && known.get(ext)) || "text/plain";
+}
+
+/**
+ * Download a file tab's current text to the person's disk.
+ *
+ * A grid answers with the file as it would be saved, pending edits included; every other view
+ * serializes the document. Nothing is written to the project and the tab's dirty flag is left
+ * alone, which is what separates this from {@link exportFile}.
+ */
+export async function downloadFile(tab: Tab): Promise<void> {
+  if (!isFileTab(tab) || !tab.documentPath) {
+    return;
+  }
+  try {
+    const text =
+      (await getGridController(tab)?.serializeForSource()) ?? (await serializeDocument(tab));
+    const name = tab.documentPath.split("/").pop() ?? "download";
+    const url = URL.createObjectURL(new Blob([text], { type: downloadMediaType(name) }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    notify.error(`Could not download ${tab.documentPath}.`, {
+      detail: errorMessage(error),
+      source: "Download",
+    });
+  }
+}
+
+/** Ask the person for one file; resolves `null` when the picker is dismissed. */
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.addEventListener("change", () => resolve(input.files?.[0] ?? null), { once: true });
+    input.addEventListener("cancel", () => resolve(null), { once: true });
+    input.click();
+  });
+}
+
+/**
+ * Replace a file tab's file with one the person picks, then show the new contents.
+ *
+ * The file is written straight to the project, so unsaved edits in the tab are discarded and the
+ * person is asked first. An open grid reloads its rows from the new file.
+ */
+export async function uploadFile(tab: Tab): Promise<void> {
+  const path = tab.documentPath;
+  if (!isFileTab(tab) || !path) {
+    return;
+  }
+  const name = path.split("/").pop() ?? path;
+  const ext = name.includes(".") ? `.${name.split(".").pop()}` : "";
+  const file = await pickFile(ext);
+  if (!file) {
+    return;
+  }
+  if (tab.doc.dirty) {
+    const confirmed = await showConfirmDialog(
+      `Replace ${name}`,
+      `Unsaved changes in ${name} will be discarded and the file replaced with ${file.name}.`,
+      { confirmLabel: "Replace", destructive: true },
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
+  try {
+    const text = await file.text();
+    markLocalMutation(path);
+    await getPlatform().writeFile(path, text);
+    tab.doc.dirty = false;
+    const grid = getGridController(tab);
+    if (grid) {
+      grid.buffer.reset();
+      await grid.refresh();
+    }
+    // Lazily: `files.ts` imports this module's neighbours, and a static edge would close the cycle.
+    const { reloadFileInTab } = await import("./files");
+    await reloadFileInTab(path);
+    notify.success(`Replaced ${name} with ${file.name}.`);
+  } catch (error) {
+    notify.error(`Could not replace ${path}.`, {
+      detail: errorMessage(error),
+      source: "Upload",
+    });
   }
 }
 
