@@ -85,6 +85,13 @@ describe("scanning and counting", () => {
     expect(await scanNativeDocuments()).toEqual(["pages/ok.json"]);
   });
 
+  test("walks into nested folders", async () => {
+    install({ "pages/blog/2024/post.json": PAGE, "pages/blog/index.json": PAGE });
+    const { scanNativeDocuments } = await import("../src/format/convert-project");
+    const found = await scanNativeDocuments();
+    expect(found.toSorted()).toEqual(["pages/blog/2024/post.json", "pages/blog/index.json"]);
+  });
+
   test("the census counts only what a conversion would consider", async () => {
     const { censusOf } = await import("../src/format/convert-project");
     const census = await censusOf(["pages/a.json", "pages/b.jxn", "styles/x.json"]);
@@ -144,6 +151,18 @@ describe("planProjectConversion", () => {
     const plan = await planProjectConversion(".jxn");
     expect(plan.files).toEqual([]);
     expect(plan.skipped[0]?.reason).toContain("pages/about.jxn already exists");
+  });
+
+  test("skipped files are listed in path order", async () => {
+    install({
+      "pages/b.json": PAGE,
+      "pages/b.jxn": "tagName div\n",
+      "pages/a.json": PAGE,
+      "pages/a.jxn": "tagName div\n",
+    });
+    const { planProjectConversion } = await import("../src/format/convert-project");
+    const plan = await planProjectConversion(".jxn");
+    expect(plan.skipped.map((entry) => entry.path)).toEqual(["pages/a.json", "pages/b.json"]);
   });
 
   test("an open tab with unsaved changes is reported", async () => {
