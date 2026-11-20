@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.0](https://github.com/jxsuite/jx/compare/ui-v0.15.0...ui-v0.16.0) (2026-11-20)
+
+
+### Features
+
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 9.0.2
+    * @jxsuite/schema bumped to 8.2.0
+
 ## [0.15.0](https://github.com/jxsuite/jx/compare/ui-v0.14.0...ui-v0.15.0) (2026-11-17)
 
 

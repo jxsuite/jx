@@ -1,5 +1,34 @@
 # Changelog
 
+## [9.5.0](https://github.com/jxsuite/jx/compare/desktop-v9.4.1...desktop-v9.5.0) (2026-11-20)
+
+
+### Features
+
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+
+
+### Bug Fixes
+
+* **desktop:** skip What's New where Apple refuses it ([#712](https://github.com/jxsuite/jx/issues/712)) ([e4d7d94](https://github.com/jxsuite/jx/commit/e4d7d9405eb74fbfde7ba0c45c42e68d96083802))
+* **studio,desktop:** report a missing recent project, and open no blank Untitled tab ([#713](https://github.com/jxsuite/jx/issues/713)) ([1d825c2](https://github.com/jxsuite/jx/commit/1d825c22dbadf437130ddf61676de4a4d2ef5f29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 11.1.1
+    * @jxsuite/create bumped to 1.8.7
+    * @jxsuite/protocol bumped to 6.7.0
+    * @jxsuite/schema bumped to 8.2.0
+    * @jxsuite/server bumped to 9.3.0
+    * @jxsuite/starters bumped to 5.2.0
+    * @jxsuite/studio bumped to 13.2.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.3.0
+    * @jxsuite/ui bumped to 0.16.0
+
 ## [9.4.1](https://github.com/jxsuite/jx/compare/desktop-v9.4.0...desktop-v9.4.1) (2026-11-17)
 
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [9.3.0](https://github.com/jxsuite/jx/compare/server-v9.2.1...server-v9.3.0) (2026-11-20)
+
+
+### Features
+
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.2
+    * @jxsuite/catalog bumped to 0.1.19
+    * @jxsuite/collab bumped to 0.12.6
+    * @jxsuite/compiler bumped to 11.1.1
+    * @jxsuite/create bumped to 1.8.7
+    * @jxsuite/erase bumped to 0.3.6
+    * @jxsuite/import bumped to 0.44.9
+    * @jxsuite/protocol bumped to 6.7.0
+    * @jxsuite/runtime bumped to 9.0.2
+    * @jxsuite/schema bumped to 8.2.0
+    * @jxsuite/site bumped to 4.1.1
+    * @jxsuite/starters bumped to 5.2.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.15
+    * @jxsuite/connector bumped to 0.8.15
+    * @jxsuite/parser bumped to 5.2.2
+
 ## [9.2.1](https://github.com/jxsuite/jx/compare/server-v9.2.0...server-v9.2.1) (2026-11-17)
 
 
