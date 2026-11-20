@@ -233,6 +233,12 @@ export interface GitBranchesResult {
    * a local repository may omit it.
    */
   defaultBranch?: string;
+  /**
+   * The branches other than the current one that hold commits the current branch does not (`git
+   * branch --no-merged`). Absent when the host cannot say, which is not the same as empty: a caller
+   * that needs the answer treats an absent list as unknown rather than as none.
+   */
+  unmerged?: string[];
 }
 
 export interface GitLogEntry {

@@ -813,6 +813,12 @@ export interface ProjectConfig {
      */
     shadow?: "open" | "closed" | false;
     charset?: string;
+    /**
+     * The native notation new documents are written in: `jxn` (Jx Notation) or `json`. Unset reads
+     * as `jxn`. It decides only what Studio creates; every document is read in either notation, and
+     * converting the project's existing documents is a separate act (studio.md §8.6).
+     */
+    format?: "json" | "jxn";
     [key: string]: JxDocumentValue | undefined;
   };
   style?: JxStyle;

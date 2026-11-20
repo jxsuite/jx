@@ -41,6 +41,10 @@ const TABLE = {
     load: () => import("./settings-deploy.specimen"),
     variants: ["failed"],
   },
+  "settings-format": {
+    load: () => import("./settings-format.specimen"),
+    variants: ["failed"],
+  },
   statusbar: {
     load: () => import("./statusbar.specimen"),
     variants: ["no-document"],

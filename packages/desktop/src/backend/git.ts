@@ -213,7 +213,13 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
     const current = currentRaw.trim();
     const output = await repoGit("branch", "-a", "--format=%(refname:short)");
     const branches = output.trim().split("\n").filter(Boolean);
-    return { branches, current };
+    try {
+      const behind = await repoGit("branch", "--no-merged", "HEAD", "--format=%(refname:short)");
+      return { branches, current, unmerged: behind.split("\n").filter(Boolean) };
+    } catch {
+      // A repository with no commits, or a detached HEAD, cannot say: leave the answer unknown.
+      return { branches, current };
+    }
   }
 
   async function gitLog(params: { limit?: number }): Promise<GitLogEntry[]> {

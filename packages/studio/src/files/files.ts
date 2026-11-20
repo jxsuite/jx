@@ -100,6 +100,7 @@ import {
   refreshExtensionUi,
   refreshFormats,
 } from "../format/format-host";
+import { defaultNativeExt } from "../format/default-format";
 import { convertTargets, creationFormats, knownDocumentExtensions } from "../format/format-choices";
 import {
   composeNewFileName,
@@ -2102,12 +2103,15 @@ async function createNewFile(dirPath: string, renderLeftPanel: () => void) {
 }
 
 /**
- * The extension New File starts on in a folder: Jx Notation in a folder of documents, where every
- * new page, layout and component is written in it (§8.5), and JSON anywhere else, which is data.
+ * The extension New File starts on in a folder: the project's default notation (`defaults.format`,
+ * Jx Notation unless set) in a folder of documents, where every new page, layout and component is
+ * written in it (§8.5, §8.6), and JSON anywhere else, which is data.
  */
 export function defaultExtensionIn(dirPath: string): string {
   const [top] = dirPath.replaceAll("\\", "/").replace(/^\.\//, "").split("/");
-  return top === "pages" || top === "layouts" || top === "components" ? ".jxn" : ".json";
+  return top === "pages" || top === "layouts" || top === "components"
+    ? defaultNativeExt()
+    : ".json";
 }
 
 /**

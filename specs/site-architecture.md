@@ -234,6 +234,7 @@ The project file at the project root (`project.jxn`, or `project.json` in an old
 | `name`             | `string`              | Site name, used in default `<title>` and meta tags                                                                                                    |
 | `url`              | `string`              | Production URL. The base URI every emitted reference resolves against — canonical links, the sitemap, and the path the site is deployed under (§14.7) |
 | `defaults.layout`  | `string`              | Default layout applied to all pages that don't specify `$layout`                                                                                      |
+| `defaults.format`  | `string`              | The notation Studio writes new documents in: `jxn` (default) or `json`. Both are read everywhere; studio.md §8.6                                      |
 | `defaults.lang`    | `string`              | Default `<html lang>` attribute                                                                                                                       |
 | `defaults.dir`     | `string`              | Default `<html dir>`: `ltr`, `rtl` or `auto`; omitted when unset (§13.4)                                                                              |
 | `defaults.shadow`  | `string` or `false`   | Default shadow-DOM mode for every component (spec.md §16.6)                                                                                           |

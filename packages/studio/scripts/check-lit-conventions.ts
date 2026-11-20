@@ -249,6 +249,10 @@ export const LIT_TEMPLATE_AUTHORS = {
     "`showConfirmDialog`'s `message` takes a template and the dialog document renders it into " +
     '`[part="island"]`. It reaches lit through a DYNAMIC `await import("lit-html")`, which ' +
     "is why every static inventory of this migration was one module short until this rule existed",
+  "format/convert-project-flow.ts":
+    "the same rich confirm BODY as format/convert-file.ts (studio-ui-guidelines.md §9.4's island): " +
+    "`showConfirmDialog`'s `message` takes a template, here the plan's consequence lines and the " +
+    'unmerged-branch warning. It reaches lit through a DYNAMIC `await import("lit-html")`',
   "shell/tree.ts":
     "the four #layer-* hosts. Their rules are a LINKED stylesheet because the frame must be laid " +
     "out by the first paint, which is why surfaces/shell.json carries no style key",

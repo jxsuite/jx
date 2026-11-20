@@ -238,6 +238,7 @@ const parserExtensions: ExtensionsInfo[] = [
 const BUILTIN_LABELS = [
   "Overview",
   "Locales",
+  "Document format",
   "Extensions",
   "Contexts",
   "Site head",
@@ -312,7 +313,7 @@ describe("the groups", () => {
     );
     expect(groups).toEqual({
       advanced: ["contexts", "head", "definitions", "dependencies", "rawJson"],
-      general: ["overview", "locales"],
+      general: ["overview", "locales", "format"],
       integrations: ["extensions"],
     });
   });
@@ -371,6 +372,7 @@ describe("the groups", () => {
     expect(settingsSectionKeys()).toEqual([
       "overview",
       "locales",
+      "format",
       "extensions",
       "contexts",
       "head",
@@ -509,6 +511,7 @@ describe("the settings editor", () => {
     expect(navLabels()).toEqual([
       "Overview",
       "Locales",
+      "Document format",
       "Extensions",
       "Content Types",
       "Contexts",
@@ -534,7 +537,7 @@ describe("the settings editor", () => {
       },
     });
     await flush();
-    expect(navLabels().slice(0, 3)).toEqual(["Overview", "Locales", "Custom"]);
+    expect(navLabels().slice(0, 4)).toEqual(["Overview", "Locales", "Document format", "Custom"]);
     pointer(navButton("Custom"), "click");
     await flush();
     expect(host.querySelector(".custom-section-body")?.textContent).toBe("Hello custom");

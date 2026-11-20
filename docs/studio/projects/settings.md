@@ -2,6 +2,7 @@
 title: "Project settings"
 description: "Project settings in Jx Studio: a workspace over the project file, grouped into General, Integrations and Advanced, reachable from every workspace."
 spec:
+  - studio.md#8.6
   - studio.md#9.4
   - studio.md#17
   - studio.md#22.9
@@ -10,6 +11,9 @@ code:
   - packages/studio/src/settings/settings-document.ts
   - packages/studio/src/settings/settings-workspace.ts
   - packages/studio/src/panels/settings-menu.ts
+  - packages/studio/src/settings/format-section.ts
+  - packages/studio/src/format/convert-project.ts
+  - packages/studio/src/format/convert-project-flow.ts
   - packages/studio/src/settings/section-registry.ts
   - packages/studio/src/settings/project-sections.ts
   - packages/studio/src/settings/general-settings.ts
@@ -56,7 +60,7 @@ Project settings has no tab in the Command Bar's row of workspaces, because you 
 
 The sections are listed down the left in three groups:
 
-- **General**: Overview and Locales, the things every site sets.
+- **General**: Overview, Locales and Document format, the things every site sets.
 - **Integrations**: Extensions, and every section an extension adds, such as Content Types, Data Tables, Authentication, Connections, Site Search and Feeds.
 - **Advanced**, marked _For developers_: Contexts, Site head, Data Shapes, Packages and Source. Most sites never need them.
 
@@ -99,6 +103,20 @@ A value the section refuses (a blank name, an address that isn't a full URL) is 
 The languages this site is published in. Add a [BCP 47](https://www.rfc-editor.org/info/bcp47) tag (`fr-CA`, `ar`, `de`), pick which one is the default, and choose whether the default language's pages sit at the bare URL (`/about`) or under a prefix like every other (`/en/about`).
 
 Tags are checked as you type by the same parser the build uses, so a tag this field accepts is one that builds: `en_US` is refused here rather than discovered later. Declaring a second language is what turns on every other language surface in Studio. See **[Languages](/docs/studio/interface/languages)**.
+
+## Document format
+
+Which notation new pages, templates and components are written in: **Jx Notation** (`.jxn`) or **JSON** (`.json`). A project that has never chosen uses Jx Notation. The choice is saved as `defaults.format` in the project file and changes only what you create from now on. Both notations are read everywhere, so a project can hold a mixture.
+
+Under the picker, a sentence says how the project's documents divide, such as _12 documents are JSON and 3 are Jx Notation_. When some are not in the chosen notation, a button offers to convert them: **Convert 12 documents to Jx Notation…**. This is how you upgrade a project from JSON.
+
+The conversion covers the pages, templates and components, and leaves content collection entries, class definitions and schemas alone. Before anything changes, Studio checks every file and tells you what will happen: how many will convert, any it will skip and why, and that every reference to a converted file is rewritten. The original files are not kept, so commit first and the whole conversion becomes one change you can revert.
+
+:::doc-warning
+Converting renames files. If other branches have work that is not merged yet, Studio lists them in the dialog and the button changes to **Convert anyway**. A branch that edits a page you converted will conflict when you merge it, so merge or finish those branches first. If Studio cannot tell whether other branches are merged, it warns about all of them.
+:::
+
+A document open with unsaved changes stops the conversion until you save or discard them. If a file fails part way, the others stay converted and the failures are listed in Problems. Run the conversion again to finish the rest. When everything converts, the target becomes the project's default format.
 
 ## Extensions
 

@@ -1873,7 +1873,23 @@ export async function handleStudioApi(
             current = name!;
           }
         }
-        return Response.json({ branches, current });
+        /* Branches holding commits the current one lacks. A repository with no commits, or a
+           detached HEAD, cannot answer, and the member is left out rather than sent empty. */
+        let unmerged: string[] | undefined;
+        try {
+          const behind = await runGit([
+            "branch",
+            "--no-merged",
+            "HEAD",
+            "--format=%(refname:short)",
+          ]);
+          unmerged = behind.split("\n").filter(Boolean);
+        } catch {
+          unmerged = undefined;
+        }
+        return Response.json(
+          unmerged === undefined ? { branches, current } : { branches, current, unmerged },
+        );
       }
 
       if (gitCmd === "log" && req.method === "GET") {

@@ -1,0 +1,166 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsFormat",
+  "$description": "Project Settings › Document format (studio.md §8.6): the notation new documents are written in (`defaults.format`), how the project's existing documents divide between JSON and Jx Notation, and the one action that converts them all. The adapter (`surfaces/settings-format.ts`) hands in the chosen notation, the census and the sentence for the button; the document draws them and hands each change straight back. Nothing here reads `project.json`, and the conversion's warnings (unmerged branches, unsaved tabs) are the dialog's, said at the moment they matter rather than here.",
+  "tagName": "section",
+  "attributes": {
+    "part": "format"
+  },
+  "style": {
+    "$description": "The same section shape as Deploy: no heading of its own, because the settings nav names the section.",
+    "display": "block",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"section-error\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"default\"]": {
+      "maxWidth": "320px"
+    },
+    "& [part=\"summary\"]": {
+      "margin": "0 0 12px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"convert-help\"]": {
+      "margin": "0 0 8px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "section-error-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "section-error",
+            "role": "alert"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    },
+    {
+      "tagName": "jx-field",
+      "attributes": {
+        "part": "row",
+        "data-field": "format"
+      },
+      "$props": {
+        "span": true,
+        "label": "Default format",
+        "description": "What new pages, templates and components are written in. Documents already in the project keep theirs until converted."
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "default"
+          },
+          "$props": {
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/formats"
+            },
+            "value": {
+              "$ref": "#/state/format"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setFormat"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "summary"
+      },
+      "textContent": "${state.summary}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "convert-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/canConvert"
+      },
+      "cases": {
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "convert-block"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "convert-help"
+              },
+              "textContent": "Rewrites every page, template and component in place and repairs the references to them. You are shown what changes, and any other branches that would conflict, before anything is written."
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "convert"
+              },
+              "$props": {
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/convert"
+                    }
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "${state.convertLabel}"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
