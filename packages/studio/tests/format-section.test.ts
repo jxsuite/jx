@@ -17,7 +17,7 @@ import { initLayers } from "../src/ui/layers";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 import { setFormats } from "../src/format/format-host";
 import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
-import { projectState } from "../src/store";
+import { projectState, setProjectState } from "../src/store";
 import { invalidateUsages } from "../src/services/references";
 import { projectConfigPath, resetProjectConfigDocument } from "../src/tabs/project-config";
 import { mountFormatSurface } from "../src/surfaces/settings-format";
@@ -206,6 +206,45 @@ describe("the surface and the section's redraw", () => {
 });
 
 describe("convertProject", () => {
+  test("with no project open it says so and moves nothing", async () => {
+    await setup({}, { "pages/a.json": DOC });
+    const open = projectState;
+    setProjectState(null);
+    try {
+      expect(await convertProject("jxn")).toBe(false);
+      expect(problems.at(-1)?.message ?? toasts.at(-1)?.message).toContain("Open a project");
+    } finally {
+      setProjectState(open);
+    }
+  });
+
+  test("a project whose documents cannot be checked is reported, and nothing moves", async () => {
+    await setup({}, { "pages/a.json": DOC });
+    const registered = globalThis.__jxPlatform;
+    globalThis.__jxPlatform = undefined;
+    try {
+      expect(await convertProject("jxn")).toBe(false);
+    } finally {
+      globalThis.__jxPlatform = registered;
+    }
+    expect(problems.at(-1)?.message ?? toasts.at(-1)?.message).toContain("Could not check");
+  });
+
+  test("the section leaves the count unknown when the scan cannot run", async () => {
+    installMockPlatform({}, {});
+    const registered = globalThis.__jxPlatform;
+    globalThis.__jxPlatform = undefined;
+    const container = document.createElement("div");
+    document.body.append(container);
+    try {
+      renderFormatSection(container);
+      await flush(8);
+    } finally {
+      globalThis.__jxPlatform = registered;
+    }
+    expect(part(container, "convert")?.hasAttribute("disabled") ?? true).toBe(true);
+  });
+
   test("a notation it does not know is refused, and nothing moves", async () => {
     await setup({}, { "pages/a.json": DOC });
     expect(await convertProject("yaml")).toBe(false);
