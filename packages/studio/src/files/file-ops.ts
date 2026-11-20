@@ -45,8 +45,6 @@ import { flushPreviewOverlay } from "../preview/preview-overlay";
 import { serializeDocument } from "./serialize-document";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
 import {
-  defaultContentFormat,
-  formatByName,
   formatForPath,
   formatParse,
   getFormats,
@@ -136,12 +134,6 @@ interface FilePickerWindow {
   showOpenFilePicker: (options: {
     types: FilePickerAcceptType[];
   }) => Promise<FileSystemFileHandle[]>;
-  /* Export's single extension is `format.extensions[0]`, absent for a format that declares none —
-     So the save picker is typed with the value it is actually handed. */
-  showSaveFilePicker: (options: {
-    suggestedName?: string | undefined;
-    types: { accept: Record<string, (string | undefined)[]>; description: string }[];
-  }) => Promise<FileSystemFileHandle>;
 }
 
 /** Whether this browser offers `showOpenFilePicker` (Chromium does; Firefox and Safari do not). */
@@ -149,13 +141,6 @@ function hasOpenFilePicker(
   win: Window,
 ): win is Window & Pick<FilePickerWindow, "showOpenFilePicker"> {
   return "showOpenFilePicker" in win;
-}
-
-/** Whether this browser offers `showSaveFilePicker` (Chromium does; Firefox and Safari do not). */
-function hasSaveFilePicker(
-  win: Window,
-): win is Window & Pick<FilePickerWindow, "showSaveFilePicker"> {
-  return "showSaveFilePicker" in win;
 }
 
 /** Attach the tab's file to a notification's options, when it has one. */
@@ -463,66 +448,6 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
   return false;
 }
 
-/** The output format for a tab: its source format, or the default content format. */
-function tabFormat(tab: Tab): StudioFormat | undefined {
-  return (
-    formatByName(tab.doc.sourceFormat) ??
-    (tab.doc.mode === "content" ? defaultContentFormat() : undefined)
-  );
-}
-
-/** Export the current document to a new location (Save As / download). */
-export async function exportFile() {
-  const tab = activeTab.value;
-  if (!tab) {
-    return;
-  }
-  try {
-    await loadFormats();
-    const format = tabFormat(tab);
-    const output = await serializeDocument(tab);
-    const mimeType = format
-      ? (mediaTypeEssence(format.mediaType) ?? "text/plain")
-      : "application/json";
-    const ext = format ? format.extensions[0] : ".json";
-    const description = format ? format.name : "Jx Component";
-    const fallbackName = format ? `content${ext}` : "component.json";
-
-    if (hasSaveFilePicker(window)) {
-      const suggestedName = tab.documentPath ? tab.documentPath.split("/").pop() : fallbackName;
-      const handle = await window.showSaveFilePicker({
-        suggestedName,
-        types: [{ accept: { [mimeType]: [ext] }, description }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(output);
-      await writable.close();
-      tab.doc.dirty = false;
-      reportSaved(tab);
-      notify.success(`Exported as ${handle.name}.`);
-    } else {
-      // Fallback: download
-      const blob = new Blob([output], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fallbackName;
-      a.click();
-      URL.revokeObjectURL(url);
-      tab.doc.dirty = false;
-      reportSaved(tab);
-      notify.success(`Downloaded ${fallbackName}.`);
-    }
-  } catch (error) {
-    if (!(error instanceof Error && error.name === "AbortError")) {
-      notify.error("Could not export the document.", {
-        detail: errorMessage(error),
-        source: "Export",
-      });
-    }
-  }
-}
-
 /** Media type for a downloaded file, from its extension; plain text for anything unknown. */
 function downloadMediaType(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase();
@@ -540,7 +465,7 @@ function downloadMediaType(path: string): string {
  *
  * A grid answers with the file as it would be saved, pending edits included; every other view
  * serializes the document. Nothing is written to the project and the tab's dirty flag is left
- * alone, which is what separates this from {@link exportFile}.
+ * alone.
  */
 export async function downloadFile(tab: Tab): Promise<void> {
   if (!isFileTab(tab) || !tab.documentPath) {
