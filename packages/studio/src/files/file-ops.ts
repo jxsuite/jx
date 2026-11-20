@@ -45,8 +45,6 @@ import { flushPreviewOverlay } from "../preview/preview-overlay";
 import { serializeDocument } from "./serialize-document";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
 import {
-  defaultContentFormat,
-  formatByName,
   formatForPath,
   formatParse,
   getFormats,
@@ -56,6 +54,8 @@ import {
 } from "../format/format-host";
 import type { StudioFormat } from "../format/format-host";
 import type { Tab } from "../tabs/tab.js";
+import { isFileTab } from "../tabs/tab";
+import { markLocalMutation } from "./fs-events";
 import { mediaTypeEssence } from "@jxsuite/schema/media-type";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -134,12 +134,6 @@ interface FilePickerWindow {
   showOpenFilePicker: (options: {
     types: FilePickerAcceptType[];
   }) => Promise<FileSystemFileHandle[]>;
-  /* Export's single extension is `format.extensions[0]`, absent for a format that declares none —
-     So the save picker is typed with the value it is actually handed. */
-  showSaveFilePicker: (options: {
-    suggestedName?: string | undefined;
-    types: { accept: Record<string, (string | undefined)[]>; description: string }[];
-  }) => Promise<FileSystemFileHandle>;
 }
 
 /** Whether this browser offers `showOpenFilePicker` (Chromium does; Firefox and Safari do not). */
@@ -147,13 +141,6 @@ function hasOpenFilePicker(
   win: Window,
 ): win is Window & Pick<FilePickerWindow, "showOpenFilePicker"> {
   return "showOpenFilePicker" in win;
-}
-
-/** Whether this browser offers `showSaveFilePicker` (Chromium does; Firefox and Safari do not). */
-function hasSaveFilePicker(
-  win: Window,
-): win is Window & Pick<FilePickerWindow, "showSaveFilePicker"> {
-  return "showSaveFilePicker" in win;
 }
 
 /** Attach the tab's file to a notification's options, when it has one. */
@@ -461,63 +448,105 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
   return false;
 }
 
-/** The output format for a tab: its source format, or the default content format. */
-function tabFormat(tab: Tab): StudioFormat | undefined {
-  return (
-    formatByName(tab.doc.sourceFormat) ??
-    (tab.doc.mode === "content" ? defaultContentFormat() : undefined)
-  );
+/** Media type for a downloaded file, from its extension; plain text for anything unknown. */
+function downloadMediaType(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase();
+  const known = new Map([
+    ["csv", "text/csv"],
+    ["json", "application/json"],
+    ["md", "text/markdown"],
+    ["tsv", "text/tab-separated-values"],
+  ]);
+  return (ext && known.get(ext)) || "text/plain";
 }
 
-/** Export the current document to a new location (Save As / download). */
-export async function exportFile() {
-  const tab = activeTab.value;
-  if (!tab) {
+/**
+ * Download a file tab's current text to the person's disk.
+ *
+ * A grid answers with the file as it would be saved, pending edits included; every other view
+ * serializes the document. Nothing is written to the project and the tab's dirty flag is left
+ * alone.
+ */
+export async function downloadFile(tab: Tab): Promise<void> {
+  if (!isFileTab(tab) || !tab.documentPath) {
     return;
   }
   try {
-    await loadFormats();
-    const format = tabFormat(tab);
-    const output = await serializeDocument(tab);
-    const mimeType = format
-      ? (mediaTypeEssence(format.mediaType) ?? "text/plain")
-      : "application/json";
-    const ext = format ? format.extensions[0] : ".json";
-    const description = format ? format.name : "Jx Component";
-    const fallbackName = format ? `content${ext}` : "component.json";
-
-    if (hasSaveFilePicker(window)) {
-      const suggestedName = tab.documentPath ? tab.documentPath.split("/").pop() : fallbackName;
-      const handle = await window.showSaveFilePicker({
-        suggestedName,
-        types: [{ accept: { [mimeType]: [ext] }, description }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(output);
-      await writable.close();
-      tab.doc.dirty = false;
-      reportSaved(tab);
-      notify.success(`Exported as ${handle.name}.`);
-    } else {
-      // Fallback: download
-      const blob = new Blob([output], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fallbackName;
-      a.click();
-      URL.revokeObjectURL(url);
-      tab.doc.dirty = false;
-      reportSaved(tab);
-      notify.success(`Downloaded ${fallbackName}.`);
-    }
+    const text =
+      (await getGridController(tab)?.serializeForSource()) ?? (await serializeDocument(tab));
+    const name = tab.documentPath.split("/").pop() ?? "download";
+    const url = URL.createObjectURL(new Blob([text], { type: downloadMediaType(name) }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
   } catch (error) {
-    if (!(error instanceof Error && error.name === "AbortError")) {
-      notify.error("Could not export the document.", {
-        detail: errorMessage(error),
-        source: "Export",
-      });
+    notify.error(`Could not download ${tab.documentPath}.`, {
+      detail: errorMessage(error),
+      source: "Download",
+    });
+  }
+}
+
+/** Ask the person for one file; resolves `null` when the picker is dismissed. */
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.addEventListener("change", () => resolve(input.files?.[0] ?? null), { once: true });
+    input.addEventListener("cancel", () => resolve(null), { once: true });
+    input.click();
+  });
+}
+
+/**
+ * Replace a file tab's file with one the person picks, then show the new contents.
+ *
+ * The file is written straight to the project, so unsaved edits in the tab are discarded and the
+ * person is asked first. An open grid reloads its rows from the new file.
+ */
+export async function uploadFile(tab: Tab): Promise<void> {
+  const path = tab.documentPath;
+  if (!isFileTab(tab) || !path) {
+    return;
+  }
+  const name = path.split("/").pop() ?? path;
+  const ext = name.includes(".") ? `.${name.split(".").pop()}` : "";
+  const file = await pickFile(ext);
+  if (!file) {
+    return;
+  }
+  if (tab.doc.dirty) {
+    const confirmed = await showConfirmDialog(
+      `Replace ${name}`,
+      `Unsaved changes in ${name} will be discarded and the file replaced with ${file.name}.`,
+      { confirmLabel: "Replace", destructive: true },
+    );
+    if (!confirmed) {
+      return;
     }
+  }
+  try {
+    const text = await file.text();
+    markLocalMutation(path);
+    await getPlatform().writeFile(path, text);
+    tab.doc.dirty = false;
+    const grid = getGridController(tab);
+    if (grid) {
+      grid.buffer.reset();
+      await grid.refresh();
+    }
+    // Lazily: `files.ts` imports this module's neighbours, and a static edge would close the cycle.
+    const { reloadFileInTab } = await import("./files");
+    await reloadFileInTab(path);
+    notify.success(`Replaced ${name} with ${file.name}.`);
+  } catch (error) {
+    notify.error(`Could not replace ${path}.`, {
+      detail: errorMessage(error),
+      source: "Upload",
+    });
   }
 }
 

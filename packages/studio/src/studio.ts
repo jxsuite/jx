@@ -107,11 +107,12 @@ import { createLiveSurfaceSaver } from "./services/live-surfaces";
 import { beginProjectOpening, isOpeningProject } from "./project-opening";
 import { beginActivity } from "./panels/activity-panel";
 import {
-  exportFile,
+  downloadFile,
   parseCollabSource,
   parseSourceForPath,
   saveFile,
   setDocumentSavedListener,
+  uploadFile,
 } from "./files/file-ops";
 import { serializeDocument } from "./files/serialize-document";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
@@ -596,7 +597,8 @@ function focusWorkspaceHome(paneId: string, id: WorkspaceId): void {
 }
 
 paneContext.mount(primaryCell?.chrome ?? document.createElement("div"), {
-  exportFile,
+  downloadFile,
+  uploadFile,
   // No `getCanvasMode`: the bar is drawn once per pane and asks its own pane. See `PaneContextCtx`.
   parseMediaEntries,
   setCanvasMode,

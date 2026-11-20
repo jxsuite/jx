@@ -51,7 +51,8 @@ type Ctx = Parameters<typeof paneContext.mount>[1];
 /** The bar's dependencies, each a mock so a test can count what the bar asked of it. */
 function makeCtx() {
   return {
-    exportFile: mock(() => {}),
+    downloadFile: mock(() => {}),
+    uploadFile: mock(() => {}),
     parseMediaEntries: mock((): ReturnType<Ctx["parseMediaEntries"]> => ({
       baseWidth: 1200,
       featureQueries: [],

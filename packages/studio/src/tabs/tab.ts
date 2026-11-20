@@ -28,6 +28,15 @@ let projectFileName: ProjectFileName = NEW_PROJECT_FILE_NAME;
  * this path as the configuration document. Which of the two names it is, is the open project's:
  * `files/project-file-name.ts` learns it as the project opens.
  */
+/**
+ * Whether a tab's editing context is a file in the project, as opposed to a virtual document such
+ * as a collection grid (`grid://…`), a diff or a workspace home. Only a file has bytes to download
+ * or to replace.
+ */
+export function isFileTab(tab: { documentPath: string | null }): boolean {
+  return tab.documentPath !== null && tab.documentPath !== "" && !tab.documentPath.includes("://");
+}
+
 export function projectConfigPath(): ProjectFileName {
   return projectFileName;
 }

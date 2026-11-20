@@ -237,7 +237,8 @@ describe("pane-context render failure", () => {
     document.body.append(host);
     expect(() => {
       paneContext.mount(host, {
-        exportFile: () => {},
+        downloadFile: () => {},
+        uploadFile: () => {},
         // `getCanvasMode` used to be the thrower, and it is gone from the ctx — the bar asks its own
         // Pane's tab. `parseMediaEntries` is the remaining injected call on the render path.
         parseMediaEntries: () => {

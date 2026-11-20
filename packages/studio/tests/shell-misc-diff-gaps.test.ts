@@ -475,7 +475,8 @@ describe("the bootstrap's saveDocument hook", () => {
     const saveFileSpy = mock(async (..._args: Parameters<typeof saveFile>) => true);
     void mock.module("../src/files/file-ops.ts", () => ({
       confirmFileDelete: mock(async () => false),
-      exportFile: mock(async () => {}),
+      downloadFile: mock(async () => {}),
+      uploadFile: mock(async () => {}),
       openFile: mock(async () => {}),
       parseFormatSource: mock(async () => ({})),
       parseSourceForPath: mock(async () => ({})),

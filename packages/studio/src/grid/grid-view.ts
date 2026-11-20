@@ -43,6 +43,15 @@ import type { GridCellValue, GridColumn } from "./grid-source";
 import type { GridController } from "./grid-controller";
 import { registerGridProbe } from "./grid-idle";
 
+/**
+ * Clipboard text as rows of cells; the newline a spreadsheet appends after the last row is not a
+ * row.
+ */
+function parseClipboardMatrix(text: string): string[][] {
+  const body = text.replaceAll(/\r\n?/g, "\n").replace(/\n$/, "");
+  return body.split("\n").map((line) => line.split("\t"));
+}
+
 export interface GridView {
   /** Re-pull controller.effectiveRows() into the table (buffer → table sync). */
   refreshData: () => void;
@@ -177,13 +186,63 @@ export function createGridView(host: HTMLElement, controller: GridController): G
   const gridId = controller.source.id;
   const layout = loadGridLayout(gridId);
 
+  /*
+   * Paste, owned here rather than by the engine's "range" action for two reasons.
+   * - Spreadsheets end a copied range with a newline, and the engine's parser turns that into one
+   *   more row holding "" — which then clears the cell just past the pasted values.
+   * - The engine's action writes through `row.updateData`, which never raises `cellEdited`, so the
+   *   edit buffer never heard about the paste and the grid never went dirty. `cell.setValue`
+   *   raises it, exactly as fillDown relies on.
+   * A single selected cell receives the whole block starting there; a larger range is filled by
+   * cycling the block across it. The `paste` listener below already holds the undo group open.
+   */
+  const pasteMatrix = (matrix: string[][]) => {
+    const range = table.getRanges().at(-1);
+    const rangeCells = range?.getCells() ?? [];
+    const anchor = rangeCells[0]?.[0];
+    if (!anchor || matrix.length === 0) {
+      return;
+    }
+    const single = rangeCells.length === 1 && rangeCells[0]?.length === 1;
+    const rows = table.getRows("active");
+    const startRow = rows.findIndex((row) => row.getElement() === anchor.getRow().getElement());
+    if (startRow === -1) {
+      return;
+    }
+    const startCol = anchor
+      .getRow()
+      .getCells()
+      .findIndex((c) => c.getField() === anchor.getField());
+    const height = single ? matrix.length : rangeCells.length;
+    const width = single ? Math.max(...matrix.map((r) => r.length)) : (rangeCells[0]?.length ?? 1);
+    for (let r = 0; r < height; r++) {
+      const row = rows[startRow + r];
+      if (!row) {
+        break;
+      }
+      const cells = row.getCells();
+      const line = matrix[r % matrix.length] ?? [];
+      for (let c = 0; c < width; c++) {
+        const cell = cells[startCol + c];
+        const text = line[c % Math.max(line.length, 1)];
+        const column = cell ? columnByField.get(cell.getField()) : undefined;
+        if (cell && column && text !== undefined && cellEditable(column, rowKeyOf(row))) {
+          cell.setValue(text, true);
+        }
+      }
+    }
+  };
+
   const table = new Tabulator(host, {
     clipboard: true,
     clipboardCopyConfig: { columnHeaders: false, rowHeaders: false },
     clipboardCopyRowRange: "range",
     clipboardCopyStyled: false,
-    clipboardPasteAction: "range",
-    clipboardPasteParser: "range",
+    clipboardPasteAction: (parsed: { matrix: string[][] }) => {
+      pasteMatrix(parsed.matrix);
+      return [];
+    },
+    clipboardPasteParser: (clipboard: string) => ({ matrix: parseClipboardMatrix(clipboard) }),
     columnDefaults: { headerSortTristate: true, resizable: "header" },
     columns: applyGridLayout(columnDefs, layout),
     data: controller.effectiveRows(),

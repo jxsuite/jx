@@ -144,8 +144,11 @@ export class FakeTabulator {
     return Promise.resolve();
   }
 
+  /** Rows a test built itself, so identity comparisons hold across calls; else one per data row. */
+  rowsOverride: FakeRow[] | null = null;
+
   getRows() {
-    return this.data.map((row) => fakeRow(row));
+    return this.rowsOverride ?? this.data.map((row) => fakeRow(row));
   }
 
   getRanges() {

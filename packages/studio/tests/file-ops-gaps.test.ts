@@ -1,7 +1,6 @@
 /**
  * Gap coverage for src/files/file-ops.ts — openFile fallback input + no-format error, saveFile
- * inline-edit/no-tab guards, exportFile no-tab/error paths, and serializeDocument's content-mode
- * default-format branch.
+ * inline-edit/no-tab guards, and serializeDocument's content-mode default-format branch.
  */
 import { flush, installMockPlatform } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
@@ -22,7 +21,7 @@ void mock.module("../src/canvas/iframe-host", () => ({
   },
 }));
 
-const { exportFile, openFile, saveFile } = await import("../src/files/file-ops");
+const { openFile, saveFile } = await import("../src/files/file-ops");
 const { serializeDocument } = await import("../src/files/serialize-document");
 
 beforeEach(() => {
@@ -152,38 +151,6 @@ describe("saveFile gaps", () => {
     closeAllTabs();
     await saveFile();
     expect(flushCalls).toBe(0);
-  });
-});
-
-// ─── exportFile ───────────────────────────────────────────────────────────────
-
-describe("exportFile gaps", () => {
-  test("returns early when no tab is open", async () => {
-    let pickerCalled = false;
-    Object.assign(window, {
-      showSaveFilePicker: async () => {
-        pickerCalled = true;
-        throw new Error("should not reach");
-      },
-    });
-
-    await exportFile();
-
-    expect(pickerCalled).toBe(false);
-  });
-
-  test("non-AbortError during export becomes a status message, tab stays dirty", async () => {
-    Object.assign(window, {
-      showSaveFilePicker: async () => {
-        throw new Error("disk detached");
-      },
-    });
-    openTab({ document: { children: [], tagName: "div" }, id: "export-err" });
-    activeTab.value!.doc.dirty = true;
-
-    await exportFile();
-
-    expect(activeTab.value!.doc.dirty).toBe(true);
   });
 });
 

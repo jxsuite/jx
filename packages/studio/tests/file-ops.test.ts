@@ -1,14 +1,13 @@
 import "./with-dom.js";
-import { afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { registerPlatform } from "../src/platform";
-import { exportFile, openFile, parseSourceForPath, saveFile } from "../src/files/file-ops";
+import { openFile, parseSourceForPath, saveFile } from "../src/files/file-ops";
 import { activeTab, closeTab, openTab } from "../src/workspace/workspace";
 import { openMediaTab } from "../src/media/media-open";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { MODULE_PROBLEM_SOURCE } from "../src/services/module-report";
 import { problems, resetNotifications } from "../src/services/notify";
 import { isString } from "@jxsuite/schema/guards";
-import type { Mock } from "bun:test";
 import type { StudioPlatform } from "../src/types";
 
 beforeAll(() => {
@@ -29,7 +28,7 @@ function registerPartialPlatform(methods: Partial<StudioPlatform> = {}): void {
 
 /** A `FileSystemFileHandle` whose writable stream hands each write to `onWrite`. */
 function writableHandle(onWrite: (content: string) => void, name = "export.json") {
-  /* SAFETY: saveFile and exportFile call only `createWritable()` on the handle, then `write()` and
+  /* SAFETY: saveFile calls only `createWritable()` on the handle, then `write()` and
      `close()` on the stream (plus `name` after an export), which is all this object implements. */
   return {
     createWritable: async () => ({
@@ -427,93 +426,5 @@ describe("saveFile", () => {
 
     expect(await saveFile(tab)).toBe(false);
     expect(writes).toEqual([]);
-  });
-});
-
-// ─── exportFile ───────────────────────────────────────────────────────────────
-
-describe("exportFile", () => {
-  let anchorClicks: Mock<() => void> | null = null;
-
-  /* The download fallback clicks a detached `<a download>`. Stubbing `click` keeps happy-dom from
-     navigating, and each call's receiver is the link, so its `download` name is the file offered. */
-  function downloadNames(): string[] {
-    return (anchorClicks?.mock.contexts ?? []).flatMap((link) =>
-      link instanceof HTMLAnchorElement ? [link.download] : [],
-    );
-  }
-
-  beforeEach(() => {
-    anchorClicks = spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    Reflect.deleteProperty(window, "showSaveFilePicker");
-    for (const id of activeTab.value ? [activeTab.value.id] : []) {
-      closeTab(id);
-    }
-  });
-
-  afterEach(() => {
-    anchorClicks?.mockRestore();
-  });
-
-  test("exports via showSaveFilePicker when available", async () => {
-    let writtenContent: string | null = null;
-    const mockHandle = writableHandle((content) => {
-      writtenContent = content;
-    });
-    Object.assign(window, { showSaveFilePicker: async () => mockHandle });
-
-    openTab({
-      document: { children: [], tagName: "div" },
-      id: "test-export",
-    });
-
-    await exportFile();
-
-    expect(writtenContent).not.toBeNull();
-    expect(activeTab.value!.doc.dirty).toBe(false);
-  });
-
-  test("falls back to download when showSaveFilePicker unavailable", async () => {
-    openTab({
-      document: { children: [], tagName: "div" },
-      id: "test-download",
-    });
-
-    await exportFile();
-
-    expect(downloadNames()).toEqual(["component.json"]);
-    expect(activeTab.value!.doc.dirty).toBe(false);
-  });
-
-  test("uses .md extension for content mode", async () => {
-    openTab({
-      document: { children: [{ tagName: "p", textContent: "Hello" }] },
-      id: "test-md-export",
-      sourceFormat: "Markdown",
-    });
-    // Content mode is set by sourceFormat being "md" in createTab
-    // But for this test we need mode=content explicitly
-    activeTab.value!.doc.mode = "content";
-
-    await exportFile();
-
-    expect(downloadNames()).toEqual(["content.md"]);
-  });
-
-  test("handles AbortError silently", async () => {
-    const error = new Error("User cancelled");
-    error.name = "AbortError";
-    Object.assign(window, {
-      showSaveFilePicker: async () => {
-        throw error;
-      },
-    });
-
-    openTab({
-      document: { tagName: "div" },
-      id: "test-abort",
-    });
-
-    await exportFile();
   });
 });

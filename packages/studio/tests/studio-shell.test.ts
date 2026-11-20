@@ -1507,8 +1507,9 @@ describe("wiring arrows", () => {
     expect(state.calls.filter((c) => c[0] === "openProject").length).toBe(before + 1);
   });
 
-  test("tab bar exposes exportFile; canvas render ctx exposes the git-diff hooks", () => {
-    expect(paneCtx.exportFile).toBeTypeOf("function");
+  test("tab bar exposes downloadFile and uploadFile; canvas render ctx exposes the git-diff hooks", () => {
+    expect(paneCtx.downloadFile).toBeTypeOf("function");
+    expect(paneCtx.uploadFile).toBeTypeOf("function");
     expect(canvasRenderCtx.setCanvasMode).toBeTypeOf("function");
     canvasRenderCtx.setGitDiffState({ path: "x" });
     expect(canvasRenderCtx.gitDiffState).toEqual({ path: "x" });

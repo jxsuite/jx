@@ -145,10 +145,9 @@ void mock.module("../src/panels/block-action-bar.ts", () => ({
   withCommandTarget: <T>(_path: JxPath, fn: () => T) => fn(),
 }));
 
-/* What studio.ts actually hands the bar, which is wider than the bar's own contract: file-ops'
-   exportFile is async, and studio's setCanvasMode accepts (and ignores) a null tab. */
-interface BootPaneContext extends Omit<PaneContextCtx, "exportFile" | "setCanvasMode"> {
-  exportFile: () => Promise<void>;
+/* What studio.ts actually hands the bar, which is wider than the bar's own contract: studio's
+   setCanvasMode accepts (and ignores) a null tab. */
+interface BootPaneContext extends Omit<PaneContextCtx, "setCanvasMode"> {
   setCanvasMode: (tab: Tab | null, mode: string) => void;
 }
 let paneCtx: BootPaneContext | null = null;
@@ -221,16 +220,16 @@ test("the pane-context bar is wired to the five callbacks it takes", async () =>
      tab every one of them is a guarded no-op. */
   expect(Object.keys(paneCtx!).toSorted()).toEqual([
     "closeTab",
-    "exportFile",
+    "downloadFile",
     "focusHome",
     "parseMediaEntries",
     "setCanvasMode",
+    "uploadFile",
   ]);
   // The hand-off with nothing mounted queues for the next mount and throws nothing.
   expect(() => paneCtx!.focusHome?.("primary", "media")).not.toThrow();
   expect(() => paneCtx!.focusHome?.("primary", "publish")).not.toThrow();
   expect(() => paneCtx!.focusHome?.("primary", "styles")).not.toThrow();
-  await paneCtx!.exportFile();
   // The write takes its target: no tab, nothing written, and no throw.
   expect(() => paneCtx!.setCanvasMode(null, "edit")).not.toThrow();
 });
