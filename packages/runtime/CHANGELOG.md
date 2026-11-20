@@ -1,5 +1,16 @@
 # Changelog
 
+## [9.0.2](https://github.com/jxsuite/jx/compare/runtime-v9.0.1...runtime-v9.0.2) (2026-11-20)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.2.0
+  * devDependencies
+    * @jxsuite/erase bumped to 0.3.6
+
 ## [9.0.1](https://github.com/jxsuite/jx/compare/runtime-v9.0.0...runtime-v9.0.1) (2026-11-17)
 
 

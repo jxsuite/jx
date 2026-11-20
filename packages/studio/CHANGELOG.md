@@ -1,5 +1,36 @@
 # Changelog
 
+## [13.2.0](https://github.com/jxsuite/jx/compare/studio-v13.1.0...studio-v13.2.0) (2026-11-20)
+
+
+### Features
+
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+* **studio:** progress view while a project opens, and a dialog when it fails ([#707](https://github.com/jxsuite/jx/issues/707)) ([517588a](https://github.com/jxsuite/jx/commit/517588a5e8db46ceff237ecd20c86b6549627b0b))
+
+
+### Bug Fixes
+
+* **studio,desktop:** report a missing recent project, and open no blank Untitled tab ([#713](https://github.com/jxsuite/jx/issues/713)) ([1d825c2](https://github.com/jxsuite/jx/commit/1d825c22dbadf437130ddf61676de4a4d2ef5f29))
+* **studio:** grid paste marks cells dirty; Download/Upload in Grid and Code views ([#716](https://github.com/jxsuite/jx/issues/716)) ([ab80820](https://github.com/jxsuite/jx/commit/ab808205d154ad20577cf0190260daf13428143a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.2
+    * @jxsuite/collab bumped to 0.12.6
+    * @jxsuite/create bumped to 1.8.7
+    * @jxsuite/erase bumped to 0.3.6
+    * @jxsuite/formulas bumped to 0.0.39
+    * @jxsuite/markup bumped to 1.0.15
+    * @jxsuite/protocol bumped to 6.7.0
+    * @jxsuite/runtime bumped to 9.0.2
+    * @jxsuite/schema bumped to 8.2.0
+    * @jxsuite/site bumped to 4.1.1
+    * @jxsuite/ui bumped to 0.16.0
+
 ## [13.1.0](https://github.com/jxsuite/jx/compare/studio-v13.0.0...studio-v13.1.0) (2026-11-17)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.7.0](https://github.com/jxsuite/jx/compare/protocol-v6.6.1...protocol-v6.7.0) (2026-11-20)
+
+
+### Features
+
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.2.0
+
 ## [6.6.1](https://github.com/jxsuite/jx/compare/protocol-v6.6.0...protocol-v6.6.1) (2026-11-17)
 
 
