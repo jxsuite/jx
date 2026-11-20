@@ -315,6 +315,93 @@ describe("cellEdited → buffer", () => {
     expect(titleDef.editable(fakeCell(rowB, "title", table))).toBeTrue();
   });
 
+  describe("paste action", () => {
+    /** Three rows of title/count cells, with the range anchored on `anchor`'s cell. */
+    async function pasteSetup(anchor: { row: number; field: string }, height = 1) {
+      const ctx = await setupView(
+        stubSource({
+          rows: async () => ({
+            rows: ["a", "b", "c"].map((key, i) => ({
+              cells: { count: i, done: false, id: key, title: key.toUpperCase() },
+              key,
+            })),
+            total: 3,
+          }),
+        }),
+      );
+      const { table } = ctx;
+      const rows = ["a", "b", "c"].map((key, i) =>
+        fakeRow({ [ROW_KEY_FIELD]: key, count: i, title: key.toUpperCase() }),
+      );
+      const cells = rows.map((row) => [
+        fakeCell(row, "title", table),
+        fakeCell(row, "count", table),
+      ]);
+      table.rowsOverride = rows;
+      const start = cells[anchor.row]!;
+      const cell = start.find((c) => c.getField() === anchor.field)!;
+      const block = cells.slice(anchor.row, anchor.row + height);
+      table.ranges = [fakeRange(height === 1 && anchor.field ? [[cell]] : block)];
+      // SAFETY: `createGridView` always hands the engine a function action, never the named one.
+      const paste = table.options.clipboardPasteAction as (parsed: {
+        matrix: string[][];
+      }) => never[];
+      return { ...ctx, paste, rows };
+    }
+
+    test("a single cell takes the whole block from there, as one undo group", async () => {
+      const { controller, host, paste } = await pasteSetup({ field: "title", row: 0 });
+      host.dispatchEvent(new Event("paste", { bubbles: true }));
+      paste({
+        matrix: [
+          ["x", "10"],
+          ["y", "20"],
+        ],
+      });
+      await flush();
+      expect(controller.buffer.effectiveValue("a", "title")).toBe("x");
+      expect(controller.buffer.effectiveValue("a", "count")).toBe(10);
+      expect(controller.buffer.effectiveValue("b", "title")).toBe("y");
+      expect(controller.buffer.effectiveValue("b", "count")).toBe(20);
+      expect(controller.buffer.isDirty()).toBeTrue();
+      controller.buffer.undo();
+      expect(controller.buffer.isDirty()).toBeFalse();
+    });
+
+    test("a block taller than the table stops at the last row", async () => {
+      const { controller, paste } = await pasteSetup({ field: "title", row: 2 });
+      paste({ matrix: [["p"], ["q"], ["r"]] });
+      expect(controller.buffer.effectiveValue("c", "title")).toBe("p");
+      expect(controller.buffer.dirtyCount()).toBe(1);
+    });
+
+    test("a larger range is filled by repeating the block", async () => {
+      const { controller, paste } = await pasteSetup({ field: "title", row: 0 }, 3);
+      paste({ matrix: [["m"]] });
+      for (const key of ["a", "b", "c"]) {
+        expect(controller.buffer.effectiveValue(key, "title")).toBe("m");
+      }
+    });
+
+    test("cells of a row pending delete are skipped", async () => {
+      const { controller, paste } = await pasteSetup({ field: "title", row: 0 }, 3);
+      controller.buffer.deleteRow("b");
+      paste({ matrix: [["m"]] });
+      expect(controller.buffer.effectiveValue("a", "title")).toBe("m");
+      expect(controller.buffer.effectiveValue("b", "title")).toBe("B");
+    });
+
+    test("with no range, or an anchor the table no longer shows, nothing changes", async () => {
+      const { controller, paste, table } = await pasteSetup({ field: "title", row: 0 });
+      paste({ matrix: [] });
+      table.rowsOverride = [];
+      paste({ matrix: [["z"]] });
+      table.ranges = [];
+      paste({ matrix: [["z"]] });
+      expect(controller.buffer.isDirty()).toBeFalse();
+    });
+  });
+
   test("paste bursts group into one undo entry", async () => {
     const { controller, host, table } = await setupView();
     const rowA = fakeRow({ [ROW_KEY_FIELD]: "a", title: "One" });

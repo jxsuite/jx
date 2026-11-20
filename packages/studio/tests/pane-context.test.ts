@@ -1487,6 +1487,22 @@ describe("zoom", () => {
 // ─── The mode action ──────────────────────────────────────────────────────────
 
 describe("download and upload", () => {
+  test("show in the Grid view too, where the beside menu is gone", async () => {
+    const tab = openTestTab();
+    tab.capabilities.modes = ["grid", "source"];
+    await mountBar(ctxInMode("grid"));
+    expect(hasBtn("Download")).toBe(true);
+    expect(hasBtn("Upload")).toBe(true);
+    expect(hasBtn("Show code, diff or layout beside")).toBe(false);
+  });
+
+  test("are absent when the tab is not a file", async () => {
+    const tab = openTestTab();
+    tab.documentPath = null;
+    await mountBar(ctxInMode("source"));
+    expect(hasBtn("Download")).toBe(false);
+  });
+
   test("show in the Code view of a file, and invoke ctx.downloadFile / ctx.uploadFile", async () => {
     const tab = openTestTab();
     const ctx = ctxInMode("source");
