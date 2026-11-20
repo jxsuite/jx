@@ -612,10 +612,33 @@ describe("openProject", () => {
     // The frame's panel stands: opening a project no longer forces the (developer) Files panel.
     expect(shell.leftTab).toBe("site");
     expect(activeTab.value?.documentPath).toBe("pages/index.json");
+    // The home page is the only tab: no blank "Untitled" placeholder is left in front of it.
+    expect([...workspace.tabs.keys()]).toEqual(["pages/index.json"]);
 
     const recent = JSON.parse(localStorage.getItem("jx-studio-recent-projects") ?? "[]");
     expect(recent[0]?.name).toBe("My Site");
     expect(recent[0]?.root).toBe("/abs/proj");
+  });
+
+  test("a project with no home page opens with no tabs, not a blank Untitled one", async () => {
+    const ctx = ctxSpies();
+    // A document left open by the project this one replaces must go too.
+    openTab({ document: { tagName: "div" }, documentPath: "pages/old.json", id: "old-tab" });
+    installFsPlatform(
+      { "project.json": "{}" },
+      {
+        openProject: async () => ({
+          config: { name: "Empty" },
+          handle: { name: "empty", projectConfig: { name: "Empty" }, root: "/abs/empty" },
+        }),
+      },
+    );
+
+    await openProject(ctx);
+
+    expect(requireProjectState().name).toBe("Empty");
+    expect(workspace.tabs.size).toBe(0);
+    expect(activeTab.value).toBeNull();
   });
 
   test("falls back to the directory handle name when config has none", async () => {

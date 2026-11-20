@@ -1422,7 +1422,7 @@ async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<Pr
     return "opened";
   }
   const platform = getPlatform();
-  // ELSEWHERE, and nothing here closes: no `confirmCloseAll`, no `replaceAllTabs`, no re-rooting.
+  // ELSEWHERE, and nothing here closes: no `confirmCloseAll`, no `closeAllTabs`, no re-rooting.
   // `pickProject` exists precisely so this branch can ask which project without `openProject()`'s
   // Side effect of binding the asking window to the answer. The window that opens loads it, adds
   // Its own recent-projects entry, and this one carries on untouched.
@@ -1439,7 +1439,7 @@ async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<Pr
   }
   // The SECOND destroyer, and it was ungated for as long as the first one was. `openRecentProject`
   // Below asks `confirmCloseAll` and then calls `closeAllTabs`; this branch reaches
-  // `files.ts`'s `replaceAllTabs`, which throws the same documents away by a different name — so an
+  // `files.ts`'s own `closeAllTabs`, which throws the same documents away by a different call — so an
   // Enumeration of "who calls closeAllTabs" reported the matrix complete while ⌘O, the toolbar
   // Button and the welcome screen all discarded unsaved work in silence. `platformUsesRepoPicker()`
   // Is true only for the cloud platform, so desktop and browser both arrived here.
@@ -1472,6 +1472,10 @@ function resetProjectCaches(): void {
   invalidateMediaCache();
   resetMediaLibrary();
 }
+
+/** Said when a recent project's folder is gone; the catch below also drops it from Recent. */
+const FOLDER_MISSING =
+  "The folder no longer exists, so it may have been moved, renamed or deleted. It has been removed from your recent projects.";
 
 async function openRecentProject(root: string) {
   // The Start pane swaps to a progress view while this runs and refuses further clicks; this is
@@ -1506,7 +1510,10 @@ async function openRecentProject(root: string) {
     // Multi-window (desktop): if this window already holds a project, open the chosen one in a new
     // Window (focusing an existing window if it's already open) rather than replacing this project.
     if (projectState && platform.openProjectInNewWindow) {
-      const { declined } = await platform.openProjectInNewWindow(root);
+      const { declined, missing } = await platform.openProjectInNewWindow(root);
+      if (missing) {
+        throw new Error(FOLDER_MISSING);
+      }
       activity.done(declined ? "Didn't open the project" : "Opened in another window");
       return;
     }
@@ -1532,6 +1539,9 @@ async function openRecentProject(root: string) {
     // The project is already open in another window, that window is focused and we bail here.
     if (platform.setWindowProject) {
       const res = await platform.setWindowProject(root);
+      if (res.missing) {
+        throw new Error(FOLDER_MISSING);
+      }
       if (res.declined) {
         // The user declined to run its code, and nothing has moved yet: the tabs above stay open.
         activity.done("Kept the current project");

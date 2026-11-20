@@ -16,7 +16,6 @@ import {
   openTab,
   registerTabCommands,
   renameTab,
-  replaceAllTabs,
   tabCommands,
   takeClosedTabPath,
   workspace,
@@ -166,14 +165,6 @@ describe("MRU order", () => {
     open("a");
     renameTab("nope", "other", "pages/other.json");
     expect(workspace.mruOrder).toEqual(["a"]);
-  });
-
-  test("replaceAllTabs restarts the MRU list on the new tab", () => {
-    open("a");
-    open("b");
-    replaceAllTabs({ document: { tagName: "div" }, documentPath: "pages/new.json", id: "new" });
-    expect(workspace.mruOrder).toEqual(["new"]);
-    expect(workspace.tabOrder).toEqual(["new"]);
   });
 
   test("closeAllTabs clears it", () => {

@@ -150,6 +150,7 @@ function fakeHub(): FakeHub {
     focus: (window: HubWindow) => {
       hub.raised.push(window);
     },
+    folderIsMissing: (root: string) => root === "/gone",
     isOpening: (root: string) => root === "/opening",
     listOpenWindows: () => [{ id: 7, projectRoot: "/x" }],
     openProject: (root: string | null) => {
@@ -382,6 +383,18 @@ describe("window-level handlers", () => {
     expect(hub.retitled).toEqual([window]);
     // The window asks about OTHER windows: it passes itself to be excluded.
     expect(callsTo("hub.findWindowByRoot")[0]?.args).toEqual(["/free", window]);
+  });
+
+  test("setWindowProject binds nothing for a folder that is gone, and says so before asking", async () => {
+    const { handlers, hub, root } = build();
+    expect(await handlers.setWindowProject({ root: "/gone" })).toEqual({
+      config: null,
+      deduped: false,
+      missing: true,
+    });
+    expect(root()).not.toBe("/gone");
+    expect(callsTo("hub.authorize")).toEqual([]);
+    expect(hub.retitled).toEqual([]);
   });
 
   test("setWindowProject binds nothing when the user declines, and says so", async () => {
