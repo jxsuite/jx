@@ -1,11 +1,25 @@
 import "./with-dom.js";
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { registerPlatform } from "../src/platform";
-import { downloadFile, uploadFile } from "../src/files/file-ops";
 import { isFileTab } from "../src/tabs/tab";
 import { closeTab, openTab } from "../src/workspace/workspace";
 import { problems, resetNotifications } from "../src/services/notify";
 import type { StudioPlatform } from "../src/types";
+import type { GridSource } from "../src/grid/grid-source";
+
+/* The confirm dialog is a real surface mounted into a layer; the test answers it directly. */
+let confirmAnswer = true;
+const confirmAsked: string[] = [];
+const realLayers = await import("../src/ui/layers");
+void mock.module("../src/ui/layers.ts", () => ({
+  ...realLayers,
+  showConfirmDialog: async (headline: string) => {
+    confirmAsked.push(headline);
+    return confirmAnswer;
+  },
+}));
+const { downloadFile, uploadFile } = await import("../src/files/file-ops");
+const { createGridController } = await import("../src/grid/grid-controller");
 
 const JSON_DOC = { children: [], tagName: "div" };
 
@@ -24,6 +38,8 @@ function register(methods: Partial<StudioPlatform> = {}): void {
 }
 
 beforeEach(() => {
+  confirmAnswer = true;
+  confirmAsked.length = 0;
   writes = [];
   resetNotifications();
   register();
@@ -158,6 +174,116 @@ describe("uploadFile", () => {
     try {
       await uploadFile(tab);
       expect(problems.some((p) => p.source === "Upload")).toBe(true);
+    } finally {
+      picker.mockRestore();
+    }
+  });
+});
+
+describe("downloadFile failures", () => {
+  test("a failure to build the download is reported, not thrown", async () => {
+    const tab = openTab({
+      document: { ...JSON_DOC },
+      documentPath: "data/page.json",
+      id: "data/page.json",
+    });
+    const create = spyOn(URL, "createObjectURL").mockImplementation(() => {
+      throw new Error("no blobs");
+    });
+    try {
+      await downloadFile(tab);
+      expect(problems.some((p) => p.source === "Download")).toBe(true);
+    } finally {
+      create.mockRestore();
+    }
+  });
+});
+
+describe("uploadFile over unsaved changes", () => {
+  function picks(file: File) {
+    return spyOn(HTMLInputElement.prototype, "click").mockImplementation(function pick(
+      this: HTMLInputElement,
+    ) {
+      Object.defineProperty(this, "files", { configurable: true, value: [file] });
+      this.dispatchEvent(new Event("change"));
+    });
+  }
+
+  function dirtyTab() {
+    const tab = openTab({
+      document: { ...JSON_DOC },
+      documentPath: "data/page.json",
+      id: "data/page.json",
+    });
+    tab.doc.dirty = true;
+    return tab;
+  }
+
+  test("asks first, and declining leaves the file alone", async () => {
+    const tab = dirtyTab();
+    confirmAnswer = false;
+    const picker = picks(new File(["{}"], "other.json"));
+    try {
+      await uploadFile(tab);
+      expect(confirmAsked).toEqual(["Replace page.json"]);
+      expect(writes).toEqual([]);
+      expect(tab.doc.dirty).toBe(true);
+    } finally {
+      picker.mockRestore();
+    }
+  });
+
+  test("confirming replaces the file and clears the dirty flag", async () => {
+    const tab = dirtyTab();
+    const picker = picks(new File(["{}"], "other.json"));
+    try {
+      await uploadFile(tab);
+      expect(writes).toEqual([["data/page.json", "{}"]]);
+      expect(tab.doc.dirty).toBe(false);
+    } finally {
+      picker.mockRestore();
+    }
+  });
+});
+
+describe("uploadFile into a grid", () => {
+  test("drops pending edits and reloads the rows from the source", async () => {
+    let loads = 0;
+    const source: GridSource = {
+      capabilities: { delete: false, insert: false, remotePaging: false, remoteSort: false },
+      columns: async () => [{ editable: true, field: "title", kind: "string", title: "Title" }],
+      commit: async () => ({ cells: [], deletes: [], inserts: [] }),
+      id: "data/page.json",
+      label: "page",
+      rows: async () => {
+        loads += 1;
+        return { rows: [{ cells: { title: "One" }, key: "a" }], total: 1 };
+      },
+    };
+    const tab = openTab({
+      capabilities: { modes: ["grid"] },
+      document: { tagName: "div" },
+      documentPath: "data/page.json",
+      id: "data/page.json",
+    });
+    const controller = createGridController(tab, source);
+    await controller.load();
+    controller.buffer.setCell("a", "title", "Edited");
+    const before = loads;
+    const picker = spyOn(HTMLInputElement.prototype, "click").mockImplementation(function pick(
+      this: HTMLInputElement,
+    ) {
+      Object.defineProperty(this, "files", {
+        configurable: true,
+        value: [new File(["x"], "n.json")],
+      });
+      this.dispatchEvent(new Event("change"));
+    });
+    try {
+      await uploadFile(tab);
+      expect(confirmAsked).toEqual(["Replace page.json"]);
+      expect(controller.buffer.isDirty()).toBe(false);
+      expect(loads).toBeGreaterThan(before);
     } finally {
       picker.mockRestore();
     }
