@@ -20,6 +20,7 @@ import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
 import { projectState } from "../src/store";
 import { invalidateUsages } from "../src/services/references";
 import { projectConfigPath, resetProjectConfigDocument } from "../src/tabs/project-config";
+import { mountFormatSurface } from "../src/surfaces/settings-format";
 import { renderFormatSection } from "../src/settings/format-section";
 import { convertProject } from "../src/format/convert-project-flow";
 import type { MockPlatformState } from "./harness";
@@ -44,6 +45,8 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
 };
 
 const DOC = '{\n  "tagName": "div",\n  "children": [{ "tagName": "p", "textContent": "Hi" }]\n}\n';
+
+const noop = (): void => {};
 
 let state: MockPlatformState;
 
@@ -161,11 +164,70 @@ describe("the Document format section", () => {
   });
 });
 
+describe("the surface and the section's redraw", () => {
+  test("a standing section is updated, not remounted, and a disposed surface is not connected", async () => {
+    const container = await setup({}, { "pages/a.json": DOC });
+    const first = part(container, "default");
+    renderFormatSection(container);
+    await flush(4);
+    expect(part(container, "default")).toBe(first);
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const handle = mountFormatSurface(
+      host,
+      {
+        canConvert: false,
+        convertLabel: "",
+        error: "",
+        format: "jxn",
+        formats: [{ label: "Jx Notation (.jxn)", value: "jxn" }],
+        summary: "",
+      },
+      { convert: noop, setFormat: noop },
+    );
+    expect(handle.connected()).toBe(true);
+    await flush(8);
+    expect(handle.connected()).toBe(true);
+    handle.update({ summary: "x", convertLabel: "y", canConvert: true, error: "e" });
+    handle.dispose();
+    expect(handle.connected()).toBe(false);
+    handle.dispose();
+
+    const early = mountFormatSurface(
+      document.createElement("div"),
+      { canConvert: false, convertLabel: "", error: "", format: "jxn", formats: [], summary: "" },
+      { convert: noop, setFormat: noop },
+    );
+    early.dispose();
+    await flush(8);
+    expect(early.connected()).toBe(false);
+  });
+});
+
 describe("convertProject", () => {
   test("a notation it does not know is refused, and nothing moves", async () => {
     await setup({}, { "pages/a.json": DOC });
     expect(await convertProject("yaml")).toBe(false);
     expect(problems.length + toasts.length).toBeGreaterThan(0);
+  });
+
+  test("the conversion still succeeds, and the failed default write is reported, when the project file cannot be written", async () => {
+    await setup(
+      {},
+      { "pages/a.json": DOC },
+      {
+        writeFile: async (path: string) => {
+          if (path === projectConfigPath()) {
+            throw new Error("EROFS");
+          }
+        },
+      },
+    );
+    const pending = convertProject("jxn");
+    await answerConfirm(true);
+    expect(await pending).toBe(true);
+    expect([...problems, ...toasts].some((n) => n.message.includes("Could not save"))).toBe(true);
   });
 
   test("a failed rename is reported as a problem, leaves the default alone, and says how many", async () => {

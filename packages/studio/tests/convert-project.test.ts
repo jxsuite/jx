@@ -64,7 +64,53 @@ describe("scanNativeDocuments", () => {
   });
 });
 
+describe("scanning and counting", () => {
+  test("skips node_modules and dot folders, and a folder that cannot be listed", async () => {
+    const files = {
+      "components/c.json": PAGE,
+      "pages/.cache/hidden.json": PAGE,
+      "pages/node_modules/dep.json": PAGE,
+      "pages/ok.json": PAGE,
+    };
+    const { platform: base } = installMockPlatform({}, files);
+    install(files, {
+      listDirectory: async (dir: string) => {
+        if (dir === "components") {
+          throw new Error("denied");
+        }
+        return base.listDirectory(dir);
+      },
+    });
+    const { scanNativeDocuments } = await import("../src/format/convert-project");
+    expect(await scanNativeDocuments()).toEqual(["pages/ok.json"]);
+  });
+
+  test("the census counts only what a conversion would consider", async () => {
+    const { censusOf } = await import("../src/format/convert-project");
+    const census = await censusOf(["pages/a.json", "pages/b.jxn", "styles/x.json"]);
+    expect(census).toEqual({ json: 1, jxn: 1 });
+  });
+});
+
 describe("planProjectConversion", () => {
+  test("a file that cannot be read is skipped with the reason", async () => {
+    install(
+      { "pages/a.json": PAGE, "pages/b.json": PAGE },
+      {
+        readFile: async (path: string) => {
+          if (path === "pages/a.json") {
+            throw new Error("unreadable");
+          }
+          return PAGE;
+        },
+      },
+    );
+    const { planProjectConversion } = await import("../src/format/convert-project");
+    const plan = await planProjectConversion(".jxn");
+    expect(plan.skipped).toEqual([{ path: "pages/a.json", reason: "unreadable" }]);
+    expect(plan.files).toHaveLength(1);
+  });
+
   test("plans every JSON document and writes nothing", async () => {
     const { planProjectConversion } = await import("../src/format/convert-project");
     const plan = await planProjectConversion(".jxn");
