@@ -3,6 +3,11 @@
 # one line in failure output, deep equality on a DOM node is refused before Bun's diff printer can
 # hang on it, and a local Bun other than CI's pin says so once.
 preload = ["@jxsuite/test-support/preload"]
+# The git suites spawn real `git` processes (init, commit, checkout) in their hooks and tests. Under
+# `--coverage` on a loaded CI runner four of them took 5.0-5.4s and tripped Bun's 5s default
+# (`gitCommit`, `gitDiscard`, `gitStatus`, the nested-project first commit) with nothing wrong in
+# the code under test. A hung test still fails, thirty seconds later.
+timeout = 30000
 coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = [
