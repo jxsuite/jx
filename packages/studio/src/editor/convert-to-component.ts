@@ -30,7 +30,9 @@ import { transact } from "../tabs/transact";
 import { componentRegistry, computeRelativePath, loadComponentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { jsonClone } from "../utils/studio-utils";
-import { JXN_FORMAT_NAME, NATIVE_EXT, formatSerialize } from "../format/format-host";
+import { JXN_FORMAT_NAME, formatSerialize } from "../format/format-host";
+import { serializeJson } from "@jxsuite/schema/json-layout";
+import { defaultNativeExt } from "../format/default-format";
 import { notify } from "../services/notify";
 import { showPromptDialog } from "../ui/layers";
 import { validateComponentSlots } from "../services/component-slots";
@@ -97,7 +99,7 @@ export async function convertSelectionToComponent(name: string): Promise<string 
   componentDef.tagName = name;
 
   // Compute paths
-  const componentFile = `components/${name}${NATIVE_EXT}`;
+  const componentFile = `components/${name}${defaultNativeExt()}`;
   const refPath = computeRelativePath(tab.documentPath, componentFile);
 
   // Single atomic mutation: replace node + add $elements ref
@@ -148,7 +150,12 @@ export async function convertSelectionToComponent(name: string): Promise<string 
     const platform = getPlatform();
     /* Through the serializer a save of a `.jxn` file uses, so the first save from its tab is a
        clean diff. */
-    await platform.writeFile(componentFile, await formatSerialize(JXN_FORMAT_NAME, componentDef));
+    await platform.writeFile(
+      componentFile,
+      componentFile.endsWith(".json")
+        ? serializeJson(componentDef, null)
+        : await formatSerialize(JXN_FORMAT_NAME, componentDef),
+    );
     await loadComponentRegistry();
     const warning = validateComponentSlots(componentDef);
     notify.success(`Converted to <${name}>`);

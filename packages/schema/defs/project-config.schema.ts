@@ -317,6 +317,14 @@ export const projectConfigSchema = {
             "Default lang attribute for the <html> element. A page's `$lang` overrides it.",
           type: "string",
         },
+        format: {
+          default: "jxn",
+          description:
+            "The native notation Studio writes new documents in: `jxn` (Jx Notation) or `json`. " +
+            "Both are read everywhere; this decides only what is created.",
+          enum: ["jxn", "json"],
+          type: "string",
+        },
         layout: {
           default: null,
           description:

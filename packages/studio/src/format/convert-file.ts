@@ -33,6 +33,7 @@ import { isString } from "@jxsuite/schema/guards";
 import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
 import type { CommandArgValues } from "../commands/command-args";
 import type { FormatFrontmatter } from "./format-host";
+import type { RenameResult } from "../types";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 /** What a conversion will do, resolved in full before the reader is asked to confirm it. */
@@ -175,12 +176,15 @@ async function readsBackIdentically(targetPath: string, text: string): Promise<b
  * @param path - The file being converted.
  * @param source - Its current text.
  * @param targetExt - The extension it will carry.
+ * @param options - `references: false` skips the project-wide reference count, which a plan of the
+ *   whole project would otherwise pay once per file.
  * @returns The plan, whose `blocker` is non-null when the conversion must not proceed.
  */
 export async function buildPlan(
   path: string,
   source: string,
   targetExt: string,
+  options: { references?: boolean } = {},
 ): Promise<ConversionPlan> {
   const targetPath = withExtension(path, targetExt);
   const lines: string[] = [];
@@ -234,10 +238,12 @@ export async function buildPlan(
   /* The count only. Which referrers the engine could not rewrite is reported AFTER the move, per
      file, by the same `notifyMoveOutcome` a rename and a drag-move use — a fact beats the guess
      this used to make from the referrer's extension, which could be wrong in both directions. */
-  const { loadUsages, usageWarning } = await import("../services/references");
-  const sentence = usageWarning(await loadUsages({ path }), "convert");
-  if (sentence !== null) {
-    lines.push(sentence);
+  if (options.references !== false) {
+    const { loadUsages, usageWarning } = await import("../services/references");
+    const sentence = usageWarning(await loadUsages({ path }), "convert");
+    if (sentence !== null) {
+      lines.push(sentence);
+    }
   }
 
   lines.push(`${path} becomes ${targetPath}. The original file is not kept.`);
@@ -333,16 +339,61 @@ export async function convertFile(path: string, targetExt?: string): Promise<str
     return null;
   }
 
+  const applied = await applyConversion(path, plan, original, openTabEntry !== undefined);
+  if (!applied.ok) {
+    return fail(applied.message, applied.detail);
+  }
+  const { notifyMoveOutcome } = await import("../files/files");
+  notifyMoveOutcome(
+    convertStatus(plan.targetPath, applied.report),
+    applied.report,
+    plan.targetPath,
+  );
+  return plan.targetPath;
+}
+
+/** The outcome of {@link applyConversion}: the rename's report, or the sentence that failed it. */
+export type ConversionOutcome =
+  | { ok: true; report: RenameResult }
+  | { ok: false; message: string; detail: string };
+
+/**
+ * Write a plan's bytes and move the file onto its target, putting the original back if the move
+ * fails. The one door every conversion goes through, a single file's and a project's alike, so the
+ * ordering the file's header explains (bytes first, then the rename that repairs references) is
+ * kept in one place.
+ *
+ * Nothing is announced here: a caller decides whether a conversion is one notification or one of
+ * five hundred.
+ *
+ * @param path - Project-relative path of the file being converted.
+ * @param plan - What {@link buildPlan} resolved for it.
+ * @param original - The file's text as it was read, restored if the rename fails.
+ * @param tabOpen - Whether the file is open in a tab, which is then rebuilt on the new path.
+ */
+export async function applyConversion(
+  path: string,
+  plan: ConversionPlan,
+  original: string,
+  tabOpen: boolean,
+): Promise<ConversionOutcome> {
+  const { errorMessage } = await import("@jxsuite/schema/parse");
+  const { getPlatform } = await import("../platform");
+  const platform = getPlatform();
   const { markLocalMutation } = await import("../files/fs-events");
-  const { notifyMoveOutcome, settleRename } = await import("../files/files");
+  const { settleRename } = await import("../files/files");
   markLocalMutation(path, plan.targetPath);
   try {
     await platform.writeFile(path, plan.text);
   } catch (error) {
-    return fail(`Could not write the converted ${path}.`, errorMessage(error));
+    return {
+      detail: errorMessage(error),
+      message: `Could not write the converted ${path}.`,
+      ok: false,
+    };
   }
 
-  let report;
+  let report: RenameResult;
   try {
     report = await platform.renameFile(path, plan.targetPath);
   } catch (error) {
@@ -354,16 +405,14 @@ export async function convertFile(path: string, targetExt?: string): Promise<str
     } catch {
       // Reported below either way, and the original text is still in the failure's own detail.
     }
-    return fail(`Could not convert ${path}.`, errorMessage(error));
+    return { detail: errorMessage(error), message: `Could not convert ${path}.`, ok: false };
   }
 
-  if (openTabEntry) {
+  if (tabOpen) {
     await rebuildTab(path, plan.targetPath, plan.text);
   }
   await settleRename(path, plan.targetPath, report);
-
-  notifyMoveOutcome(convertStatus(plan.targetPath, report), report, plan.targetPath);
-  return plan.targetPath;
+  return { ok: true, report };
 }
 
 /**

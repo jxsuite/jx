@@ -59,6 +59,7 @@ import {
   STYLES_VIEWS,
   STYLES_VIEW_MODES,
 } from "../style/project-styles";
+import { renderFormatSection } from "./format-section";
 import { activeRegistry } from "../commands/active-registry";
 import { shell } from "../shell";
 import type { Tab } from "../tabs/tab";
@@ -112,6 +113,19 @@ registerSettingsSection({
   label: "Locales",
   order: 25,
   render: renderLocalesSection,
+});
+/*
+ * Document format sits with Overview and Locales for the same reason they do: it is a decision about
+ * the whole project, which notation its pages, templates and components are written in. It is also
+ * the one place the project is converted from one to the other (studio.md §8.6).
+ */
+registerSettingsSection({
+  group: "general",
+  icon: "file-code",
+  key: "format",
+  label: "Document format",
+  order: 27,
+  render: renderFormatSection,
 });
 registerSettingsSection({
   group: "integrations",

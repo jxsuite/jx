@@ -6,7 +6,7 @@
  * validates as project configuration. "What the dialog says is what it writes" is only worth
  * something if what it writes is a document the build will take.
  */
-import "./harness";
+import { resetStudioState } from "./harness";
 import { describe, expect, test } from "bun:test";
 import {
   collectionPageBody,
@@ -653,5 +653,18 @@ describe("which directories need asking about", () => {
     expect(absentByParent("pages/Blog", taken)).toBe(false);
     // A parent nobody has listed says nothing.
     expect(absentByParent("content/posts", taken)).toBe(false);
+  });
+});
+
+describe("a project that defaults to JSON", () => {
+  test("every native kind is written as .json, and unset stays .jxn", () => {
+    resetStudioState({ projectConfig: { defaults: { format: "json" } } });
+    expect(deriveCreation("page", "About", {}, CTX).path).toBe("pages/about.json");
+    expect(deriveCreation("template", "Wide", {}, CTX).path).toBe("layouts/wide.json");
+    expect(deriveCreation("component", "Fancy Card", {}, CTX).path).toBe(
+      "components/fancy-card.json",
+    );
+    resetStudioState({ projectConfig: {} });
+    expect(deriveCreation("page", "About", {}, CTX).path).toBe("pages/about.jxn");
   });
 });

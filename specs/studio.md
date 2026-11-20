@@ -585,22 +585,22 @@ Publish › Branches lists every local branch, the current one marked with its a
 
 #### Server Endpoints
 
-| Endpoint                      | Method | Purpose                                                                     |
-| ----------------------------- | ------ | --------------------------------------------------------------------------- |
-| `/__studio/git/status`        | GET    | Branch info + changed files list                                            |
-| `/__studio/git/branches`      | GET    | List local branches                                                         |
-| `/__studio/git/log`           | GET    | Recent commit history                                                       |
-| `/__studio/git/stage`         | POST   | Stage files                                                                 |
-| `/__studio/git/unstage`       | POST   | Unstage files                                                               |
-| `/__studio/git/commit`        | POST   | Create commit with message                                                  |
-| `/__studio/git/push`          | POST   | Push to remote                                                              |
-| `/__studio/git/pull`          | POST   | Pull from remote                                                            |
-| `/__studio/git/fetch`         | POST   | Fetch from remote                                                           |
-| `/__studio/git/checkout`      | POST   | Switch branch                                                               |
-| `/__studio/git/create-branch` | POST   | Create and checkout new branch                                              |
-| `/__studio/git/commit-branch` | POST   | Commit the change set as a new branch, off the session's base (hosted only) |
-| `/__studio/git/diff`          | GET    | File diff (unused — see below)                                              |
-| `/__studio/git/discard`       | POST   | Discard unstaged changes                                                    |
+| Endpoint                      | Method | Purpose                                                                        |
+| ----------------------------- | ------ | ------------------------------------------------------------------------------ |
+| `/__studio/git/status`        | GET    | Branch info + changed files list                                               |
+| `/__studio/git/branches`      | GET    | List local branches, and which hold commits the current one lacks (`unmerged`) |
+| `/__studio/git/log`           | GET    | Recent commit history                                                          |
+| `/__studio/git/stage`         | POST   | Stage files                                                                    |
+| `/__studio/git/unstage`       | POST   | Unstage files                                                                  |
+| `/__studio/git/commit`        | POST   | Create commit with message                                                     |
+| `/__studio/git/push`          | POST   | Push to remote                                                                 |
+| `/__studio/git/pull`          | POST   | Pull from remote                                                               |
+| `/__studio/git/fetch`         | POST   | Fetch from remote                                                              |
+| `/__studio/git/checkout`      | POST   | Switch branch                                                                  |
+| `/__studio/git/create-branch` | POST   | Create and checkout new branch                                                 |
+| `/__studio/git/commit-branch` | POST   | Commit the change set as a new branch, off the session's base (hosted only)    |
+| `/__studio/git/diff`          | GET    | File diff (unused — see below)                                                 |
+| `/__studio/git/discard`       | POST   | Discard unstaged changes                                                       |
 
 #### Auto-refresh
 
@@ -1284,6 +1284,24 @@ A save writes the document through `serializeJxn` over the text the file was rea
 Convert offers `.jxn` for every page and component it offers a conversion for, and `.json` and the project's other formats for a `.jxn` file (§8.4). A layout, a `layouts/` file or the project's declared `layout`, converts only between `.json` and `.jxn`, because both readers of a layout read those two and nothing else.
 
 **A new document is `.jxn`.** Add new writes every page, template, component and collection page in Jx Notation (§9.1.1), and so does converting a selection to a component. New File offers **Jx Notation (.jxn)** after **JSON (.json)** for any document that is not a collection's entry, and starts on it in `pages/`, `layouts/` and `components/`, where its blank document is the same `div` with one `p` the `.json` one is. A `.json` document already in the project stays `.json` until it is converted. Studio's own surfaces, the kit, `*.class.json`, `jx-extension.json`, schemas and data files stay `.json`.
+
+### 8.6 Document Format and Converting a Project
+
+> **Status: Implemented.** The setting, the census, the project-wide conversion and the branch warning ship (`src/format/default-format.ts`, `format/convert-project.ts`, `format/convert-project-flow.ts`, `settings/format-section.ts`, `src/surfaces/settings-format.json`).
+
+**The default is one key.** `defaults.format` in the project file is `jxn` or `json`, and unset reads as `jxn`, which is what §8.5 has always said a new document is. It decides what Studio CREATES: Add new (§9.1.1), New File in `pages/`, `layouts/` and `components/`, a collection's own page, and converting a selection to a component all write the project's notation. Every document is read in either notation whatever the setting says, so a project may hold both indefinitely. Choosing a default never converts anything.
+
+**Project settings has a Document format section** in the General group, after Locales. It holds the default's picker, a sentence saying how the project's documents divide (`12 documents are JSON and 3 are Jx Notation.`) and, when any document is not in the chosen notation, a button naming the count (**Convert 12 documents to Jx Notation…**).
+
+**Convert project is §8.4's conversion run over every document, with the plan made first.** The documents are the native files under `pages/`, `layouts/` and `components/`, minus anything §8.4 refuses (a collection's entries, `*.class.json`, `*.schema.json`). Before any file is touched, every one is converted in memory and held to the document schema, and a file that cannot convert is skipped with its reason while the rest go. Each move is §8.4's: the bytes are written to the old path, then the file is renamed so the refactor pass repairs every reference, and a failed rename puts the original back. The files move one at a time, because each rename's repair reads the project as the last one left it.
+
+**The dialog states the consequences before the button**, as §8.4's does: the count converting, the count already in the notation, the files left alone and why, that originals are not kept, that new documents are written in the target from now on, and that committing first makes the whole conversion one revertable change.
+
+**Refusals fire before anything moves.** A document open with unsaved changes refuses the whole run and names every such file. No tab is closed or rebuilt except by the conversion of its own file (§8.4).
+
+**Other branches are a warning, not a refusal.** A rename is a delete and an add to version control, so a branch that still edits a converted document meets a file that is gone when it merges. When the repository holds other branches with commits the current one lacks (`git branch --no-merged`, reported as `unmerged` on `GitBranchesResult`), the dialog names them (the first five and a count) and its button reads **Convert anyway**. A host that lists branches but cannot say which are merged leaves `unmerged` out, and the dialog then warns about every other branch and says it cannot tell: an unanswerable host is never reported as a clean one. No repository, or a host with no branch listing, warns of nothing.
+
+**The result is reported once.** A success names the count and the references repaired, and makes the target the project's default. A run with failures lists each in Problems, leaves the default alone, and can be run again: the files already converted are not offered a second time.
 
 ---
 

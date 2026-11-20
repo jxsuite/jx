@@ -20,7 +20,7 @@
  */
 
 import { projectConfigPath } from "../tabs/tab";
-import { NATIVE_EXT } from "../format/format-host";
+import { defaultNativeExt } from "../format/default-format";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { canonicalizeLocale, translationPathFor } from "@jxsuite/schema/locale";
 import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
@@ -559,7 +559,7 @@ function componentDoc(tagName: string, options: CreationOptions, ctx: CreationCo
 function derivePage(name: string, options: CreationOptions, ctx: CreationContext): Creation {
   const startFrom = options.startFrom ?? defaultTemplateChoice(ctx);
   const article = startFrom === START_ARTICLE && ctx.article !== null ? ctx.article : null;
-  const ext = article?.ext ?? NATIVE_EXT;
+  const ext = article?.ext ?? defaultNativeExt();
   const segments =
     options.url === undefined ? [slugify(name)].filter((s) => s !== "") : urlSegments(options.url);
   const stem =
@@ -645,7 +645,7 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
       : [null];
     const written: string[] = [];
     for (const locale of locales) {
-      const pagePath = inLocale(`pages/${slug}/[slug]${NATIVE_EXT}`, locale, ctx);
+      const pagePath = inLocale(`pages/${slug}/[slug]${defaultNativeExt()}`, locale, ctx);
       const template =
         locale === null || chosen !== defaultTemplateChoice(ctx)
           ? chosen
@@ -690,7 +690,7 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
 /** A template: native, because both readers of a layout read `.jxn` and `.json` and nothing else. */
 function deriveTemplate(name: string, options: CreationOptions): Creation {
   const slug = slugify(name);
-  const fileName = slug === "" ? "" : `${slug}${NATIVE_EXT}`;
+  const fileName = slug === "" ? "" : `${slug}${defaultNativeExt()}`;
   const path = join("layouts", fileName);
   const doc: JsonObject = {};
   const wrap = options.startFrom ?? "";
@@ -702,7 +702,7 @@ function deriveTemplate(name: string, options: CreationOptions): Creation {
   return {
     content: { doc, format: null },
     dir: "layouts",
-    ext: NATIVE_EXT,
+    ext: defaultNativeExt(),
     extraWrites: [],
     fileName,
     kind: "template",
@@ -714,12 +714,12 @@ function deriveTemplate(name: string, options: CreationOptions): Creation {
 /** A component: the tag the name derives to, and a definition that carries it. */
 function deriveComponent(name: string, options: CreationOptions, ctx: CreationContext): Creation {
   const tagName = deriveTagName(name);
-  const fileName = tagName === "" ? "" : `${tagName}${NATIVE_EXT}`;
+  const fileName = tagName === "" ? "" : `${tagName}${defaultNativeExt()}`;
   const path = join("components", fileName);
   return {
     content: { doc: componentDoc(tagName, options, ctx), format: null },
     dir: "components",
-    ext: NATIVE_EXT,
+    ext: defaultNativeExt(),
     extraWrites: [],
     fileName,
     kind: "component",

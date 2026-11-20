@@ -37,8 +37,8 @@ import {
   formatByExtension,
   formatSerialize,
   loadFormats,
-  NATIVE_EXT,
 } from "../format/format-host";
+import { defaultNativeExt } from "../format/default-format";
 import { creationFormats } from "../format/format-choices";
 import { collectionNames, entryCollections } from "../content/entry-model";
 import { componentRegistry, noteComponentSaved } from "../files/components";
@@ -560,7 +560,7 @@ export async function addCollectionPage(name: string): Promise<string | null> {
     return null;
   }
   const dir = `pages/${slugify(name) || name}`;
-  const path = `${dir}/[slug]${NATIVE_EXT}`;
+  const path = `${dir}/[slug]${defaultNativeExt()}`;
   const taken = await listTakenNames(dir);
   // Either native spelling opens at the same route, so either one already being there refuses.
   const existing = ["[slug].json", "[slug].jxn"].find((file) => taken.has(file));

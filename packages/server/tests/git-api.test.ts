@@ -326,6 +326,16 @@ describe("git endpoints", () => {
     expect(branchData.current).toBe("main");
   });
 
+  test("GET branches lists a branch holding commits the current one lacks as unmerged", async () => {
+    git("checkout -b unmerged-x");
+    git("commit --allow-empty -m side");
+    git("checkout main");
+    const res = await studioGitReq("/__studio/git/branches");
+    const data = /** @type {{ unmerged?: string[] }} */ await res.json();
+    expect(data.unmerged).toContain("unmerged-x");
+    expect(data.unmerged).not.toContain("test-branch");
+  });
+
   test("GET log answers an unborn HEAD with an empty history, not a 500", async () => {
     const fresh = resolve(import.meta.dir, "_git_fixture_unborn");
     rmSync(fresh, { force: true, recursive: true });
