@@ -94,9 +94,8 @@ export async function convertSelectionToComponent(name: string): Promise<string 
   }
   const { node, path: selected } = subject;
 
-  // Extract component definition
-  const componentDef = extractComponentDef(node);
-  componentDef.tagName = name;
+  // The component is the new element, wrapped around the selected tree exactly as it stands.
+  const componentDef = wrapInComponent(node, name);
 
   // Compute paths
   const componentFile = `components/${name}${defaultNativeExt()}`;
@@ -196,19 +195,18 @@ function deriveDefaultName(node: JxMutableNode) {
 }
 
 /**
- * Deep clone a node and strip page-specific keys.
+ * The component definition for a selection: a root named `name` whose only child is a deep copy of
+ * the selected element, untouched.
  *
- * @param {JxMutableNode} node
- * @returns {JxMutableNode}
+ * The selection is NEVER made the component's root. Doing that renames the element (a `<section>`
+ * would silently become `<hero-block>`) and drops its `$id`, so what the author built is not what
+ * the component renders. Wrapping keeps every tag, attribute, style, id and descendant exactly as
+ * it was, and the instance that replaces the selection in the page is the wrapper alone.
  */
-function extractComponentDef(node: JxMutableNode) {
+function wrapInComponent(node: JxMutableNode, name: string): JxMutableNode {
   // JsonClone, not structuredClone: the selected node is a @vue/reactivity proxy,
   // Which structuredClone rejects with DataCloneError.
-  const clone = jsonClone(node);
-  delete clone.$id;
-  delete clone.$layout;
-  delete clone.$paths;
-  return clone;
+  return { children: [jsonClone(node)], tagName: name };
 }
 
 /**

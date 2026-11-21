@@ -442,8 +442,11 @@ describe("a component", () => {
     await done;
     expect(tab.doc.document.children).toEqual([{ tagName: "hero-banner" }]);
     expect(tab.doc.document.$elements).toEqual([{ $ref: "../components/hero-banner.jxn" }]);
-    // The lifted subtree, minus the page-only `$id`, under the tag the name derived.
-    expect(fileJson("components/hero-banner.jxn")).toEqual({ tagName: "hero-banner" });
+    // The lifted subtree, untouched, wrapped in the element the name derived.
+    expect(fileJson("components/hero-banner.jxn")).toEqual({
+      children: [{ $id: "Hero", tagName: "section" }],
+      tagName: "hero-banner",
+    });
     // Then the new component opens, as every other component start does.
     await settle(() => activeTab.value?.documentPath === "components/hero-banner.jxn");
     expect(activeTab.value?.documentPath).toBe("components/hero-banner.jxn");
