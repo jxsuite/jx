@@ -6,7 +6,7 @@
  * cap holds, and an evicted subtree leaves the DOM.
  */
 import { installMockPlatform, resetStudioState } from "./harness";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { identities } from "@jxsuite/test-support/inspect-dom";
 import { setFormats } from "../src/format/format-host";
 import type { StudioFormat } from "../src/format/format-host";
@@ -25,13 +25,15 @@ const previewProps: ReadonlyMap<string, JsonValue>[] = [];
 
 void mock.module("../src/panels/component-preview.js", () => ({
   defineComponent: () => Promise.resolve(true),
-  renderComponentPreview: (
+  renderComponentInstance: (
     _comp: ComponentEntry,
     props: ReadonlyMap<string, JsonValue> = new Map(),
   ) => {
     previewProps.push(props);
     return componentPreview();
   },
+  // Not the Library's: the stylebook re-exports it, and the export must exist to be imported.
+  renderComponentPreview: () => componentPreview(),
 }));
 
 /** What the example sources answer, swapped per test (`component-examples.ts` has its own suite). */
@@ -45,10 +47,16 @@ const {
   PREVIEW_CACHE_LIMIT,
   createPreviewCache,
   createPreviewObserver,
+  evictPreview,
+  invalidatePreviews,
+  onPreviewsInvalidated,
+  previewEpoch,
   previewFor,
   renderDocPreview,
+  rendersWith,
 } = await import("../src/browse/library-preview");
 const { componentRegistry } = await import("../src/files/components");
+const { setProjectState } = await import("../src/store");
 
 function element(id: string) {
   const el = document.createElement("div");
@@ -574,5 +582,231 @@ describe("createPreviewObserver", () => {
 
     observer.destroy();
     host.remove();
+  });
+
+  test("a failed card on screen waits to LEAVE view before an entry is a retry", () => {
+    let fire: (records: IntersectionRecords) => void = () => {};
+    const observed: Element[] = [];
+    installObserver(
+      { disconnect: () => {}, observe: (target) => observed.push(target), unobserve: () => {} },
+      (cb) => {
+        fire = cb;
+      },
+    );
+    const seen: Element[] = [];
+    const observer = createPreviewObserver((el) => seen.push(el));
+    const card = element("failed");
+    observer.observeAgain(card);
+    // Idempotent, as `observe` is.
+    observer.observeAgain(card);
+    expect(identities(observed)).toEqual(identities([card]));
+    // The initial record of a card still on screen is not an entry.
+    fire([{ isIntersecting: true, target: card }]);
+    expect(seen.length).toBe(0);
+    // It leaves, then comes back: that is the retry.
+    fire([{ isIntersecting: false, target: card }]);
+    expect(seen.length).toBe(0);
+    fire([{ isIntersecting: true, target: card }]);
+    expect(identities(seen)).toEqual(identities([card]));
+    observer.destroy();
+  });
+
+  test("a failed card that is released and observed afresh is reported on its first entry", () => {
+    let fire: (records: IntersectionRecords) => void = () => {};
+    installObserver({ disconnect: () => {}, observe: () => {}, unobserve: () => {} }, (cb) => {
+      fire = cb;
+    });
+    const seen: Element[] = [];
+    const observer = createPreviewObserver((el) => seen.push(el));
+    const card = element("released");
+    observer.observeAgain(card);
+    expect(observer.releaseDetached()).toBe(1);
+    observer.observe(card);
+    fire([{ isIntersecting: true, target: card }]);
+    expect(identities(seen)).toEqual(identities([card]));
+    observer.destroy();
+  });
+
+  test("observing a card parked by observeAgain asks for it now, without waiting for it to leave", () => {
+    let fire: (records: IntersectionRecords) => void = () => {};
+    const observed: Element[] = [];
+    const unobserved: Element[] = [];
+    installObserver(
+      {
+        disconnect: () => {},
+        observe: (target) => observed.push(target),
+        unobserve: (target) => unobserved.push(target),
+      },
+      (cb) => {
+        fire = cb;
+      },
+    );
+    const seen: Element[] = [];
+    const observer = createPreviewObserver((el) => seen.push(el));
+    const card = element("parked");
+    observer.observeAgain(card);
+    // Still on screen: the initial record is skipped, and the card is waiting to leave.
+    fire([{ isIntersecting: true, target: card }]);
+    expect(seen.length).toBe(0);
+    // The inputs moved: the pane asks for the card again. It is let go and observed afresh, so the
+    // Browser delivers a new initial record, and that record counts.
+    observer.observe(card);
+    expect(identities(unobserved)).toEqual(identities([card]));
+    expect(identities(observed)).toEqual(identities([card, card]));
+    fire([{ isIntersecting: true, target: card }]);
+    expect(identities(seen)).toEqual(identities([card]));
+    observer.destroy();
+  });
+
+  test("with no IntersectionObserver, observeAgain reports nothing (no entry to wait for)", () => {
+    // @ts-expect-error -- deliberately removing the global to exercise the degraded path
+    globalThis.IntersectionObserver = undefined;
+    const seen: Element[] = [];
+    const observer = createPreviewObserver((el) => seen.push(el));
+    observer.observeAgain(element("a"));
+    expect(seen.length).toBe(0);
+    observer.destroy();
+  });
+});
+
+describe("retrying a failed preview", () => {
+  test("the epoch moves on an invalidation, a registry change and a project switch", () => {
+    const start = previewEpoch();
+    expect(previewEpoch()).toBe(start);
+    invalidatePreviews();
+    const invalidated = previewEpoch();
+    expect(invalidated).not.toBe(start);
+    componentRegistry.push({ path: "components/new.json", source: "project", tagName: "x-new" });
+    const registered = previewEpoch();
+    expect(registered).not.toBe(invalidated);
+    resetStudioState({ projectConfig: null, projectDirs: [] });
+    expect(previewEpoch()).not.toBe(registered);
+  });
+
+  test("with no project open the epoch is still a key, and opening one moves it", () => {
+    resetStudioState({ projectConfig: null, projectDirs: [] });
+    const open = previewEpoch();
+    setProjectState(null);
+    const closed = previewEpoch();
+    expect(closed).not.toBe(open);
+    expect(previewEpoch()).toBe(closed);
+  });
+
+  test("an invalidation tells every listener until it stops listening", () => {
+    let told = 0;
+    const stop = onPreviewsInvalidated(() => {
+      told += 1;
+    });
+    invalidatePreviews();
+    stop();
+    invalidatePreviews();
+    expect(told).toBe(1);
+  });
+
+  test("a renderer that throws is reported once on the console, not once per paint", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      componentRegistry.push({ path: "components/loud.json", source: "npm", tagName: "x-loud" });
+      componentPreview = () => {
+        throw new Error("definition fetch failed");
+      };
+      const cache = createPreviewCache();
+      const first = await previewFor("components/loud.json", cache);
+      const second = await previewFor("components/loud.json", cache);
+      expect([first, second]).toEqual([undefined, undefined]);
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(lines.filter((line) => line.includes("components/loud.json"))).toEqual([
+        "Jx Studio: no preview for components/loud.json: definition fetch failed",
+      ]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("a failed preview is not cached, so the next ask renders it once it can", async () => {
+    componentRegistry.push({ path: "components/late.json", source: "npm", tagName: "x-late" });
+    let ready = false;
+    componentPreview = () => {
+      if (!ready) {
+        return Promise.reject(new Error("not yet defined"));
+      }
+      return Promise.resolve(document.createElement("x-late"));
+    };
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const cache = createPreviewCache();
+      expect(await previewFor("components/late.json", cache)).toBeUndefined();
+      ready = true;
+      const rendered = await previewFor("components/late.json", cache);
+      expect(rendered?.tagName).toBe("X-LATE");
+      expect(cache.has("components/late.json")).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("rendersWith reports a render that throws outright, rather than letting it escape", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const definition = { attributes: { "1 bad": "x" }, tagName: "mu-throws" };
+      expect(await rendersWith(definition, "components/throws.json", new Map())).toBe(false);
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(
+        lines.some((line) => line.startsWith("Jx Studio: no preview for components/throws.json:")),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("rendersWith says why a definition did not render", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const definition = {
+        state: {
+          opens: {
+            $expression: {
+              operator: "call",
+              target: { $ref: "window#/Intl/formatDate" },
+              value: ["", "en", { day: "numeric" }],
+            },
+          },
+        },
+        tagName: "mu-why",
+        textContent: "${state.opens}",
+      };
+      expect(await rendersWith(definition, "components/why.json", new Map())).toBe(false);
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(
+        lines.some((line) => line.startsWith("Jx Studio: no preview for components/why.json:")),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe("evictPreview", () => {
+  test("a cache whose panel was torn down and collected is skipped, and a live one still evicts", async () => {
+    const live = createPreviewCache();
+    const shown = element("live");
+    document.body.append(shown);
+    live.set("components/gone.json", shown);
+    // Panels that were torn down: nothing holds their caches any more.
+    (() => {
+      for (let index = 0; index < 4; index += 1) {
+        createPreviewCache().set("components/gone.json", element(`dropped-${index}`));
+      }
+    })();
+    // A WeakRef keeps its target for the rest of the job that made it, so collect on a later one.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    Bun.gc(true);
+    expect(() => {
+      evictPreview("components/gone.json");
+    }).not.toThrow();
+    expect(live.has("components/gone.json")).toBe(false);
+    expect(shown.isConnected).toBe(false);
   });
 });

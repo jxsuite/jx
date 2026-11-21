@@ -228,6 +228,98 @@ describe("startFsSync", () => {
     expect(renders).toHaveLength(0);
     stop();
   });
+
+  test("reports every batch to git status, echoes included", () => {
+    let handler: (events: FsEvent[]) => void = () => {};
+    installMockPlatform({
+      subscribeFileEvents: (h) => {
+        handler = h;
+        return () => {};
+      },
+    });
+    resetStudioState({ dirs: new Map(), expanded: new Set() });
+    let notes = 0;
+    const stop = startFsSync({
+      noteRepositoryChange: () => {
+        notes += 1;
+      },
+      renderLeftPanel: () => {},
+    });
+    // Studio's own write changes what git reports exactly as an outside one does.
+    markLocalMutation("git/own.json");
+    handler([{ isDir: false, path: "git/own.json", type: "change" }]);
+    handler([{ isDir: false, path: "git/other.json", type: "add" }]);
+    expect(notes).toBe(2);
+    stop();
+  });
+
+  test("repaints on a structural batch even when no cached listing changed", async () => {
+    let handler: (events: FsEvent[]) => void = () => {};
+    installMockPlatform({
+      subscribeFileEvents: (h) => {
+        handler = h;
+        return () => {};
+      },
+    });
+    // Nothing is listed: the Site panel draws pages and templates from an index, not a listing.
+    resetStudioState({ dirs: new Map(), expanded: new Set() });
+    const renders: number[] = [];
+    const stop = startFsSync({ renderLeftPanel: () => renders.push(1) });
+    handler([{ isDir: false, path: "pages/about.json", type: "add" }]);
+    await sleep(70);
+    expect(renders).toHaveLength(1);
+    // A batch of plain rewrites, with no derived cache to drop, leaves the panel alone.
+    handler([{ isDir: false, path: "pages/about.json", type: "change" }]);
+    await sleep(70);
+    expect(renders).toHaveLength(1);
+    stop();
+  });
+
+  test("repaints once the derived caches were dropped, even for an echo", async () => {
+    let handler: (events: FsEvent[]) => void = () => {};
+    installMockPlatform({
+      subscribeFileEvents: (h) => {
+        handler = h;
+        return () => {};
+      },
+    });
+    resetStudioState({ dirs: new Map(), expanded: new Set() });
+    const renders: number[] = [];
+    const stop = startFsSync({
+      invalidateDerivedCaches: () => {},
+      renderLeftPanel: () => renders.push(1),
+    });
+    markLocalMutation("components/card.json");
+    handler([{ isDir: false, path: "components/card.json", type: "change" }]);
+    await sleep(70);
+    // The dropped index is only re-read by a paint, so the echo still earns one.
+    expect(renders).toHaveLength(1);
+    handler([{ isDir: false, path: "components/card.json", type: "change" }]);
+    await sleep(70);
+    expect(renders).toHaveLength(2);
+    stop();
+  });
+
+  test("a flush with no project open draws nothing", async () => {
+    let handler: (events: FsEvent[]) => void = () => {};
+    installMockPlatform({
+      subscribeFileEvents: (h) => {
+        handler = h;
+        return () => {};
+      },
+    });
+    resetStudioState({ dirs: new Map(), expanded: new Set() });
+    const renders: number[] = [];
+    const stop = startFsSync({
+      invalidateDerivedCaches: () => {},
+      renderLeftPanel: () => renders.push(1),
+    });
+    handler([{ isDir: false, path: "x/y.json", type: "add" }]);
+    setProjectState(null);
+    await sleep(70);
+    expect(renders).toHaveLength(0);
+    stop();
+  });
 });
 
 // ─── A .gitignore is a tree-wide event ────────────────────────────────────────
@@ -546,7 +638,7 @@ describe("startFsSync resync", () => {
 
   function context() {
     const content: string[][] = [];
-    const calls = { content, drops: 0, renders: 0 };
+    const calls = { content, drops: 0, git: 0, renders: 0 };
     const ctx = {
       invalidateDerivedCaches: (paths?: readonly string[], structural?: boolean) => {
         // A gap may have changed anything, the file set included.
@@ -556,6 +648,9 @@ describe("startFsSync resync", () => {
       },
       onResyncContent: (paths: string[]) => {
         calls.content.push(paths);
+      },
+      noteRepositoryChange: () => {
+        calls.git += 1;
       },
       renderLeftPanel: () => {
         calls.renders += 1;
@@ -631,6 +726,8 @@ describe("startFsSync resync", () => {
     expect(calls.drops).toBe(0);
     expect(calls.content).toEqual([]);
     expect(calls.renders).toBe(1);
+    // A commit sends no per-file events, so the resync is what tells git status the tree moved.
+    expect(calls.git).toBe(1);
     stop();
     closeAllTabs();
   });

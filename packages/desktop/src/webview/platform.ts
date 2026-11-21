@@ -69,6 +69,8 @@ type StudioRequests = StudioRPC["bun"]["requests"];
  */
 interface PushParams {
   events?: FsEvent[];
+  /** `onFileResync`'s: why the cached tree must be re-read. */
+  reason?: FsResyncReason;
   settings?: Record<string, string>;
 }
 
@@ -130,8 +132,21 @@ export function createDesktopPlatform() {
       (params) => {
         const { events } = params;
         if (events && events.length > 0) {
-          fileEventHandler?.(events);
+          if (fileEventHandler) {
+            fileEventHandler(events);
+          } else {
+            // Nobody to hand it to, and a delta cannot wait: the next subscriber re-lists instead.
+            missedFileEvents = true;
+          }
         }
+      },
+    ],
+    [
+      /* The launcher's watcher on this window's root is ready, so the page re-lists what it has
+         cached: nothing written before that moment (a scaffold, an install) was ever an event. */
+      "onFileResync",
+      (params) => {
+        reportResync(params.reason ?? "open");
       },
     ],
     [
@@ -164,6 +179,22 @@ export function createDesktopPlatform() {
   let resyncHandler: ((reason: FsResyncReason) => void) | null = null;
   /** Whether the socket has opened before: only a RE-open follows a gap in the event stream. */
   let everOpened = false;
+  /**
+   * Whether the stream had something to say while nobody was subscribed: a batch, or a resync.
+   * Either is a gap the next subscriber cannot patch from deltas, so it is told `"open"` instead. A
+   * flag rather than a buffer, because a re-list answers any number of missed batches at once and a
+   * buffer of deltas would need a bound below which it is still a gap.
+   */
+  let missedFileEvents = false;
+
+  /** Tell the subscriber the stream has a gap, or remember there is one for the next subscriber. */
+  function reportResync(reason: FsResyncReason): void {
+    if (resyncHandler) {
+      resyncHandler(reason);
+    } else {
+      missedFileEvents = true;
+    }
+  }
   /** The settings kernel's subscriber, so another window's change reaches this one. */
   let settingsHandler: ((settings: Record<string, string>) => void) | null = null;
   let documentHandler: ((path: string) => void) | null = null;
@@ -233,9 +264,9 @@ export function createDesktopPlatform() {
       ws.addEventListener("open", () => {
         reconnectMs = RECONNECT_MIN_MS;
         connectionHandler?.({ online: true });
-        if (everOpened) {
-          resyncHandler?.("reconnect");
-        }
+        /* The first open is an `"open"` exactly as the cloud transport's is: a listing made before it
+           raced the handshake, and nothing pushed before it reached this page. */
+        reportResync(everOpened ? "reconnect" : "open");
         everOpened = true;
         resolve();
       });
@@ -556,7 +587,9 @@ export function createDesktopPlatform() {
      * file written by a terminal — or by the AI assistant — stayed invisible until then.
      *
      * The socket can drop and come back (see the transport above), and frames pushed in between are
-     * lost, so every re-open is reported as `onResync("reconnect")`.
+     * lost, so every re-open is reported as `onResync("reconnect")`. The first open, the launcher's
+     * `onFileResync` (its watcher on a new root is ready), and a subscription made after the stream
+     * already had something to say while nobody listened are each reported as `onResync("open")`.
      */
     subscribeFileEvents(
       handler: (events: FsEvent[]) => void,
@@ -565,6 +598,17 @@ export function createDesktopPlatform() {
       fileEventHandler = handler;
       const onResync = options?.onResync ?? null;
       resyncHandler = onResync;
+      if (onResync && missedFileEvents) {
+        missedFileEvents = false;
+        // After the caller has its unsubscribe in hand, as every other report it receives is.
+        queueMicrotask(() => {
+          if (resyncHandler === onResync) {
+            onResync("open");
+          } else {
+            reportResync("open");
+          }
+        });
+      }
       return () => {
         if (fileEventHandler === handler) {
           fileEventHandler = null;

@@ -8,6 +8,7 @@ import {
   filterNeedle,
   filterPageRows,
   humanize,
+  isUnresolvedPageFile,
   localeMarked,
   matchesFilter,
   pageLabel,
@@ -119,6 +120,48 @@ describe("pageRows — what the build routes, and which language", () => {
       { extensions: [".json", ".md"] },
     );
     expect(rows.map((row) => row.path)).toEqual(["pages/index.md", "pages/about.md"]);
+  });
+
+  test("a page whose format is not loaded is listed as unresolved, in route order, never nested", () => {
+    const rows = pageRows(
+      [
+        page("pages/about.md"),
+        page("pages/index.json"),
+        page("pages/blog/[slug].md", "posts"),
+        page("pages/index.json.bak"),
+        page("pages/_drafts/wip.md"),
+        page("pages/readme.txt"),
+      ],
+      new Map([["posts", 3]]),
+      null,
+      { extensions: [".json", ".jxn"] },
+    );
+    expect(rows.map((row) => [row.kind, row.label, row.detail, row.path])).toEqual([
+      ["page", "Home", "/", "pages/index.json"],
+      ["unresolved", "About", "needs extension", "pages/about.md"],
+      ["unresolved", "Blog", "needs extension", "pages/blog/[slug].md"],
+    ]);
+  });
+
+  test("the filter keeps an unresolved row by its words, and it ends a collection's group", () => {
+    const rows = pageRows(
+      [page("pages/blog/[slug].json", "posts"), page("pages/zebra.md")],
+      new Map([["posts", null]]),
+      null,
+      { extensions: [".json"] },
+    );
+    expect(filterPageRows(rows, "extension").map((row) => row.path)).toEqual(["pages/zebra.md"]);
+    expect(filterPageRows(rows, "zebra").map((row) => row.kind)).toEqual(["unresolved"]);
+  });
+
+  test("isUnresolvedPageFile judges only a first-party page format's extension, and only when asked", () => {
+    expect(isUnresolvedPageFile("pages/a.md", [".json"])).toBe(true);
+    expect(isUnresolvedPageFile("pages/a.MDX", [".json"])).toBe(true);
+    expect(isUnresolvedPageFile("pages/a.markdown", [".json"])).toBe(true);
+    expect(isUnresolvedPageFile("pages/a.md", [".json", ".md"])).toBe(false);
+    expect(isUnresolvedPageFile("pages/a.md")).toBe(false);
+    expect(isUnresolvedPageFile("pages/_a.md", [".json"])).toBe(false);
+    expect(isUnresolvedPageFile("pages/a.txt", [".json"])).toBe(false);
   });
 
   test("a page in a locale folder is named for its route without the folder, marked with it", () => {

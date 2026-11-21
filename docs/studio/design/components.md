@@ -14,6 +14,7 @@ code:
   - packages/studio/src/panels/site-panel.ts
   - packages/studio/src/surfaces/commandbar.ts
   - packages/server/src/preview-harness.ts
+  - packages/studio/src/services/live-components.ts
 ---
 
 # Working with components
@@ -35,6 +36,10 @@ Studio saves the component as its own file in the project's `components/` folder
 **Add new** does the same from the other direction: press :kbd[⌘N] (:kbd[⌘⌥N] in a browser), choose **Component**, type a name such as `Pricing card`, and pick **Start from: Current selection**. The tag is derived from the name (`pricing-card`; a one-word name like `Hero` becomes `site-hero`), and the selection is converted exactly as above. **Blank** starts an empty component instead, and **Copy of…** starts from an existing one. See **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components#create-one)**.
 
 To open a component from an instance, right-click the instance and choose **Edit Component**, or click **→ Edit definition** under **Component Settings** on the Content tab.
+
+## Edit a component and every instance follows
+
+Save a component and every open canvas redraws its instances with the new version at once: pages, layouts, and the specimens in the [Stylebook](/docs/studio/design/stylebook). Its card in the **Components** section redraws too. The same happens when the file changes outside Studio, for example from another editor, a `git pull` or an assistant, unless you have the component open with unsaved changes. In that case your open copy wins, and saving it updates the canvases.
 
 ## Props: the component's options
 

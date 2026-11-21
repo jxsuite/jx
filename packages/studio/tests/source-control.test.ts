@@ -76,6 +76,7 @@ const { setProjectState } = await import("../src/state.js");
 const { resetProjectShell, shell } = await import("../src/shell.js");
 const { pinClock, unpinClock } = await import("../src/services/clock.js");
 const sc = await import("../src/publish/source-control.js");
+const { GIT_REFRESH_DEBOUNCE } = await import("../src/ui/timing.js");
 
 /** A tracked repository on `main`, with these changed files. */
 function repo(files: GitStatusResult["files"] = [], extra: Partial<GitStatusResult> = {}) {
@@ -171,6 +172,18 @@ describe("refreshGitStatus", () => {
     expect(shell.git.error).toBe("no git");
   });
 
+  test("a read that cannot reach the platform at all is the error line, not an unhandled rejection", async () => {
+    const registered = globalThis.__jxPlatform;
+    globalThis.__jxPlatform = undefined;
+    try {
+      await sc.refreshGitStatus();
+    } finally {
+      globalThis.__jxPlatform = registered;
+    }
+    expect(shell.git.error).toMatch(/^No platform registered/);
+    expect(shell.git.loading).toBe(false);
+  });
+
   test("a project that is not a repository is never asked for its branches", async () => {
     let branchReads = 0;
     install({
@@ -219,6 +232,175 @@ describe("refreshGitStatus", () => {
     });
     await sc.fetchGitLog();
     expect(shell.git.error).toBe("log broke");
+  });
+});
+
+// ─── Ordering: one answer, the newest ────────────────────────────────────────
+
+/** A status read the test answers by hand, in whatever order it likes. */
+function deferredStatus() {
+  const pending: ((result: GitStatusResult) => void)[] = [];
+  install({
+    gitStatus: logged(
+      "gitStatus",
+      () =>
+        new Promise<GitStatusResult>((resolve) => {
+          pending.push(resolve);
+        }),
+    ),
+  });
+  return pending;
+}
+
+const wait = (ms: number) =>
+  new Promise((r) => {
+    setTimeout(r, ms);
+  });
+const settle = () => wait(0);
+
+describe("refresh ordering", () => {
+  test("a read that answers after a newer one is discarded", async () => {
+    const pending = deferredStatus();
+    const first = sc.refreshGitStatus();
+    const second = sc.refreshGitStatus();
+    // The newer read answers first, then the older one arrives with what it saw before.
+    pending[1]!(repo([{ path: "new.json", staged: false, status: "?" }]));
+    await second;
+    pending[0]!(repo([]));
+    await first;
+    expect(shell.git.status?.files.map((file) => file.path)).toEqual(["new.json"]);
+    expect(shell.git.loading).toBe(false);
+  });
+
+  test("a superseded read leaves the loading flag to the read that superseded it", async () => {
+    const pending = deferredStatus();
+    const first = sc.refreshGitStatus();
+    const second = sc.refreshGitStatus();
+    pending[0]!(repo([]));
+    await first;
+    expect(shell.git.loading).toBe(true);
+    pending[1]!(repo([]));
+    await second;
+    expect(shell.git.loading).toBe(false);
+  });
+
+  test("a stale failure is not the error line", async () => {
+    const rejects: ((error: Error) => void)[] = [];
+    let reads = 0;
+    install({
+      gitStatus: async () => {
+        reads += 1;
+        if (reads === 1) {
+          return new Promise<GitStatusResult>((_resolve, reject) => {
+            rejects.push(reject);
+          });
+        }
+        return repo([]);
+      },
+    });
+    const first = sc.refreshGitStatus();
+    await sc.refreshGitStatus();
+    rejects[0]!(new Error("stale"));
+    await first;
+    expect(shell.git.error).toBeNull();
+  });
+
+  test("a save during a read arms ONE trailing read rather than being dropped", async () => {
+    const pending = deferredStatus();
+    const first = sc.refreshGitStatus();
+    // Three saves land while the read is out: it may have read the tree before any of them.
+    await sc.noteFileSaved(null);
+    await sc.noteFileSaved(null);
+    sc.requestGitRefresh();
+    expect(pending).toHaveLength(1);
+    pending[0]!(repo([]));
+    await first;
+    await settle();
+    expect(pending).toHaveLength(2);
+    pending[1]!(repo([{ path: "saved.json", staged: false, status: "M" }]));
+    await settle();
+    await settle();
+    expect(shell.git.status?.files.map((file) => file.path)).toEqual(["saved.json"]);
+    expect(pending).toHaveLength(2);
+  });
+
+  test("a read that overlaps a verb leaves the verb's busy flag up, and reads again after it", async () => {
+    const pending = deferredStatus();
+    // A save's read is out when the author starts a verb.
+    const read = sc.refreshGitStatus();
+    let finishVerb: () => void = () => {};
+    const verb = sc.withGitVerb(
+      () =>
+        new Promise<void>((resolve) => {
+          finishVerb = resolve;
+        }),
+    );
+    expect(shell.git.loading).toBe(true);
+    // The earlier read answers mid-verb: its data lands, but the flag is the verb's.
+    pending[0]!(repo([]));
+    await read;
+    expect(shell.git.loading).toBe(true);
+    // The verb's own writes reach the watcher: nothing is read halfway through the verb.
+    sc.requestGitRefresh();
+    await settle();
+    expect(pending).toHaveLength(1);
+    expect(shell.git.loading).toBe(true);
+    // The verb ends: the flag drops, and the read it deferred runs once.
+    finishVerb();
+    await verb;
+    expect(pending).toHaveLength(2);
+    pending[1]!(repo([]));
+    await settle();
+    expect(shell.git.loading).toBe(false);
+  });
+
+  test("a verb's own closing read answers a request made before it began", async () => {
+    const pending = deferredStatus();
+    const verb = sc.withGitVerb(async () => {
+      sc.requestGitRefresh();
+      const closing = sc.refreshGitStatus();
+      pending[0]!(repo([]));
+      await closing;
+      expect(shell.git.loading).toBe(true);
+    });
+    await verb;
+    await settle();
+    expect(pending).toHaveLength(1);
+    expect(shell.git.loading).toBe(false);
+  });
+
+  test("a request with nothing in flight reads at once; with no project, never", async () => {
+    sc.requestGitRefresh();
+    await settle();
+    expect(asked()).toContain("gitStatus");
+    calls.length = 0;
+    setProjectState(null);
+    sc.requestGitRefresh();
+    await settle();
+    expect(calls).toEqual([]);
+  });
+
+  test("a scheduled refresh waits for quiet, then reads once", async () => {
+    sc.scheduleGitRefresh();
+    sc.scheduleGitRefresh();
+    sc.scheduleGitRefresh();
+    await wait(GIT_REFRESH_DEBOUNCE / 2);
+    expect(asked()).not.toContain("gitStatus");
+    await wait(GIT_REFRESH_DEBOUNCE);
+    expect(asked().filter((name) => name === "gitStatus")).toHaveLength(1);
+  });
+
+  test("leaving the project cancels a scheduled read and discards one in flight", async () => {
+    const pending = deferredStatus();
+    const inFlight = sc.refreshGitStatus();
+    sc.scheduleGitRefresh();
+    sc.cleanupSourceControl();
+    pending[0]!(repo([{ path: "other-project.json", staged: false, status: "M" }]));
+    await inFlight;
+    expect(shell.git.status).toBeNull();
+    expect(shell.git.loading).toBe(false);
+    await wait(GIT_REFRESH_DEBOUNCE + 50);
+    expect(pending).toHaveLength(1);
   });
 });
 

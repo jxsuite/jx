@@ -166,6 +166,8 @@ A host that ships its documents inside its own bundle imports them as JSON. Two 
 
 Both are process-wide, like the caches they seed. A host that must serve one URL differently per mount uses `resolver` (§5) instead.
 
+Only a success is cached. A fetch that fails, answers a non-2xx status, answers HTML, or does not parse leaves no entry in the resolve cache, and a `defineElement("<url>")` that fails at any step releases its claim on the URL, so the next request for it tries again instead of replaying the failure, or returning with nothing defined, for the life of the realm. A host whose documents change under it (an editor reading a project from disk) drops what the realm remembers about one URL with **`forgetSource(url)`**, under the URL as given and its absolute form, so the next `resolve` or `defineElement` of it reads it afresh. It does not unregister a tag already defined, since `customElements` cannot; a changed definition still goes through `redefineElement` (§7).
+
 ### 6.1 Reading a `.jxn` Reference
 
 A site origin answers a `.jxn` file as JSON (`server.md`), so a page never needs a parser for it. A host that serves one as its text supplies the parser with `setDocumentParser(parseJxn)`, where `parseJxn` is from `@jxsuite/schema/jxn`, and Studio's canvas does this. The parser may answer a promise, so a host can load it when one turns up, as Studio's canvas does. It is a setting and not a lazy import in the core because a host that bundles the runtime into one file would inline that import and ship the parser to every reader. With no parser, a `.jxn` URL answered as anything but JSON is refused with an error naming that import. Like the custom-element registry, the parser is per realm.

@@ -12,6 +12,11 @@
  * types. `isRoutedPageFile` drops the `_`-prefixed files and directories the router ignores, and,
  * given the extensions the build routes, the files it would not read as a page.
  *
+ * **A page waiting on its format is listed, not hidden.** A `.md` page in a project whose Markdown
+ * format has not loaded (its package is not installed yet, or the install failed) is still the
+ * author's page. It is listed where its route would sort, as an `unresolved` row that says it needs
+ * its extension, rather than vanishing from the panel with no word about why.
+ *
  * **A language folder is not a page's name.** Under a project's `i18n`, `pages/ar/index.json` is
  * the Arabic Home, so it is labelled "Home (ar)", not "Ar": the name comes from the route with the
  * locale segment taken out, and the locale is marked after it.
@@ -54,8 +59,11 @@ export interface SitePageRow {
   label: string;
   /** The URL pattern, or the entry count for a collection heading. */
   detail: string;
-  /** `collection` heads a nested group; `page` is a page; `entry-page` is a page nested under one. */
-  kind: "page" | "collection" | "entry-page";
+  /**
+   * `collection` heads a nested group; `page` is a page; `entry-page` is a page nested under one;
+   * `unresolved` is a page file whose format is not loaded, so the build cannot route it yet.
+   */
+  kind: "page" | "collection" | "entry-page" | "unresolved";
   /** Whether the row is the document showing in the focused pane. */
   selected: SiteSelected;
 }
@@ -182,6 +190,36 @@ export function pageLabel(
   return humanize(named ?? stem(path).replaceAll(/[[\].]/g, ""));
 }
 
+/**
+ * The extensions a first-party page format claims (`@jxsuite/parser`'s Markdown, and the variants
+ * its content loader reads). A file under `pages/` with one of these is a page that is waiting on
+ * its format when no loaded format claims it, not a stray file: it is listed as `unresolved`.
+ */
+export const FORMAT_PAGE_EXTENSIONS: readonly string[] = [".md", ".markdown", ".mdx"];
+
+/** The detail an unresolved page row shows where a page shows its URL. */
+export const UNRESOLVED_PAGE_DETAIL = "needs extension";
+
+/** The lower-cased extension of a path's last segment, or `""`. */
+function extensionOf(path: string): string {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot).toLowerCase() : "";
+}
+
+/**
+ * Whether a file under `pages/` is a page the router WOULD route if its format were loaded: its
+ * path is routable, its extension is a {@link FORMAT_PAGE_EXTENSIONS} one, and no extension the
+ * build routes now claims it. Without `extensions` nothing is judged, so nothing is unresolved.
+ */
+export function isUnresolvedPageFile(path: string, extensions?: readonly string[]): boolean {
+  if (extensions === undefined || !isRoutedPageFile(path)) {
+    return false;
+  }
+  const ext = extensionOf(path);
+  return FORMAT_PAGE_EXTENSIONS.includes(ext) && !extensions.includes(ext);
+}
+
 /** What {@link pageRows} needs from the router besides the page files themselves. */
 export interface PageRouting {
   /** The extensions the build routes (`routedPageExtensions`). */
@@ -193,6 +231,8 @@ export interface PageRouting {
 interface RoutedPage {
   fact: SitePageFact;
   route: FileRoute;
+  /** Listed only to say its format is missing: never nested, never opened as a page. */
+  unresolved: boolean;
 }
 
 /**
@@ -203,6 +243,9 @@ interface RoutedPage {
  * order rather than being hoisted above the static pages. A `contentType` that names no declared
  * collection is listed as an ordinary page: nesting it under a heading for a collection the project
  * does not have would be inventing one.
+ *
+ * A file whose format is not loaded ({@link isUnresolvedPageFile}) is listed in route order as an
+ * `unresolved` row, never nested: its `$paths` could not be read without the format.
  *
  * @param pages Every file under `pages/`, routed or not.
  * @param collections Declared collection names, mapped to their entry counts (`null` while
@@ -220,11 +263,14 @@ export function pageRows(
 ): SitePageRow[] {
   const i18n = routing.i18n ?? null;
   const routed: RoutedPage[] = pages
-    .flatMap((fact) =>
-      isRoutedPageFile(fact.path, routing.extensions)
-        ? [{ fact, route: fileToRoute(fact.path) }]
-        : [],
-    )
+    .flatMap((fact): RoutedPage[] => {
+      if (isRoutedPageFile(fact.path, routing.extensions)) {
+        return [{ fact, route: fileToRoute(fact.path), unresolved: false }];
+      }
+      return isUnresolvedPageFile(fact.path, routing.extensions)
+        ? [{ fact, route: fileToRoute(fact.path), unresolved: true }]
+        : [];
+    })
     .toSorted((a, b) => compareRoutes(a.route, b.route) || a.fact.path.localeCompare(b.fact.path));
   const rows: SitePageRow[] = [];
   const pageRow = (
@@ -244,13 +290,21 @@ export function pageRows(
      surface nests by position: a page left where it sorted would read as the previous group's. */
   const groups = new Map<string, RoutedPage[]>();
   for (const page of routed) {
-    const collection = page.fact.contentType;
+    const collection = page.unresolved ? null : page.fact.contentType;
     if (collection !== null && collections.has(collection)) {
       groups.set(collection, [...(groups.get(collection) ?? []), page]);
     }
   }
   const headed = new Set<string>();
-  for (const { fact, route } of routed) {
+  for (const { fact, route, unresolved } of routed) {
+    if (unresolved) {
+      rows.push({
+        ...pageRow(fact, route, "page", pageLabel(route, fact.path, i18n)),
+        detail: UNRESOLVED_PAGE_DETAIL,
+        kind: "unresolved",
+      });
+      continue;
+    }
     const collection = fact.contentType;
     const group = collection === null ? undefined : groups.get(collection);
     if (collection === null || group === undefined) {
@@ -306,7 +360,7 @@ export function filterPageRows(rows: readonly SitePageRow[], needle: string): Si
       }
       continue;
     }
-    if (row.kind === "page") {
+    if (row.kind === "page" || row.kind === "unresolved") {
       heading = null;
     }
     const groupMatched = row.kind === "entry-page" && headingKept;

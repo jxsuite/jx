@@ -1098,6 +1098,26 @@ describe("openRecentProject", () => {
     expect(statusMessages).toHaveLength(0);
   });
 
+  test("switching projects keeps the session of the project being left", async () => {
+    /* Closing the tabs is a session shape change, and the shell writes the session of the project
+       it restored on every one. Left before they close, the record is carried forward; closed
+       first, `{panes: []}` was written over it and reopening the project restored nothing. */
+    const key = "jx-studio-project::/recent/site";
+    await toolbarCtx.openRecentProject("/recent/site");
+    await flush(4);
+    // The stored record, as text: what reopening the project would read.
+    const record = () => localStorage.getItem(key) ?? "";
+    const listsThePage = '"files":["pages/side.json"]';
+    // The author opens a page; the project's session now lists it.
+    openTab({ document: { tagName: "div" }, documentPath: "pages/side.json", id: "side-tab" });
+    await flush(2);
+    expect(record()).toContain(listsThePage);
+    await toolbarCtx.openRecentProject("/second/site");
+    await flush(4);
+    expect(platform.projectRoot).toBe("/second/site");
+    expect(record()).toContain(listsThePage);
+  });
+
   test("the whole open is ONE Activity entry with steps, not three surfaces", async () => {
     // Opening a project used to chain a blocking spinner (dependencies), a transient status line
     // (git sync) and a confirm-plus-spinner (@jxsuite update): three surfaces for three phases of
@@ -1627,6 +1647,37 @@ describe("filesystem events drop the derived caches", () => {
     expect(
       state.calls.filter((c) => c[0] === "listDirectory" && c[1] === "layouts").length,
     ).toBeGreaterThan(afterFirst);
+  });
+});
+
+describe("a component rewritten on disk", () => {
+  test("a watcher change event re-reads it and rewrites its registry entry", async () => {
+    /* The live component lane (`services/live-components.ts`) is wired to the watcher's change
+       events: a definition an editor or git rewrote reaches the registry the instances read, as a
+       save in Studio does, without reopening the project. */
+    expect(fsWatcher, "the boot must subscribe to the backend watcher").not.toBeNull();
+    const { componentRegistry } = await import("../src/files/components");
+    closeAllTabs();
+    // The lane reads the open project's root at change time; earlier tests may have left one.
+    const rootBefore = workspace.projectRoot;
+    workspace.projectRoot ??= "/recent/site";
+    try {
+      state.files.set(
+        "components/disk-card.json",
+        JSON.stringify({ state: { headline: { default: "" } }, tagName: "disk-card" }),
+      );
+      fsWatcher!([{ isDir: false, path: "components/disk-card.json", type: "change" }]);
+      // The watcher batches for 50 ms before it flushes; then the file is read.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 80);
+      });
+      await waitFor(() => componentRegistry.some((c) => c.tagName === "disk-card"));
+      const entry = componentRegistry.find((c) => c.tagName === "disk-card");
+      expect(entry?.path).toBe("components/disk-card.json");
+      expect(entry?.props).toEqual([{ default: "", name: "headline" }]);
+    } finally {
+      workspace.projectRoot = rootBefore;
+    }
   });
 });
 

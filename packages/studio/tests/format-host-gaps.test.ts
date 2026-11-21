@@ -23,6 +23,7 @@ const {
   loadExtensionCatalog,
   loadExtensions,
   loadFormats,
+  onFormatsChanged,
   refreshExtensionUi,
   refreshFormats,
   setFormats,
@@ -152,5 +153,95 @@ describe("content split", () => {
   test("an empty content document gets one paragraph to type into", () => {
     const split = splitFormatDocument(undefined, { children: [] });
     expect(split.document.children).toEqual([{ children: [], tagName: "p" }]);
+  });
+});
+
+/** A format record whose only distinguishing member is its name. */
+function fmt(name: string, extensions: string[] = []): StudioFormat {
+  return {
+    capabilities: {},
+    documentKinds: [],
+    exportTarget: false,
+    extensions,
+    mediaType: null,
+    name,
+    remote: false,
+    studio: null,
+  };
+}
+
+/* The registry is fetched per project and again after a dependency install, and a fresh clone's
+   first fetch answers with nothing. Whatever was derived from that answer (which files are routed
+   pages) must hear that the answer changed. */
+describe("onFormatsChanged", () => {
+  test("fires when a re-fetch answers with a different set, and not when it answers the same", async () => {
+    let answer: StudioFormat[] = [];
+    installMockPlatform({ listFormats: async () => answer });
+    setFormats([]);
+    const heard = mock(() => {});
+    const stop = onFormatsChanged(heard);
+    try {
+      refreshFormats();
+      await loadFormats();
+      expect(heard).not.toHaveBeenCalled();
+
+      // The install landed: the same fetch now finds the markdown format.
+      answer = [fmt("markdown", [".md"])];
+      refreshFormats();
+      await loadFormats();
+      expect(heard).toHaveBeenCalledTimes(1);
+      expect(getFormats().map((format) => format.name)).toEqual(["markdown"]);
+
+      refreshFormats();
+      await loadFormats();
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+    setFormats([]);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  test("a fetch dropped while in flight cannot write its answer over the newer one", async () => {
+    let release: (formats: StudioFormat[]) => void = () => {};
+    let calls = 0;
+    installMockPlatform({
+      listFormats: () => {
+        calls += 1;
+        if (calls === 1) {
+          return new Promise<StudioFormat[]>((resolve) => {
+            release = resolve;
+          });
+        }
+        return Promise.resolve([fmt("fresh")]);
+      },
+    });
+    refreshFormats();
+    const stale = loadFormats();
+    refreshFormats();
+    await loadFormats();
+    release([fmt("stale")]);
+    await stale;
+    expect(getFormats().map((format) => format.name)).toEqual(["fresh"]);
+  });
+
+  test("one listener's failure does not keep the next from hearing", () => {
+    // What the second listener could read when it was told: the new set, never the old one.
+    const heard: string[][] = [];
+    const stopThrowing = onFormatsChanged(() => {
+      throw new Error("listener exploded");
+    });
+    const stopAfter = onFormatsChanged(() => {
+      heard.push(getFormats().map((format) => format.name));
+    });
+    try {
+      setFormats([fmt("one")]);
+      setFormats([fmt("two")]);
+    } finally {
+      stopThrowing();
+      stopAfter();
+    }
+    expect(heard).toEqual([["one"], ["two"]]);
+    setFormats([]);
   });
 });

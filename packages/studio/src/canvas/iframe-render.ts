@@ -61,17 +61,7 @@ import type { JxDocument, JxElement, JxStateDefinition, JxStyle } from "@jxsuite
 import type { PathMapCtx } from "./path-mapping";
 import type { RowHooks, RowView } from "./iframe-rows";
 import type { JxContext, JxScope } from "@jxsuite/runtime/types";
-
-/**
- * Read a `.jxn` `$ref`, which the editing server answers as its text.
- *
- * Loaded when one turns up, because the parser is a third of this entry's size budget and most
- * canvases never see a `.jxn` reference.
- */
-async function parseDocumentText(text: string, source: string): Promise<JxDocument> {
-  const { parseJxn } = await import("@jxsuite/schema/jxn");
-  return parseJxn(text, source);
-}
+import { parseDocumentText } from "./document-parser";
 
 /**
  * The retained render context a full render leaves behind so the surgical patcher can re-render an

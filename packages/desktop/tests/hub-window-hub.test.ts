@@ -325,6 +325,21 @@ describe("window hub", () => {
       );
       expect(push.method).toBe("onFileEvents");
     }, 20_000);
+
+    /**
+     * The watcher announces nothing written before its scan finished, so binding a window to a
+     * project, which is when that project was just written, ends with the page told to re-list.
+     */
+    test("binding the window to its project, once watched, tells the page to re-list", async () => {
+      fixture = hubFixture();
+      const root = fixture.makeProject("a");
+      await fixture.open(root);
+      const socket = await fixture.connect(nth(0));
+      // What Studio does right after creating a project: bind the window to the folder it holds.
+      await socket.call("setWindowProject", { root });
+      const push = await socket.push("onFileResync");
+      expect(push).toEqual({ method: "onFileResync", params: { reason: "open" } });
+    }, 20_000);
   });
 
   describe("update status", () => {

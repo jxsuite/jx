@@ -27,8 +27,12 @@
  *
  * The canvas iframe receives {@link assetVersionsSnapshot} as one `assetVersions` message whenever
  * {@link assetVersionsEpoch} moves, rather than a copy on every render. The snapshot holds MEDIA
- * paths only — a `.json` or `.md` file is never loaded by URL from the canvas, and leaving them out
- * keeps that message as small as the media set.
+ * paths only, which keeps that message as small as the media set. Documents ARE loaded by URL from
+ * the canvas (a component's `$elements` `$ref`, a `$src` sidecar), but a version would buy them
+ * nothing: every host serves a project document revalidating or `no-store`, so a frame that fetches
+ * one reads the current bytes, and a frame that already defined a component never fetches it again,
+ * because a custom element is defined once per realm. A changed definition reaches a live frame by
+ * replacement instead (`services/live-components.ts`, `redefineElement`), which no URL could do.
  *
  * Pure module state — it imports nothing but path normalization, the primitive guards and the
  * reactivity re-export — so the canvas host can import it without dragging in the file layer.

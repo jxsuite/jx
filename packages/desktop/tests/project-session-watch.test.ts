@@ -8,19 +8,32 @@
  */
 
 import { authorized } from "./_authorized";
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const watched: string[] = [];
 const closed = mock(() => Promise.resolve());
 const applyRename = mock(() => Promise.resolve({ edits: [] }));
+/** The last watcher's `ready` resolver and `onError`, so a test can finish its scan or fail it. */
+let finishScan: () => void = () => {};
+let lastOnError: ((error: Error) => void) | undefined;
+let lastSink: ((events: unknown[]) => void) | undefined;
 
 void mock.module("@jxsuite/server/refactor", () => ({
   applyRename,
-  createFsWatcher: (root: string) => {
+  createFsWatcher: (
+    root: string,
+    sink: (events: unknown[]) => void,
+    opts: { onError?: (error: Error) => void } = {},
+  ) => {
     watched.push(root);
-    return { close: closed };
+    lastOnError = opts.onError;
+    lastSink = sink;
+    const ready = new Promise<void>((settle) => {
+      finishScan = settle;
+    });
+    return { close: closed, ready };
   },
   findReferences: () => Promise.resolve({ files: [] }),
 }));
@@ -71,6 +84,89 @@ describe("the session watches a project", () => {
     const session = createProjectSession(authorized(PROJECT));
     expect(watched).toEqual([]);
     void session.dispose();
+  });
+});
+
+/**
+ * The watcher announces nothing written before its scan finished, and a project being created or
+ * opened is written exactly then. Its readiness is told to the hub, which tells the page to
+ * re-list.
+ */
+describe("the session says when its watcher is live", () => {
+  const flush = () => Bun.sleep(0);
+
+  test("the watching hook runs once the scan is done, not before", async () => {
+    const session = createProjectSession(authorized(PROJECT));
+    const told: string[] = [];
+    session.setFileEventSink(
+      () => {},
+      () => told.push("watching"),
+    );
+    await flush();
+    expect(told).toEqual([]);
+    finishScan();
+    await flush();
+    expect(told).toEqual(["watching"]);
+    await session.dispose();
+  });
+
+  test("a re-root onto the folder already watched keeps the watcher and announces again", async () => {
+    const session = createProjectSession(authorized(PROJECT));
+    const watching = mock(() => {});
+    session.setFileEventSink(() => {}, watching);
+    finishScan();
+    await flush();
+    // What creating a project does: the session binds the folder, then Studio binds the window.
+    session.setProjectRoot(authorized(PROJECT));
+    await flush();
+    expect(watched).toEqual([PROJECT]);
+    expect(closed).not.toHaveBeenCalled();
+    expect(watching).toHaveBeenCalledTimes(2);
+    await session.dispose();
+  });
+
+  test("a watcher replaced before its scan finished announces nothing", async () => {
+    const session = createProjectSession(authorized(PROJECT));
+    const told: string[] = [];
+    session.setFileEventSink(
+      () => {},
+      () => told.push("watching"),
+    );
+    const firstScan = finishScan;
+    capturingLogs(() => session.setProjectRoot(authorized(BARE)));
+    firstScan();
+    await flush();
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(told).toEqual([]);
+    await session.dispose();
+  });
+
+  test("a sink registered after the watcher started is the one its batches reach", async () => {
+    const session = createProjectSession(authorized(PROJECT));
+    const first = mock((_events: unknown[]) => {});
+    const second = mock((_events: unknown[]) => {});
+    session.setFileEventSink(first);
+    session.setFileEventSink(second);
+    expect(watched).toEqual([PROJECT]);
+    lastSink?.([{ isDir: false, path: "a.json", type: "add" }]);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+    await session.dispose();
+  });
+
+  test("a watch error is logged with the root, and is not fatal", async () => {
+    const session = createProjectSession(authorized(PROJECT));
+    session.setFileEventSink(() => {});
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      lastOnError?.(new Error("EMFILE: too many open files"));
+      const [line] = errors.mock.calls.map((call) => String(call[0]));
+      expect(line).toContain(PROJECT);
+      expect(line).toContain("EMFILE");
+    } finally {
+      errors.mockRestore();
+      await session.dispose();
+    }
   });
 });
 

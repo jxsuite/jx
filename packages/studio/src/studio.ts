@@ -22,11 +22,14 @@ import {
   render,
   requireProjectState,
   requireShellRef,
-  setProjectState,
   toolbarEl,
   updateSession,
 } from "./store";
-import { getEffectiveRenderLocale, invalidateLayoutCache } from "./site-context";
+import {
+  getEffectiveRenderLocale,
+  invalidateLayoutCache,
+  invalidateLayoutCacheFor,
+} from "./site-context";
 import { documentBase } from "./canvas/canvas-origin";
 
 import {
@@ -38,7 +41,6 @@ import {
   paneById,
   receivingPane,
   registerTabCommands,
-  setWorkspaceProject,
   workspace,
 } from "./workspace/workspace";
 import { derivationCommands, installDerivationEffects } from "./workspace/pane-derive";
@@ -51,7 +53,6 @@ import {
   markSessionRestored,
   mountShell,
   registerShellViewCommands,
-  resetProjectShell,
   setActivityTab,
   shell,
 } from "./shell";
@@ -104,6 +105,8 @@ import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
 import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
 import { createLiveSurfaceSaver } from "./services/live-surfaces";
+import { createLiveComponentLane } from "./services/live-components";
+import { evictPreview } from "./browse/library-preview";
 import { beginProjectOpening, isOpeningProject } from "./project-opening";
 import { beginActivity } from "./panels/activity-panel";
 import {
@@ -117,12 +120,7 @@ import {
 import { serializeDocument } from "./files/serialize-document";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
-import {
-  formatForPath,
-  loadFormats,
-  refreshExtensionUi,
-  refreshFormats,
-} from "./format/format-host";
+import { formatForPath, loadFormats } from "./format/format-host";
 import {
   followOpenDocuments,
   loadProject as _loadProject,
@@ -137,9 +135,8 @@ import {
   reloadTabsIfChanged,
   setSessionWorkspaceShow,
 } from "./files/files";
-import { resetIgnoreCache } from "./files/gitignore";
-import { resetAssetVersions } from "./files/asset-versions";
-import { noteSavedScript, resetSavedScripts, scriptAddress } from "./canvas/canvas-scripts";
+import { enterProject, leaveProject, loadOpenedProject } from "./files/open-sequence";
+import { noteSavedScript, scriptAddress } from "./canvas/canvas-scripts";
 import { startFsSync } from "./files/fs-events";
 import { invalidateParamValues } from "./page-params";
 import {
@@ -186,19 +183,17 @@ import {
   registerSignalsCommands,
 } from "./panels/signals-panel";
 import { outlineCommands } from "./panels/outline-expansion";
-import { loadComponentRegistry, noteComponentSaved } from "./files/components";
-import { ensureDependenciesInstalled } from "./packages/ensure-deps";
+import { noteComponentSaved } from "./files/components";
 import { maybePromptJxsuiteUpdate } from "./packages/jxsuite-update";
-import { autoSyncProjectOnOpen } from "./packages/pull-package-sync";
 
 import webdata from "../data/webdata.json";
 import { registerDataExplorerCommands } from "./panels/data-explorer";
 import {
-  cleanupSourceControl,
   cloneRepository,
   loadDiffForLens,
   registerSourceControlCommands,
   noteFileSaved,
+  scheduleGitRefresh,
   setSourceControlDeps,
 } from "./publish/source-control";
 
@@ -1101,11 +1096,21 @@ function ensureFsSync() {
       invalidateParamValues();
       paneContext.resetParamValues();
       invalidateEntryPreview();
+      /* A layout is read once and kept, so a layout or component changed on disk (git, another
+         editor, an agent) must drop it, or the next canvas render frames the page with the copy
+         read before the change. Dropped only; the pane redraws on its own next render. */
+      invalidateLayoutCacheFor(paths);
     },
-    onContentChange: reloadCleanTab,
+    onContentChange: (path) => {
+      reloadCleanTab(path);
+      // A component rewritten on disk reaches every canvas frame that defined it.
+      void liveComponents.changedOnDisk(path);
+    },
     /* A reconnect re-reads the clean, non-collab tabs, and leaves every one whose content did not
        change untouched: most reconnects changed nothing, and a reload is a repaint per tab. */
     onResyncContent: reloadTabsIfChanged,
+    // The watcher is how an outside edit, a checkout or Studio's own write reaches git status.
+    noteRepositoryChange: scheduleGitRefresh,
     renderLeftPanel,
   });
 }
@@ -1167,32 +1172,25 @@ if (_projectParam) {
             await platform.activate();
           }
 
-          resetIgnoreCache();
-          resetAssetVersions();
-          resetSavedScripts();
-          setProjectState({
-            dirs: new Map(),
-            expanded: new Set(),
-            isSiteProject: true,
-            name: siteCtx.projectConfig?.name || "Project",
-            projectConfig: siteCtx.projectConfig || null,
-            projectDirs: [],
-            projectRoot: siteCtx.sitePath,
-            root: siteCtx.sitePath,
-            searchQuery: "",
-            selectedPath: siteCtx.fileRelPath || null,
+          // The same two halves every door runs (`files/open-sequence.ts`), so the registries are
+          // Fetched again after an install here too.
+          await enterProject({
+            platform,
+            site: { config: siteCtx.projectConfig || null, root: siteCtx.sitePath },
+            state: {
+              dirs: new Map(),
+              expanded: new Set(),
+              isSiteProject: true,
+              name: siteCtx.projectConfig?.name || "Project",
+              projectConfig: siteCtx.projectConfig || null,
+              projectDirs: [],
+              projectRoot: siteCtx.sitePath,
+              root: siteCtx.sitePath,
+              searchQuery: "",
+              selectedPath: siteCtx.fileRelPath || null,
+            },
           });
-          await learnProjectFileName(platform);
-          setWorkspaceProject(siteCtx.sitePath, siteCtx.projectConfig || null);
-
-          refreshExtensionUi(platform);
-          await autoSyncProjectOnOpen();
-          await ensureDependenciesInstalled();
-          await loadComponentRegistry();
-
-          /* Through `loadDirectory` (inside `loadProjectDirectories`), not `platform.listDirectory`:
-             the loader is what reads the `.gitignore` chain governing each directory. */
-          await loadProjectDirectories();
+          await loadOpenedProject({ loadDirectories: loadProjectDirectories, platform });
           /* The other two ways into a project subscribe, and this one did not, so a project opened
              by its URL never heard about a file changing on disk. */
           ensureFsSync();
@@ -1556,18 +1554,7 @@ async function openRecentProject(root: string) {
     }
 
     platform.projectRoot = root;
-    // Source control, the stylebook selection and the settings tab describe the project being
-    // Left behind; carrying them over showed the previous repository's branch and file count
-    // Under the new project's name. The poll timer is re-armed by the Publish workspace's next mount.
-    cleanupSourceControl();
-    resetProjectShell();
-    resetProjectCaches();
-    // The format registry is cached per project — the previous root's registry (often empty on a
-    // Fresh desktop launch) must not answer for this project, or non-JSON documents fail with
-    // "No format class imported" until a reload. Mirrors openProject in files.ts.
-    refreshFormats();
-    void loadFormats();
-    refreshExtensionUi(platform);
+    /* Learned first, because it is what says which file `projectConfigPath()` names. */
     await learnProjectFileName(platform);
     const content = await platform.readFile(projectConfigPath());
     /* The project's own config at the root the user chose to open; Studio edits it in that shape
@@ -1583,34 +1570,40 @@ async function openRecentProject(root: string) {
       unread = true;
     }
 
+    /* Left BEFORE its tabs close: closing them is a session shape change, and while this window
+       may still write the project being left, the empty workspace would be stored as its session
+       (`leaveProject`). */
+    leaveProject({ resetProjectCaches });
     closeAllTabs();
-    resetIgnoreCache();
-    resetAssetVersions();
-    resetSavedScripts();
-
-    setProjectState({
-      ...projectState,
-      dirs: new Map(),
-      expanded: new Set(),
-      isSiteProject: true,
-      name: config.name || root.split("/").pop()!,
-      projectConfig: config,
-      projectRoot: root,
-      searchQuery: "",
-      selectedPath: null,
+    // The shared half every door runs (`files/open-sequence.ts`): source control, the shell's
+    // Per-project slots, the registries and the file caches describe the project being left.
+    await enterProject({
+      fileNameLearned: true,
+      left: true,
+      platform,
+      resetProjectCaches,
+      site: { config, root },
+      state: {
+        ...projectState,
+        dirs: new Map(),
+        expanded: new Set(),
+        isSiteProject: true,
+        name: config.name || root.split("/").pop()!,
+        projectConfig: config,
+        projectRoot: root,
+        searchQuery: "",
+        selectedPath: null,
+      },
     });
-    setWorkspaceProject(root, config);
 
-    activity.step("Sync with the remote");
-    opening.step("Sync with the remote");
-    await autoSyncProjectOnOpen();
-    activity.step("Install dependencies");
-    opening.step("Install dependencies");
-    await ensureDependenciesInstalled();
-    activity.step("Read the project");
-    opening.step("Read the project");
-    await loadProjectDirectories();
-    await loadComponentRegistry();
+    await loadOpenedProject({
+      loadDirectories: loadProjectDirectories,
+      onPhase: (phase) => {
+        activity.step(phase);
+        opening.step(phase);
+      },
+      platform,
+    });
 
     addRecentProject(requireProjectState().name, root);
     // The Navigator shows the panel the workspace frame chose as the project opened (§22.3).
@@ -1811,6 +1804,17 @@ const liveChrome = createLiveSurfaceSaver({
   redefineOnCanvases: redefineElementOnCanvases,
   workspace,
 });
+/* The project's own components take the same canvas half of that lane, and only that half: a
+   project tag is never redefined in the shell, whose realm holds the chrome's kit. A save and a
+   change on disk both lead here (`services/live-components.ts`). */
+const liveComponents = createLiveComponentLane({
+  evictPreview,
+  noteComponent: noteComponentSaved,
+  readFile: (path) => getPlatform().readFile(path),
+  redefineOnCanvases: redefineElementOnCanvases,
+  repaint: renderLeftPanel,
+  workspace,
+});
 /* The third is the component registry: a saved definition rewrites its own entry, so an instance's
    Component Settings and the Library read the props the file has now rather than the ones the scan
    saw when the project opened. The Content tab and the Library are told, because neither reads the
@@ -1824,8 +1828,11 @@ setDocumentSavedListener((path, doc, tab) => {
     renderLeftPanel();
   }
   /* SAFETY: The listener fires for a tab's saved ROOT document, and a root document is a
-     JxDocument held in the editor's mutable node form; `liveChrome` only acts on surface paths. */
-  void liveChrome(path, doc as JxDocument);
+     JxDocument held in the editor's mutable node form; `liveChrome` only acts on surface paths,
+     `liveComponents` only on documents whose tagName names a custom element. */
+  const savedDoc = doc as JxDocument;
+  void liveChrome(path, savedDoc);
+  liveComponents.saved(path, savedDoc);
   if (noteComponentSaved(path, doc)) {
     renderPropertiesPanel();
     renderLeftPanel();

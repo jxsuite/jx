@@ -460,7 +460,8 @@ export async function createDevServer(options: {
           for (const [name, value] of Object.entries(NO_CACHE)) {
             headers.set(name, value);
           }
-          return new Response(mountRes.body, { headers });
+          // The status too: a `.jxn` that does not parse answers 422 with its reason.
+          return new Response(mountRes.body, { headers, status: mountRes.status });
         }
       }
 

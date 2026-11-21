@@ -20,7 +20,16 @@
  * {@link invalidateSiteIndex} — wired into the filesystem subscription's derived-cache list and the
  * media-changed handler in `studio.ts` — and re-read the next time the panel paints. The component
  * registry and the media cache are their owners' caches, read as they stand; the media cache
- * repaints the Navigator itself when its listing lands.
+ * repaints the Navigator itself when its listing lands. The page list is judged by the extensions
+ * the format registry claims, so a change of formats ({@link onFormatsChanged}: a dependency
+ * install landing a Markdown format) re-reads it too, and a page whose format is missing is listed
+ * as needing its extension rather than hidden (`panels/site-model.ts`).
+ *
+ * **A card's preview is retried, not announced once.** Every preview box is tracked with the
+ * registry entry it was rendered for. A box whose entry has since been replaced (a save, a re-scan)
+ * is rendered again, and a render that failed is tried again on a later paint, a bounded number of
+ * times, so a preview that failed while the project's packages were still installing does not stay
+ * empty for the life of the panel.
  *
  * @docs studio/interface
  */
@@ -34,7 +43,11 @@ import { projectState, renderOnly } from "../store";
 import { getPlatform, hasPlatform } from "../platform";
 import { activeTab } from "../workspace/workspace";
 import { scanLibrary } from "../browse/library-model";
-import { routedPageExtensions } from "../format/format-host";
+import {
+  onFormatsChanged,
+  readableDocumentExtensions,
+  routedPageExtensions,
+} from "../format/format-host";
 import { resolveI18n } from "@jxsuite/schema/locale";
 import { createPreviewCache, createPreviewObserver, previewFor } from "../browse/library-preview";
 import { mountPreview, shownPreview } from "../browse/preview-root";
@@ -438,6 +451,32 @@ interface DragPreviewArgs {
 // oxlint-disable-next-line typescript/consistent-type-definitions -- see above
 export type BlockDragData = { type: "block"; fragment: JxMutableNode };
 
+/**
+ * How many times a card's preview is tried for one registry entry before the box is left empty: the
+ * first render and two retries, each on a later paint. Bounded, because a definition that cannot
+ * render fails the same way on every paint, and the Navigator paints often.
+ */
+export const PREVIEW_ATTEMPT_LIMIT = 3;
+
+/** One component card's preview box, and what was last asked of it. */
+interface PreviewSlot {
+  tagName: string;
+  /** The registry entry the box was last asked to render; a different one means it is stale. */
+  entry: ComponentEntry | undefined;
+  /** `waiting` for visibility, `loading` a render, `shown` one, or `failed` to get one. */
+  status: "waiting" | "loading" | "shown" | "failed";
+  /** Renders tried for {@link PreviewSlot.entry}. */
+  attempts: number;
+  /** Bumped by every request, so a render that a newer request superseded is dropped on arrival. */
+  request: number;
+}
+
+/** A preview box waiting to scroll into view: the path it renders, and the slot it reports to. */
+interface PendingPreview {
+  path: string;
+  state: PreviewSlot;
+}
+
 /** The mounted surface, the box it is in, and everything registered against its nodes. */
 interface StandingPanel {
   /** `null` only inside {@link mountInto}, between building the record and mounting into it. */
@@ -445,22 +484,94 @@ interface StandingPanel {
   host: HTMLElement;
   /** Drag registrations, by the node they were made on — released when the node is gone. */
   sources: Map<HTMLElement, () => void>;
+  /** Replaced, not cleared, when a preview goes stale: a cleared cache would empty the boxes. */
   cache: ReturnType<typeof createPreviewCache>;
   observer: ReturnType<typeof createPreviewObserver>;
-  /** Preview boxes waiting to scroll into view, and the component path each one shows. */
-  pending: Map<HTMLElement, string>;
+  /** Preview boxes waiting to scroll into view, the component path each one shows, and its slot. */
+  pending: Map<HTMLElement, PendingPreview>;
+  /** Every preview box the document announced, until its node leaves the document. */
+  slots: Map<HTMLElement, PreviewSlot>;
 }
 
 let _standing: StandingPanel | null = null;
 
 /** Fill one preview box from the cache, now or when it has rendered. */
-async function fillPreview(panel: StandingPanel, slot: HTMLElement, path: string): Promise<void> {
+async function fillPreview(
+  panel: StandingPanel,
+  slot: HTMLElement,
+  { path, state }: PendingPreview,
+): Promise<void> {
+  state.status = "loading";
+  state.attempts += 1;
+  const { request } = state;
   const rendered = await previewFor(path, panel.cache);
-  if (rendered && _standing === panel && slot.isConnected && !shownPreview(slot)) {
+  if (_standing !== panel || !slot.isConnected || state.request !== request) {
+    // The panel went, the card went, or a newer request for this box owns it now.
+    return;
+  }
+  if (!rendered) {
+    state.status = "failed";
+    return;
+  }
+  state.status = "shown";
+  if (shownPreview(slot) !== rendered) {
     /* The island: the document drew this box EMPTY so the live render can be moved into it
        (studio-ui-guidelines.md §9.4), exactly as the Library's cards are filled, inside a shadow
        root of its own so the component's ids and Studio's never meet. */
     mountPreview(slot, rendered);
+  }
+}
+
+/** Ask for a box's preview: it renders when the box scrolls into view. */
+function requestPreview(panel: StandingPanel, slot: HTMLElement, state: PreviewSlot): void {
+  // Only a project component has a definition to render; a package card keeps its box empty.
+  const path = definitionPath(state.entry);
+  if (!path) {
+    return;
+  }
+  state.request += 1;
+  state.status = "waiting";
+  panel.pending.set(slot, { path, state });
+  panel.observer.observe(slot);
+}
+
+/** Track a preview box the document just created, and ask for its first render. */
+function adoptPreview(panel: StandingPanel, slot: HTMLElement, tagName: string): void {
+  const state: PreviewSlot = {
+    attempts: 0,
+    entry: componentRegistry.find((comp) => comp.tagName === tagName),
+    request: 0,
+    status: "waiting",
+    tagName,
+  };
+  panel.slots.set(slot, state);
+  requestPreview(panel, slot, state);
+}
+
+/**
+ * Re-ask for every preview that is out of date: one whose registry entry has been replaced since it
+ * was rendered (a save rebuilds the entry, a re-scan rebuilds them all), and one whose render
+ * failed and has attempts left. A stale entry gets a fresh cache, because the old one would answer
+ * with the render of the definition that changed; the boxes that are current keep what they show.
+ */
+function revisitPreviews(panel: StandingPanel): void {
+  const stale: [HTMLElement, PreviewSlot][] = [];
+  const retry: [HTMLElement, PreviewSlot][] = [];
+  for (const [slot, state] of panel.slots) {
+    const entry = componentRegistry.find((comp) => comp.tagName === state.tagName);
+    if (entry !== state.entry) {
+      state.entry = entry;
+      state.attempts = 0;
+      stale.push([slot, state]);
+    } else if (state.status === "failed" && state.attempts < PREVIEW_ATTEMPT_LIMIT) {
+      retry.push([slot, state]);
+    }
+  }
+  if (stale.length > 0) {
+    panel.cache = createPreviewCache();
+  }
+  for (const [slot, state] of [...stale, ...retry]) {
+    requestPreview(panel, slot, state);
   }
 }
 
@@ -488,6 +599,12 @@ function releaseDetached(panel: StandingPanel): void {
       panel.sources.delete(element);
     }
   }
+  for (const slot of panel.slots.keys()) {
+    if (!slot.isConnected) {
+      panel.slots.delete(slot);
+      panel.pending.delete(slot);
+    }
+  }
   panel.observer.releaseDetached();
 }
 
@@ -498,6 +615,8 @@ function dispose(panel: StandingPanel): void {
     cleanup();
   }
   panel.sources.clear();
+  panel.slots.clear();
+  panel.pending.clear();
   panel.observer.destroy();
   panel.cache.clear();
 }
@@ -532,23 +651,25 @@ function mountInto(host: HTMLElement): void {
   if (_standing) {
     _standing.handle?.update(sitePanelValues());
     releaseDetached(_standing);
+    revisitPreviews(_standing);
     return;
   }
   /* The record first, then the mount: the islands are announced while the document is built, and
      each one is handed straight to the record it belongs to. */
-  const pending = new Map<HTMLElement, string>();
+  const pending = new Map<HTMLElement, PendingPreview>();
   const panel: StandingPanel = {
     cache: createPreviewCache(),
     handle: null,
     host,
     observer: createPreviewObserver((element) => {
-      const path = element instanceof HTMLElement ? pending.get(element) : undefined;
-      if (path !== undefined && element instanceof HTMLElement) {
+      const waiting = element instanceof HTMLElement ? pending.get(element) : undefined;
+      if (waiting !== undefined && element instanceof HTMLElement) {
         pending.delete(element);
-        void fillPreview(panel, element, path);
+        void fillPreview(panel, element, waiting);
       }
     }),
     pending,
+    slots: new Map(),
     sources: new Map(),
   };
   _standing = panel;
@@ -563,12 +684,7 @@ function mountInto(host: HTMLElement): void {
       adoptSource(panel, element, () => mediaDragData(path));
     },
     preview: (element, tagName) => {
-      // Only a project component has a definition to render; a package card keeps its box empty.
-      const path = definitionPath(componentRegistry.find((comp) => comp.tagName === tagName));
-      if (path) {
-        pending.set(element, path);
-        panel.observer.observe(element);
-      }
+      adoptPreview(panel, element, tagName);
     },
   });
 }
@@ -591,6 +707,7 @@ function contentArea(body: HTMLElement): HTMLElement {
  * rail group's one button, and the Navigator's default (`shell.ts`'s `DEFAULT_PANEL_ID`).
  */
 export function registerSitePanel(): void {
+  _formatsSubscription ??= onFormatsChanged(formatsChanged);
   registerPanel({
     id: "site",
     title: "Site",
@@ -602,6 +719,26 @@ export function registerSitePanel(): void {
       mountInto(contentArea(host));
     },
   });
+}
+
+/** The format-registry subscription, made once, by the first registration. */
+let _formatsSubscription: (() => void) | null = null;
+
+/** Whether two extension lists name the same set. */
+function sameExtensions(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((ext) => b.includes(ext));
+}
+
+/**
+ * The format registry changed: re-read the page list if it was judged by a different set of page
+ * extensions. A page a missing format had marked as needing its extension becomes an ordinary page
+ * once the format lands, and the reverse when a format goes away.
+ */
+function formatsChanged(): void {
+  if (_index && sameExtensions(_index.pageExtensions, readableDocumentExtensions("page"))) {
+    return;
+  }
+  invalidateSiteIndex([]);
 }
 
 /** Forget the mounted panel and the index — tests, and a project switch. */

@@ -7,9 +7,10 @@
  */
 
 import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
-import { defineElement, setSkipServerFunctions } from "@jxsuite/runtime";
+import { defineElement, setDocumentParser, setSkipServerFunctions } from "@jxsuite/runtime";
 import { projectState } from "../store";
 import { fillPreviewImages } from "../canvas/preview-placeholder";
+import { parseDocumentText } from "../canvas/document-parser";
 import type { ComponentEntry } from "../files/components";
 import type { JsonValue } from "@jxsuite/schema/types";
 
@@ -26,34 +27,53 @@ export async function renderComponentPreview(
   comp: ComponentEntry,
   props: ReadonlyMap<string, JsonValue> = new Map(),
 ) {
-  setSkipServerFunctions(true);
   try {
-    if (!(await defineComponent(comp))) {
-      return _componentFallback(comp.tagName);
-    }
-    const el = document.createElement(comp.tagName);
-    for (const p of comp.props || []) {
-      if (p.default !== undefined && p.default !== "false" && p.default !== "''") {
-        const val = String(p.default).replaceAll(/^'|'$/g, "");
-        el.setAttribute(p.name, val);
-      }
-    }
-    // Read at connection as the instance's own props, ahead of the attribute defaults above.
-    /* SAFETY: an element is an ordinary extensible object, so any string key can be written; the
-       instance reads each declared prop back off itself when it connects. */
-    const properties = el as HTMLElement & Record<string, JsonValue>;
-    for (const [name, value] of props) {
-      properties[name] = value;
-    }
-    /* Watched from now on: the instance draws its children when it connects, after this returns.
-       A preview shows the component's shape, so an image it has no source for is a placeholder,
-       not a broken glyph (`canvas/preview-placeholder.ts`). */
-    fillPreviewImages(el);
-    return el;
+    return await renderComponentInstance(comp, props);
   } catch (error) {
     console.warn("Component preview failed:", comp.tagName, error);
     return _componentFallback(comp.tagName);
   }
+}
+
+/**
+ * {@link renderComponentPreview} without the fallback for a failure: a definition that fails to
+ * register THROWS, so a caller that caches what it is handed (`browse/library-preview.ts`'s
+ * `previewFor`) caches nothing and can ask again once the project has settled (a dependency not
+ * written yet, a host not ready). A tag that can never be defined here (a package's element its
+ * package has not defined, a format-class source) still answers with the fallback box, because
+ * asking again would answer the same.
+ *
+ * @param {ComponentEntry} comp
+ * @param {ReadonlyMap<string, JsonValue>} [props]
+ * @returns {Promise<HTMLElement>}
+ */
+export async function renderComponentInstance(
+  comp: ComponentEntry,
+  props: ReadonlyMap<string, JsonValue> = new Map(),
+): Promise<HTMLElement> {
+  setSkipServerFunctions(true);
+  if (!(await defineComponent(comp))) {
+    return _componentFallback(comp.tagName);
+  }
+  const el = document.createElement(comp.tagName);
+  for (const p of comp.props || []) {
+    if (p.default !== undefined && p.default !== "false" && p.default !== "''") {
+      const val = String(p.default).replaceAll(/^'|'$/g, "");
+      el.setAttribute(p.name, val);
+    }
+  }
+  // Read at connection as the instance's own props, ahead of the attribute defaults above.
+  /* SAFETY: an element is an ordinary extensible object, so any string key can be written; the
+     instance reads each declared prop back off itself when it connects. */
+  const properties = el as HTMLElement & Record<string, JsonValue>;
+  for (const [name, value] of props) {
+    properties[name] = value;
+  }
+  /* Watched from now on: the instance draws its children when it connects, after this returns.
+     A preview shows the component's shape, so an image it has no source for is a placeholder,
+     not a broken glyph (`canvas/preview-placeholder.ts`). */
+  fillPreviewImages(el);
+  return el;
 }
 
 /**
@@ -70,6 +90,9 @@ export async function defineComponent(comp: ComponentEntry): Promise<boolean> {
     return false;
   }
   const root = projectState?.projectRoot;
+  /* Every Jx host answers a `.jxn` definition as JSON; this realm still reads one a host serves as
+     its text, as the canvas frame does, rather than failing every component written in KDL. */
+  setDocumentParser(parseDocumentText);
   await defineElement(`${location.origin}/${root ? `${root}/` : ""}${comp.path}`);
   return true;
 }

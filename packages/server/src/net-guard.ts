@@ -21,7 +21,7 @@ import { realpathSync } from "node:fs";
 import { resolveAssetUrl } from "@jxsuite/schema/asset-paths";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import { problem } from "./problem.ts";
-import { fileResponse } from "./file-response.ts";
+import { projectFileResponse } from "./jxn-response.ts";
 
 export const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -294,14 +294,15 @@ export function containedPath(absPath: string, root: string): string | null {
 
 /**
  * Serve a file under `root` if it both exists and is contained. Returns the Response, or null when
- * missing/traversed (caller decides the fallthrough status).
+ * missing/traversed (caller decides the fallthrough status). A `.jxn` document answers as the JSON
+ * it parses to, as every Jx host answers one (`jxn-response.ts`).
  */
 export async function serveContained(absPath: string, root: string): Promise<Response | null> {
   const safe = containedPath(absPath, root);
   if (!safe) {
     return null;
   }
-  return fileResponse(safe);
+  return projectFileResponse(safe);
 }
 
 /**

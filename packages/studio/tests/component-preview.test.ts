@@ -5,7 +5,11 @@
  */
 import "./with-dom.js";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { defineComponent, renderComponentPreview } from "../src/panels/component-preview";
+import {
+  defineComponent,
+  renderComponentInstance,
+  renderComponentPreview,
+} from "../src/panels/component-preview";
 import { setProjectState } from "../src/store";
 import type { ProjectState } from "../src/types";
 import type { JsonValue } from "@jxsuite/schema/types";
@@ -117,5 +121,80 @@ describe("renderComponentPreview", () => {
     });
     expect(el.tagName).toBe("DIV");
     expect(el.textContent).toBe("<missing-comp>");
+  });
+});
+
+/**
+ * The Library and the Site panel cache what a preview hands back, so a definition that failed to
+ * register must not come back as an element: it would be cached as the card's preview, and no retry
+ * would ever draw the real one once the project had settled.
+ */
+describe("renderComponentInstance", () => {
+  test("a definition that fails to register throws rather than answering a fallback box", async () => {
+    setProjectState(emptyProject("test-project"));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(() => Promise.reject(new Error("host not ready")), {
+      preconnect: realFetch.preconnect,
+    });
+    try {
+      let rejected = false;
+      try {
+        await renderComponentInstance({
+          path: "components/not-ready.json",
+          source: "project",
+          tagName: "x-not-ready",
+        });
+      } catch {
+        rejected = true;
+      }
+      expect(rejected).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  test("a tag that can never be defined here still answers the fallback box", async () => {
+    const el = await renderComponentInstance({ source: "npm", tagName: "x-never-there" });
+    expect(el.tagName).toBe("DIV");
+    expect(el.textContent).toBe("<x-never-there>");
+  });
+});
+
+describe("a .jxn definition served as its text", () => {
+  test("defines the element in this window: the shell realm reads KDL as the canvas does", async () => {
+    const realFetch = globalThis.fetch;
+    const requested: string[] = [];
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        requested.push(String(input));
+        return new Response('/- kdl-version 2\n\nx-preview-kdl {\n    p "From KDL"\n}\n', {
+          headers: { "Content-Type": "application/octet-stream" },
+        });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    /* SAFETY: `./with-dom.js` registers happy-dom's GlobalRegistrator, which copies `happyDOM`
+       (the DetachedWindowAPI that owns setURL) onto globalThis. An origin is what makes the
+       definition's URL absolute; happy-dom's default is `about:blank`. */
+    const { happyDOM } = globalThis as typeof globalThis & {
+      happyDOM: { setURL: (url: string) => void };
+    };
+    happyDOM.setURL("http://127.0.0.1:4000/");
+    try {
+      setProjectState(emptyProject("kdl-project"));
+      const comp = {
+        path: "components/x-preview-kdl.jxn",
+        source: "local",
+        tagName: "x-preview-kdl",
+      };
+      expect(await defineComponent(comp)).toBe(true);
+      expect(
+        requested.some((url) => url.endsWith("/kdl-project/components/x-preview-kdl.jxn")),
+      ).toBe(true);
+      expect(customElements.get("x-preview-kdl")).toBeDefined();
+    } finally {
+      globalThis.fetch = realFetch;
+      happyDOM.setURL("about:blank");
+    }
   });
 });

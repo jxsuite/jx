@@ -119,20 +119,74 @@ const PROJECT_JXN_FORMAT: StudioFormat = {
 
 let _formats: StudioFormat[] = [];
 let _loaded: Promise<StudioFormat[]> | null = null;
+/* Bumped by every `refreshFormats()`, so a fetch that was still in flight when the registry was
+   dropped cannot write the previous answer back over the one fetched after it. */
+let _generation = 0;
+/* What the registry last answered with, as a comparable signature. Survives `refreshFormats()` on
+   purpose: a refresh that re-fetches the same set changed nothing a listener could have derived. */
+let _signature = formatSignature([]);
+const _formatListeners = new Set<() => void>();
+
+function formatSignature(formats: readonly StudioFormat[]): string {
+  return JSON.stringify(formats);
+}
+
+/* Record the set the registry now answers with, and tell the listeners when it is not the set they
+   were last told about. A listener that throws must not keep the next one from hearing. */
+function noteFormats(formats: readonly StudioFormat[]): void {
+  const signature = formatSignature(formats);
+  if (signature === _signature) {
+    return;
+  }
+  _signature = signature;
+  for (const listener of _formatListeners) {
+    try {
+      listener();
+    } catch {
+      // Another subscriber's failure is not this registry's.
+    }
+  }
+}
+
+/**
+ * Hear when the format registry starts answering with a different set of formats.
+ *
+ * The registry is fetched per project and again after a dependency install (a fresh clone has no
+ * `node_modules`, so the first fetch answers with none). Anything derived from it, such as which
+ * files are routed pages, is stale the moment the set changes, and this is the one signal that says
+ * so. Not fired when a re-fetch answers with the set it already had.
+ *
+ * @param listener Called with no arguments after the new set is readable through `getFormats()`.
+ * @returns Unsubscribe.
+ */
+export function onFormatsChanged(listener: () => void): () => void {
+  _formatListeners.add(listener);
+  return () => {
+    _formatListeners.delete(listener);
+  };
+}
 
 /** Load (and cache) the project's format registry from the platform. */
 export function loadFormats(): Promise<StudioFormat[]> {
   if (!_loaded) {
+    const generation = _generation;
     _loaded = (async () => {
+      let formats: StudioFormat[];
       try {
         const platform = getPlatform();
         /* SAFETY: every backend's formats route serializes its format registry as the records this
            Module declares (`StudioFormat`); the PAL types the payload `unknown[]` only because this
            Module, not `types.ts`, owns that shape. */
-        _formats = ((await platform.listFormats?.()) as StudioFormat[] | undefined) ?? [];
+        formats = ((await platform.listFormats?.()) as StudioFormat[] | undefined) ?? [];
       } catch {
-        _formats = [];
+        formats = [];
       }
+      if (generation !== _generation) {
+        // Dropped while it was fetching: the fetch that replaced it owns the registry now.
+        return formats;
+      }
+      _formats = formats;
+      noteFormats(formats);
       return _formats;
     })();
   }
@@ -141,6 +195,7 @@ export function loadFormats(): Promise<StudioFormat[]> {
 
 /** Invalidate the cached registry and extensions payload (call on project switch). */
 export function refreshFormats() {
+  _generation += 1;
   _loaded = null;
   _formats = [];
   _extensionsLoaded = null;
@@ -151,8 +206,10 @@ export function refreshFormats() {
 
 /** Seed the registry directly (tests and hosts that preload format metadata). */
 export function setFormats(formats: StudioFormat[]) {
+  _generation += 1;
   _formats = formats;
   _loaded = Promise.resolve(formats);
+  noteFormats(formats);
 }
 
 // ─── Extensions payload (specs/extensions.md §9/§9.1) ────────────────────────

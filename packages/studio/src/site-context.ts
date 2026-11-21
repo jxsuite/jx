@@ -248,6 +248,34 @@ export function invalidateLayoutCache() {
   layoutCache.clear();
 }
 
+/* The folders whose files a layout is built from: the layouts themselves, and the components a
+   layout's markup instantiates. */
+const LAYOUT_SOURCE_DIRS = ["layouts/", "components/"];
+
+/**
+ * Drop the cached layouts a batch of changed files can make wrong.
+ *
+ * A layout is read once and kept, so a layout edited outside Studio (git, another editor, an agent)
+ * kept drawing its old self around every page until a script save happened to clear the cache. The
+ * whole cache goes for a batch that touches a cached layout, or anything under `layouts/` or
+ * `components/`; a batch that cannot say what changed drops it too.
+ *
+ * @param paths Project-relative paths that changed, or undefined when the batch cannot say.
+ * @returns Whether the cache was dropped.
+ */
+export function invalidateLayoutCacheFor(paths?: readonly string[]): boolean {
+  const touches =
+    paths === undefined ||
+    paths.some((raw) => {
+      const path = raw.replace(/^\.\//, "");
+      return layoutCache.has(path) || LAYOUT_SOURCE_DIRS.some((dir) => path.startsWith(dir));
+    });
+  if (touches) {
+    layoutCache.clear();
+  }
+  return touches;
+}
+
 /**
  * Determine the effective layout path for a document.
  *

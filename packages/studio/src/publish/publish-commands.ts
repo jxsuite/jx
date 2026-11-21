@@ -38,7 +38,7 @@ import { currentDeploy, noteDeployment } from "./deploy-checklist";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { pushRefusedByRule } from "../platform-errors";
 import { offerBranchForRefusedPush } from "./protected-branch";
-import { refreshGitStatus } from "./source-control";
+import { refreshGitStatus, withGitVerb } from "./source-control";
 import { latestDeployment } from "./pages-service";
 import { activeRegistry } from "../commands/active-registry";
 import { argsSchema, enumArg, enumProperty } from "../commands/command-args";
@@ -107,10 +107,13 @@ export async function runDeploy(
       activity.fail("This branch is protected on GitHub and refused the push.", {
         action: "git.push",
       });
-      await offerBranchForRefusedPush(output, {
-        refresh: refreshGitStatus,
-        summary: options.summary ?? "",
-      });
+      // A verb of its own, so a status read the watcher asks for meanwhile cannot clear its busy flag.
+      await withGitVerb(() =>
+        offerBranchForRefusedPush(output, {
+          refresh: refreshGitStatus,
+          summary: options.summary ?? "",
+        }),
+      );
       return false;
     }
     activity.fail("Could not push to the remote.", { action: "git.push" });

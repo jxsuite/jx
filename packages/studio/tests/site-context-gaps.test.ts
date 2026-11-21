@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   distributePageIntoLayout,
   invalidateLayoutCache,
+  invalidateLayoutCacheFor,
   resolveLayoutDoc,
 } from "../src/site-context";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -94,5 +95,46 @@ describe("resolveLayoutDoc", () => {
     installMockPlatform();
     const result = await resolveLayoutDoc("./layouts/missing.json");
     expect(result).toBeNull();
+  });
+});
+
+describe("invalidateLayoutCacheFor", () => {
+  /** Cache `path` as a layout, then change its file on disk behind the cache. */
+  async function cacheThenEdit(path: string, files: Map<string, string>) {
+    files.set(path, JSON.stringify({ tagName: "div" }));
+    expect(await resolveLayoutDoc(path)).toEqual({ tagName: "div" });
+    files.set(path, JSON.stringify({ tagName: "main" }));
+  }
+
+  test("a change to a layout drops the copy read before it", async () => {
+    const { state } = installMockPlatform();
+    await cacheThenEdit("layouts/base.json", state.files);
+    expect(invalidateLayoutCacheFor(["./layouts/base.json"])).toBe(true);
+    expect(await resolveLayoutDoc("layouts/base.json")).toEqual({ tagName: "main" });
+  });
+
+  test("a change under components/ drops it, and so does a batch that cannot say", async () => {
+    const { state } = installMockPlatform();
+    await cacheThenEdit("layouts/base.json", state.files);
+    expect(invalidateLayoutCacheFor(["components/card.json"])).toBe(true);
+    expect(await resolveLayoutDoc("layouts/base.json")).toEqual({ tagName: "main" });
+
+    state.files.set("layouts/base.json", JSON.stringify({ tagName: "aside" }));
+    expect(invalidateLayoutCacheFor()).toBe(true);
+    expect(await resolveLayoutDoc("layouts/base.json")).toEqual({ tagName: "aside" });
+  });
+
+  test("a layout kept outside layouts/ is dropped when its own file changes", async () => {
+    const { state } = installMockPlatform();
+    await cacheThenEdit("frames/shell.json", state.files);
+    expect(invalidateLayoutCacheFor(["frames/shell.json"])).toBe(true);
+    expect(await resolveLayoutDoc("frames/shell.json")).toEqual({ tagName: "main" });
+  });
+
+  test("a change elsewhere keeps the cache", async () => {
+    const { state } = installMockPlatform();
+    await cacheThenEdit("layouts/base.json", state.files);
+    expect(invalidateLayoutCacheFor(["pages/index.json", "public/logo.png"])).toBe(false);
+    expect(await resolveLayoutDoc("layouts/base.json")).toEqual({ tagName: "div" });
   });
 });

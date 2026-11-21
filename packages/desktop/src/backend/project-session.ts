@@ -709,8 +709,10 @@ export function createProjectSession(
     const root = requireRoot();
     const preview = await startLivePreview(root);
     /* An origin now exists, and it wants filesystem events whether or not a shell subscribed for
-       the sidebar. Re-arming is idempotent — `startWatching` stops the old watcher first. */
-    startWatching();
+       the sidebar. Re-arming is idempotent, and it announces nothing when the watcher it finds is
+       the one already running: the window has re-listed since it was ready, and an announcement is
+       a full re-list and a cache flush in Studio for every Open in Browser. */
+    startWatching({ announce: false });
     const reused = params.route ? await navigateLivePreview(root, params.route) : false;
     return {
       errors: preview.errors,
@@ -798,7 +800,17 @@ export function createProjectSession(
   // ─── Filesystem watching (pushes change events to the webview over RPC) ───────
 
   let fileEventSink: ((events: FsEventPayload[]) => void) | null = null;
+  /**
+   * Told each time a watcher on the active root is ready (its initial scan finished), and again on
+   * a re-root that keeps the watcher it has. The hub turns it into an `"open"` resync, because the
+   * watcher announces nothing that was written before it was ready: a starter scaffolded, a
+   * dependency installed or a page added while the scan ran is in no event, and only a re-list
+   * after this point shows it.
+   */
+  let watchingSink: (() => void) | null = null;
   let watcherHandle: FsWatcherHandle | null = null;
+  /** The root `watcherHandle` watches, so a re-root onto the same folder can keep it. */
+  let watchedRoot: string | null = null;
 
   /**
    * Stop watching, and RESOLVE when the watcher has actually let go.
@@ -811,11 +823,21 @@ export function createProjectSession(
   async function stopWatching(): Promise<void> {
     const handle = watcherHandle;
     watcherHandle = null;
+    watchedRoot = null;
     await handle?.close();
   }
 
   /** The last root refused below — so the refusal is logged once, not once per re-arm. */
   let unwatchableRoot: string | null = null;
+
+  /** Say the watcher is live once its scan is done, unless it was replaced in the meantime. */
+  function announceWhenReady(handle: FsWatcherHandle): void {
+    void handle.ready.then(() => {
+      if (watcherHandle === handle) {
+        watchingSink?.();
+      }
+    });
+  }
 
   /**
    * Start watching the active project, or refuse and say so once.
@@ -831,16 +853,24 @@ export function createProjectSession(
    * `setWindowProject` — re-roots the session and calls back here, and by then the `project.json`
    * exists. A directory that becomes a project some other way is not watched until the window is
    * pointed at it, which is also when the sidebar would first have anything to show.
+   *
+   * A re-root onto the folder already watched keeps that watcher rather than restarting it.
+   * Creating a project re-roots twice onto the same folder (the session binds it, then Studio binds
+   * the window to it), and a restart there would open a second unannounced window during its scan.
+   * Either way the watcher's readiness is announced, so the client re-lists after every re-root and
+   * every sink registration. `announce: false` is for a caller that only needs the watcher running
+   * (a live preview): it starts one if there is none, and re-announces nothing if there is.
    */
-  function startWatching(): void {
-    void stopWatching();
+  function startWatching({ announce = true }: { announce?: boolean } = {}): void {
     /* Two consumers now, and either is reason enough. The sidebar's sink was the original one; a
        live preview origin is the second, and it wants to know about a git checkout or an external
        editor whether or not a shell happens to be subscribed. */
     if (!projectRoot || (!fileEventSink && !livePreviewOrigin(projectRoot))) {
+      void stopWatching();
       return;
     }
     if (!hasProjectFile(projectRoot)) {
+      void stopWatching();
       // Once per root: startWatching runs again on every re-root and every sink registration.
       if (unwatchableRoot !== projectRoot) {
         unwatchableRoot = projectRoot;
@@ -849,26 +879,53 @@ export function createProjectSession(
       return;
     }
     unwatchableRoot = null;
-    const sink = fileEventSink;
+    if (watcherHandle && watchedRoot === projectRoot) {
+      if (announce) {
+        announceWhenReady(watcherHandle);
+      }
+      return;
+    }
+    void stopWatching();
     const root = projectRoot;
-    watcherHandle = createFsWatcher(root, (events) => {
-      /* The preview first, so a reload is scheduled from the same event the sidebar redraws on.
-         One watcher, two consumers: a second chokidar on the same tree would double the inotify
-         watch count and could disagree with this one about what `watch-policy.ts` ignores. */
-      notifyLivePreviewChange(root);
-      sink?.(events);
-    });
+    const handle = createFsWatcher(
+      root,
+      (events) => {
+        /* The preview first, so a reload is scheduled from the same event the sidebar redraws on.
+           One watcher, two consumers: a second chokidar on the same tree would double the inotify
+           watch count and could disagree with this one about what `watch-policy.ts` ignores.
+           The sink is read when the batch lands, not when the watcher started, so a sink
+           registered later is served by the watcher that is already running. */
+        notifyLivePreviewChange(root);
+        fileEventSink?.(events);
+      },
+      {
+        onError: (cause) => {
+          // Never fatal: a watch the OS refused loses that directory's events, not the window.
+          console.error(`[desktop] watching ${root}: ${cause.message}`);
+        },
+      },
+    );
+    watcherHandle = handle;
+    watchedRoot = root;
+    announceWhenReady(handle);
   }
 
-  /** Register (or clear) the sink that receives batched filesystem events for the active project. */
   /** The window is gone: let go of the project, and accept no other. */
   function close(): void {
     reroot(null);
     closed = true;
   }
 
-  function setFileEventSink(sink: ((events: FsEventPayload[]) => void) | null): void {
+  /**
+   * Register (or clear) the sink for the active project's batched filesystem events, and the hook
+   * told when a watcher is ready (see `watchingSink`).
+   */
+  function setFileEventSink(
+    sink: ((events: FsEventPayload[]) => void) | null,
+    onWatching: (() => void) | null = null,
+  ): void {
     fileEventSink = sink;
+    watchingSink = sink ? onWatching : null;
     startWatching();
   }
 
