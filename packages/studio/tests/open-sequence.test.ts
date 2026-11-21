@@ -222,4 +222,11 @@ describe("leaveProject", () => {
     expect(resetProjectCaches).toHaveBeenCalledTimes(1);
     localStorage.removeItem(key);
   });
+
+  test("a door with no panel caches of its own leaves with no options", () => {
+    resetStudioState();
+    shell.stylebook.filter = "from the project being left";
+    expect(() => leaveProject()).not.toThrow();
+    expect(shell.stylebook.filter).toBe("");
+  });
 });

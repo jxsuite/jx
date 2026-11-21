@@ -615,6 +615,43 @@ describe("mounting", () => {
     expect(slot()?.shadowRoot?.childElementCount).toBe(1);
   });
 
+  test("a preview that failed after its card left view is remembered, not re-read when it returns", async () => {
+    let rejectFirst: (error: Error) => void = () => {};
+    const reads: string[] = [];
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
+      readFile: (path: string) => {
+        reads.push(path);
+        if (path === "pages/index.json" && reads.filter((read) => read === path).length === 1) {
+          return new Promise<string>((_resolve, reject) => {
+            rejectFirst = reject;
+          });
+        }
+        return path === "pages/index.json"
+          ? Promise.reject(new Error("not written yet"))
+          : Promise.resolve('{"tagName":"div","children":[]}');
+      },
+    });
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    await mount();
+    await flush();
+    const slot = () =>
+      host.querySelector<HTMLElement>('[part="doc-preview"][data-path="pages/index.json"]');
+    // The card leaves the list while its render is out, then the render fails.
+    setLibrarySearch("about");
+    await flush();
+    expect(slot()).toBeNull();
+    rejectFirst(new Error("not written yet"));
+    await flush();
+    await flush();
+    // Back in view under the same inputs: the failure is remembered, so nothing reads it again.
+    setLibrarySearch("");
+    await flush();
+    await flush();
+    expect(slot()).not.toBeNull();
+    expect(reads.filter((path) => path === "pages/index.json")).toHaveLength(1);
+  });
+
   test("scans the project once and lists only the shown collection's files", async () => {
     await mount();
     expect(librarySource().files().length).toBe(5);

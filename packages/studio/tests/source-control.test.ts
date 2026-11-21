@@ -172,6 +172,18 @@ describe("refreshGitStatus", () => {
     expect(shell.git.error).toBe("no git");
   });
 
+  test("a read that cannot reach the platform at all is the error line, not an unhandled rejection", async () => {
+    const registered = globalThis.__jxPlatform;
+    globalThis.__jxPlatform = undefined;
+    try {
+      await sc.refreshGitStatus();
+    } finally {
+      globalThis.__jxPlatform = registered;
+    }
+    expect(shell.git.error).toMatch(/^No platform registered/);
+    expect(shell.git.loading).toBe(false);
+  });
+
   test("a project that is not a repository is never asked for its branches", async () => {
     let branchReads = 0;
     install({

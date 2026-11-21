@@ -471,6 +471,12 @@ interface PreviewSlot {
   request: number;
 }
 
+/** A preview box waiting to scroll into view: the path it renders, and the slot it reports to. */
+interface PendingPreview {
+  path: string;
+  state: PreviewSlot;
+}
+
 /** The mounted surface, the box it is in, and everything registered against its nodes. */
 interface StandingPanel {
   /** `null` only inside {@link mountInto}, between building the record and mounting into it. */
@@ -481,8 +487,8 @@ interface StandingPanel {
   /** Replaced, not cleared, when a preview goes stale: a cleared cache would empty the boxes. */
   cache: ReturnType<typeof createPreviewCache>;
   observer: ReturnType<typeof createPreviewObserver>;
-  /** Preview boxes waiting to scroll into view, and the component path each one shows. */
-  pending: Map<HTMLElement, string>;
+  /** Preview boxes waiting to scroll into view, the component path each one shows, and its slot. */
+  pending: Map<HTMLElement, PendingPreview>;
   /** Every preview box the document announced, until its node leaves the document. */
   slots: Map<HTMLElement, PreviewSlot>;
 }
@@ -490,11 +496,11 @@ interface StandingPanel {
 let _standing: StandingPanel | null = null;
 
 /** Fill one preview box from the cache, now or when it has rendered. */
-async function fillPreview(panel: StandingPanel, slot: HTMLElement, path: string): Promise<void> {
-  const state = panel.slots.get(slot);
-  if (!state) {
-    return;
-  }
+async function fillPreview(
+  panel: StandingPanel,
+  slot: HTMLElement,
+  { path, state }: PendingPreview,
+): Promise<void> {
   state.status = "loading";
   state.attempts += 1;
   const { request } = state;
@@ -525,7 +531,7 @@ function requestPreview(panel: StandingPanel, slot: HTMLElement, state: PreviewS
   }
   state.request += 1;
   state.status = "waiting";
-  panel.pending.set(slot, path);
+  panel.pending.set(slot, { path, state });
   panel.observer.observe(slot);
 }
 
@@ -650,16 +656,16 @@ function mountInto(host: HTMLElement): void {
   }
   /* The record first, then the mount: the islands are announced while the document is built, and
      each one is handed straight to the record it belongs to. */
-  const pending = new Map<HTMLElement, string>();
+  const pending = new Map<HTMLElement, PendingPreview>();
   const panel: StandingPanel = {
     cache: createPreviewCache(),
     handle: null,
     host,
     observer: createPreviewObserver((element) => {
-      const path = element instanceof HTMLElement ? pending.get(element) : undefined;
-      if (path !== undefined && element instanceof HTMLElement) {
+      const waiting = element instanceof HTMLElement ? pending.get(element) : undefined;
+      if (waiting !== undefined && element instanceof HTMLElement) {
         pending.delete(element);
-        void fillPreview(panel, element, path);
+        void fillPreview(panel, element, waiting);
       }
     }),
     pending,

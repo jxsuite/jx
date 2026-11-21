@@ -47,6 +47,7 @@ const {
   PREVIEW_CACHE_LIMIT,
   createPreviewCache,
   createPreviewObserver,
+  evictPreview,
   invalidatePreviews,
   onPreviewsInvalidated,
   previewEpoch,
@@ -55,6 +56,7 @@ const {
   rendersWith,
 } = await import("../src/browse/library-preview");
 const { componentRegistry } = await import("../src/files/components");
+const { setProjectState } = await import("../src/store");
 
 function element(id: string) {
   const el = document.createElement("div");
@@ -681,6 +683,15 @@ describe("retrying a failed preview", () => {
     expect(previewEpoch()).not.toBe(registered);
   });
 
+  test("with no project open the epoch is still a key, and opening one moves it", () => {
+    resetStudioState({ projectConfig: null, projectDirs: [] });
+    const open = previewEpoch();
+    setProjectState(null);
+    const closed = previewEpoch();
+    expect(closed).not.toBe(open);
+    expect(previewEpoch()).toBe(closed);
+  });
+
   test("an invalidation tells every listener until it stops listening", () => {
     let told = 0;
     const stop = onPreviewsInvalidated(() => {
@@ -734,6 +745,20 @@ describe("retrying a failed preview", () => {
     }
   });
 
+  test("rendersWith reports a render that throws outright, rather than letting it escape", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const definition = { attributes: { "1 bad": "x" }, tagName: "mu-throws" };
+      expect(await rendersWith(definition, "components/throws.json", new Map())).toBe(false);
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(
+        lines.some((line) => line.startsWith("Jx Studio: no preview for components/throws.json:")),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test("rendersWith says why a definition did not render", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -758,5 +783,30 @@ describe("retrying a failed preview", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("evictPreview", () => {
+  test("a cache whose panel was torn down and collected is skipped, and a live one still evicts", async () => {
+    const live = createPreviewCache();
+    const shown = element("live");
+    document.body.append(shown);
+    live.set("components/gone.json", shown);
+    // Panels that were torn down: nothing holds their caches any more.
+    (() => {
+      for (let index = 0; index < 4; index += 1) {
+        createPreviewCache().set("components/gone.json", element(`dropped-${index}`));
+      }
+    })();
+    // A WeakRef keeps its target for the rest of the job that made it, so collect on a later one.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    Bun.gc(true);
+    expect(() => {
+      evictPreview("components/gone.json");
+    }).not.toThrow();
+    expect(live.has("components/gone.json")).toBe(false);
+    expect(shown.isConnected).toBe(false);
   });
 });

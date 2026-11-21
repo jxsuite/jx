@@ -372,6 +372,32 @@ describe("Components", () => {
     expect(previewFor).toHaveBeenCalledTimes(2);
   });
 
+  test("a render a newer request superseded is dropped when it arrives late", async () => {
+    let finishStale: (element: HTMLElement) => void = () => {};
+    previewFor.mockImplementationOnce(
+      () =>
+        new Promise<HTMLElement>((resolve) => {
+          finishStale = resolve;
+        }),
+    );
+    await paint();
+    const box = part("card-preview")[0]!;
+    // The definition is saved while the first render is still out: the box asks again.
+    noteComponentSaved("components/site-card.json", {
+      $props: { heading: "Changed" },
+      tagName: "site-card",
+    });
+    invalidateSiteIndex([]);
+    await flush(6);
+    expect(previewFor).toHaveBeenCalledTimes(2);
+    const current = box.shadowRoot?.firstElementChild;
+    expect(current).not.toBeNull();
+    // The first render lands last, and the box keeps the newer one.
+    finishStale(document.createElement("i"));
+    await flush(2);
+    expect(box.shadowRoot?.firstElementChild === current).toBe(true);
+  });
+
   test("a card opens its definition, and drags an instance of the component", async () => {
     await paint();
     const card = host.querySelector<HTMLElement>('[part="component-card"]')!;
