@@ -213,8 +213,14 @@ describe("conversion", () => {
       throw new Error("the component file is not a JSON object");
     }
     expect(written.tagName).toBe("hero-block");
-    expect(written.$id).toBeUndefined();
-    expect(written.children).toEqual([{ tagName: "h1", textContent: "Title" }]);
+    // The selected element is wrapped, not discarded: its tag, id and subtree survive intact.
+    expect(written.children).toEqual([
+      {
+        $id: "Hero-Block",
+        children: [{ tagName: "h1", textContent: "Title" }],
+        tagName: "section",
+      },
+    ]);
     // Registry refresh was requested
     expect(platformState.calls.some((c) => c[0] === "discoverComponents")).toBe(true);
   });
