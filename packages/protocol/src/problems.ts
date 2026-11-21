@@ -55,6 +55,17 @@ export const PROBLEM_TYPES = {
   notFound: problem("not-found", 404, "The requested resource does not exist"),
   methodNotAllowed: problem("method-not-allowed", 405, "That method is not allowed on this route"),
   conflict: problem("conflict", 409, "The request conflicts with the current state", ["conflicts"]),
+  /*
+   * A write or delete whose base (`If-Match`, `If-None-Match: *`) no longer names what is on disk
+   * (project-state.md §5). Not a `conflict`: the client resolves it from the members, which name
+   * what is at the path now, rather than from a list of conflicts.
+   */
+  preconditionFailed: problem(
+    "precondition-failed",
+    412,
+    "The request's base no longer matches the resource",
+    ["path", "docId", "diskHash"],
+  ),
   payloadTooLarge: problem("payload-too-large", 413, "The request body is too large"),
   /*
    * The three the assistant's chat route adds (ai.md §2). Each names a failure a client does

@@ -2,10 +2,10 @@
 status: drafted
 disposition: implement
 claims:
+  - project-state.md#2.2
   - project-state.md#10.1
   - project-state.md#11.3
 requires:
-  - project-state/protocol-and-conformance
   - project-state/dependency-graph
 workspaces:
   - packages/server
@@ -17,10 +17,11 @@ size: L
 
 ## Context
 
-`specs/project-state.md` §10.1 is `Pending`: the window's `ProjectSession` (`packages/desktop/src/backend/project-session.ts`) forwards `createFsWatcher` batches as `onFileEvents`, pushes `onFileResync { reason: "open" }` after each watcher scan, and keeps no index, hash, log, graph, readiness state or git monitor. Source Control polls git from Studio (`studio.md` §5.5). §11.3 is `Pending`: collaboration rooms are per path and the live preview overlay is set and cleared by each client (`setPreviewOverlay` in the same file).
+`specs/project-state.md` §10.1 is `Pending`: the window's `ProjectSession` (`packages/desktop/src/backend/project-session.ts`) forwards `createFsWatcher` batches as `onFileEvents`, pushes `onFileResync { reason: "open" }` after each watcher scan, and keeps no index, hash, log, graph, readiness state or git monitor. Source Control polls git from Studio (`studio.md` §5.5). §11.3 is `Pending`: collaboration rooms are per path and the live preview overlay is set and cleared by each client (`setPreviewOverlay` in the same file). §2.2 carries a later `Partial` marker: no conformance case shows that a document in an extension-registered format is `other` until `extensions-resolved`, because the fixture's extension (`extensions/noop.js` in `packages/protocol/src/project-state-conformance.ts`) registers no format.
 
 ## Outcome
 
+- §2.2 → Implemented: the conformance fixture gains an extension that registers a format, and a case holds the host below `extensions-resolved` to assert a document in that format is `other` until it gets there; the desktop host is the first that loads extensions, so it is the first that can pass it.
 - §10.1 → Implemented: `packages/server/src/project-state/` holds the host (`createProjectStateHost`), and the desktop session runs it and serves the `projectSubscribe` binding; the conformance suite passes against it on Node.
 - §11.3 → Implemented: rooms and overlays are keyed by `DocId` and follow renames; a room holds its shared buffer state and saves through the base-hash write (`packages/server/src/collab.ts`); an overlay is keyed by the subscriber's `clientId` and dropped after `overlayGraceMs` with no subscription for it.
 

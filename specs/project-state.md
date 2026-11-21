@@ -41,7 +41,7 @@ The key words MUST, MUST NOT, SHOULD and MAY are to be read as in `standards.md`
 
 ## 2. Identity, Hashes and Revisions
 
-> **Status: Partial.** The types and the pure helpers ship in `packages/protocol/src/project-state.ts` (`contentHash`, `createEchoLedger`, `createMemoryEventLog`, tested by `packages/protocol/tests/project-state.test.ts`). No host mints document ids, hashes its files, keeps a log or attributes events by hash yet (§10), and no conformance suite exercises a host (§10.4).
+> **Status: Implemented.** The types and the pure helpers ship in `packages/protocol/src/project-state.ts` (`contentHash`, `createEchoLedger`, `createMemoryEventLog`, tested by `packages/protocol/tests/project-state.test.ts`), and the conformance suite (§10.4), which an in-memory reference host passes, has a case for every rule below with three exceptions. The ledger clearing a path's entries on an external removal is pinned by `createEchoLedger`'s own tests, because no driver action can make a watcher lose an own write's observation, which is the only time the clearing shows. An identity kept across a rename through §9 joins the suite with the §9 cases. The classification of an extension-registered format is §2.2's open item. Which hosts mint document ids, hash their files, keep a log and attribute events by hash is each host's own item (§10.1 to §10.3).
 
 ### 2.1 Content hashes
 
@@ -52,6 +52,8 @@ The hash is not the listing `version` of `studio.md` §3.4: a version is a token
 ### 2.2 Document identity
 
 The host assigns every indexed file a `DocId`: an opaque string, unique within the project, that survives a rename performed through §9, a rename the watcher reports as one move, and an atomic-rename save (§2.4). A file removed and a file later added at the same path get different ids. Clients compare ids for equality only. The host also classifies each document into a `DocKind` (`page`, `layout`, `component`, `content`, `data`, `media`, `style`, `project-config`, `other`) from the project configuration and the file's location; a document whose kind the host cannot decide is `other`. A document in a format an extension registers is classified only once the host reaches `extensions-resolved` (§7), and is `other` until then.
+
+> **Status: Partial.** The conformance suite asserts the conventional locations' kinds, the index scope (a `build.outDir` other than `dist/` included) and that a symlink is followed only inside the root. No case asserts that an extension-registered format is `other` until `extensions-resolved`: the fixture's extension registers no format, and showing it needs a host that loads one.
 
 **Index scope.** The index holds every file and directory under the project root except `.git/`, `node_modules/`, `dist/` (and the directory `build.outDir` names when it is another, `site-architecture.md` §3.1), `.jx/`, `.cache/`, `.devenv/`, `.direnv/`, and Bun's lockfiles (`bun.lock`, `bun.lockb`), at any depth. A symlink is followed only when it resolves inside the root. This is the ignore set the existing watchers apply (`packages/server/src/watch.ts`, `packages/server/src/watch-policy.ts`), and every host applies the same one, so two hosts serving the same tree produce the same snapshot. Paths outside the scope that a host still reads (the lockfile and installed packages for readiness, §7; `.git/` for the git monitor, §4.5) produce no file events.
 
@@ -75,7 +77,7 @@ A watcher event that names a file costs a read and a hash; a host MAY skip it wh
 
 ## 3. Subscription
 
-> **Status: Partial.** The exchange's types and the host's answer (`SubscribeRequest`, `SubscribeResponse`, `answerSubscribe`) ship in `packages/protocol/src/project-state.ts`. No host accepts a subscription (§10).
+> **Status: Implemented.** The exchange's types and the host's answer (`SubscribeRequest`, `SubscribeResponse`, `answerSubscribe`) ship in `packages/protocol/src/project-state.ts`, the wire codecs and the client's cursor (`createSubscriptionCursor`) in `packages/protocol/src/project-state-frames.ts`, and the conformance suite asserts §3.1 (§10.4). Which hosts accept a subscription is each host's own item (§10.1 to §10.3); §3.3 is open.
 
 ### 3.1 The subscribe exchange
 
@@ -90,15 +92,15 @@ The host MUST take the snapshot and read `rev` without an event intervening, so 
 
 ### 3.2 Transport bindings
 
-> **Status: Pending.** No transport carries the exchange.
+> **Status: Implemented.** The three bindings' codecs, the `Last-Event-ID` parser and the gap detector (`checkContinuity`) ship in `packages/protocol/src/project-state-frames.ts`, tested by `packages/protocol/tests/project-state-frames.test.ts`. A host's use of its binding is that host's §10 item.
 
 The exchange rides each host's existing push channel, with one frame per message:
 
-- **Desktop**: the window's RPC WebSocket (`desktop.md` §7.2). The client sends the request `projectSubscribe` with a `SubscribeRequest`; its reply is the `SubscribeResponse`, and later events arrive as unprompted `projectEvents` frames whose `params` is `{ epoch, events }`. A reconnect is a new `projectSubscribe`.
-- **Dev server**: a dedicated Server-Sent Events stream at `GET /__studio/project/events`, separate from the reload stream of `server.md` §3.1. Every frame carries `id: <epoch>:<rev>`, so a browser's automatic reconnection sends `Last-Event-ID` and the server reads it as `{ epoch, sinceRev }`. The first frame on every connection is the `SubscribeResponse` as an `event: subscribe` frame; each later event is an `event: project` frame. Unlike the reload stream, this one replays.
-- **Cloud**: the session's `/events` WebSocket (`desktop.md` §10.1). The client's first message after open is `{ kind: "subscribe", epoch?, sinceRev? }`; the host's first message is the `SubscribeResponse` tagged `{ kind: "project-subscribe", … }`, and later events arrive as `{ kind: "project", epoch, events }`.
+- **Desktop**: the window's RPC WebSocket (`desktop.md` §7.2). The client sends the request `projectSubscribe` (`{ id, method, params }`) with a `SubscribeRequest` as its `params`; its reply (`{ id, result }`) is the `SubscribeResponse`, and later events arrive as unprompted `projectEvents` frames whose `params` is `{ epoch, events }`. A reconnect is a new `projectSubscribe`.
+- **Dev server**: a dedicated Server-Sent Events stream at `GET /__studio/project/events`, separate from the reload stream of `server.md` §3.1. Every frame carries `id: <epoch>:<rev>`, naming the last revision the frame carries, so a browser's automatic reconnection sends `Last-Event-ID` and the server reads it as `{ epoch, sinceRev }`. The epoch and the revision travel in the one header because an `EventSource` cannot change its URL after construction, so a query parameter could not follow a reconnect. The epoch is everything before the last colon, and an absent or malformed `Last-Event-ID` reads as `{}`, a first connect. The first frame on every connection is the `SubscribeResponse` as an `event: subscribe` frame; each later frame is an `event: project` frame whose data is `{ epoch, events }`. Unlike the reload stream, this one replays.
+- **Cloud**: the session's `/events` WebSocket (`desktop.md` §10.1). The client's first message after open is `{ kind: "subscribe", clientId?, epoch?, sinceRev? }`; the host's first message is `{ kind: "project-subscribe", response }`, with the `SubscribeResponse` nested because it has a `kind` of its own, and later events arrive as `{ kind: "project", epoch, events }`. Messages of any other `kind` on the socket (`fs` batches, git notices) are not part of the exchange.
 
-Every frame is JSON. File bytes inside a frame are a `WireContents`: a JSON string for text (hashed as its UTF-8 encoding, §2.1), or `{ encoding: "base64", data }` for anything else. On the dev server, writes and deletes are HTTP requests rather than stream frames (§5), and their body is the raw bytes. A host MAY batch several events into one frame; a client MUST apply them in revision order and MUST treat a frame whose first revision is not its last revision plus one as a gap, which it repairs by subscribing again.
+Every frame is JSON. File bytes inside a frame are a `WireContents`: a JSON string for text (hashed as its UTF-8 encoding, §2.1), or `{ encoding: "base64", data }` for anything else. On the dev server, writes and deletes are HTTP requests rather than stream frames (§5), and their body is the raw bytes. A host MAY batch several events into one frame on every binding, the desktop socket included, since a client already applies a multi-event `events` answer; a client MUST apply them in revision order and MUST treat a frame from another epoch, or one whose first revision is not its last revision plus one, as a gap, which it repairs by subscribing again.
 
 ### 3.3 Retiring the resync reasons
 
@@ -108,7 +110,7 @@ Once a host serves §3.1, its adapter stops reporting resync reasons: a reconnec
 
 ## 4. Events
 
-> **Status: Partial.** Every event type below is declared in `packages/protocol/src/project-state.ts` (`ProjectEvent`). No host emits them (§10).
+> **Status: Implemented.** Every event type below is declared in `packages/protocol/src/project-state.ts` (`ProjectEvent`), and the conformance suite asserts what each means (§10.4); the events §8 and §9 produce join it with those sections. Which hosts emit them is each host's own item (§10.1 to §10.3).
 
 ### 4.1 Common fields and ordering
 
@@ -123,7 +125,7 @@ Every event carries `type`, `rev` and `origin` (§2.4). Events are delivered in 
 
 ### 4.3 Document and dependency events
 
-- `docChanged { docId, path, kind, hash, indexed }`: what the host knows about a document changed: its bytes, its kind, or whether its references are extracted (`indexed`, §8.2). Emitted after the file event that caused it for every `fileAdded` or `fileChanged` of a file, and on its own when indexing fills a document in (§3.1) or a configuration change reclassifies it. A client re-reads or re-parses on `docChanged`, never on a bare file event.
+- `docChanged { docId, path, kind, hash, indexed }`: what the host knows about a document changed: its bytes, its kind, or whether its references are extracted (`indexed`, §8.2). Emitted after the file event that caused it for every `fileAdded` or `fileChanged` of a file, carrying that event's origin, and on its own, with origin `"external"`, when indexing fills a document in (§3.1) or a configuration change reclassifies it. A client re-reads or re-parses on `docChanged`, never on a bare file event.
 - `dependentsInvalidated { cause, docIds, tags, complete }`: documents whose rendering depends on `cause.docId` along an edge of kind `cause.kind` (§8.1), emitted for the file events §8 lists. `tags` names custom-element tags whose definition changed, for caches keyed by tag. `complete` is `false` when the host's graph is partial for this cause (§8.2), in which case the list is a lower bound.
 - `componentsChanged { tags }`: the set of discoverable components changed (a definition added, removed or retagged). `tags` is the whole set after the change, not a delta, and replaces the snapshot's `components`. It replaces a client's own re-discovery.
 
@@ -151,7 +153,7 @@ Every event carries `type`, `rev` and `origin` (§2.4). Events are delivered in 
 
 ## 5. Writes and Preconditions
 
-> **Status: Partial.** `WriteRequest`, `WriteResult`, `DeleteRequest`, the precondition checks (`checkWritePrecondition`, `checkDeletePrecondition`) and the refusal's event (`conflictEvent`) ship in `packages/protocol/src/project-state.ts`. No host takes a base hash, and every host's write and delete still act on whatever is on disk.
+> **Status: Implemented.** `WriteRequest`, `WriteResult`, `DeleteRequest`, the precondition checks (`checkWritePrecondition`, `checkDeletePrecondition`) and the refusal's event (`conflictEvent`) ship in `packages/protocol/src/project-state.ts`, the HTTP binding's headers and refusal (`writePreconditionHeaders`, `parseWritePrecondition`, `parseDeletePrecondition`, `preconditionFailedProblem`) in `packages/protocol/src/project-state-frames.ts`, and the conformance suite asserts every rule below that a driver can reach (§10.4). Two are pinned elsewhere: refusing a request with no base, or with a base this contract does not read, is the binding's, asserted by the frame tests (`packages/protocol/tests/project-state-frames.test.ts`), since a driver's `WriteRequest` always carries one; and a collaboration room writing with a base is the desktop host's §11.3. Which hosts take a base hash is each host's own item (§10.1 to §10.3).
 
 A write names the bytes it replaces. A `WriteRequest` carries `path`, `contents`, `baseHash` (the hash the writer last read, or `null` to assert the file does not exist), `writeId` (chosen by the writer, unique per write) and optionally `bufferRev` (the writer's buffer revision, §6.1, echoed in a refusal and otherwise ignored). The host:
 
@@ -168,7 +170,7 @@ Against a program outside the host the steps cannot be atomic: it can change the
 
 **Collaboration rooms.** A room's persistence (`collab.md`; `packages/server/src/collab.ts` writes on an explicit save and as a flush on shutdown) goes through this section like any other writer: the room holds the hash it hydrated from or last saved, every save is a write with that base and its own `writeId`, and a refusal is delivered to the room, whose participants resolve it as §6.1 describes. A shutdown flush that is refused leaves the disk untouched and keeps the room's bytes for the next session to offer.
 
-A write or delete MUST NOT be accepted without a base once a host serves this contract; a host that also serves the Studio Backend Protocol's unconditional `writeFile` keeps it only for clients that have not subscribed, and documents it as last-writer-wins. On an HTTP binding the base hash travels as `If-Match: "<hash>"` (or `If-None-Match: *` for `null`), a file's delete is `DELETE` with the same `If-Match`, a directory's carries its `{ files }` base in the body, and a refusal is `412 Precondition Failed` with the conflict as a problem document (`server.md` §4.3).
+A write or delete MUST NOT be accepted without a base once a host serves this contract; a host that also serves the Studio Backend Protocol's unconditional `writeFile` keeps it only for clients that have not subscribed, and documents it as last-writer-wins. On an HTTP binding the base hash travels as `If-Match: "<hash>"` (or `If-None-Match: *` for `null`), a file's delete is `DELETE` with the same `If-Match`, a directory's carries its `{ files }` base in the body, and a refusal is `412 Precondition Failed` with the conflict as a problem document of type `precondition-failed` whose extension members are `path`, `docId` and `diskHash` (`server.md` §4.3). The content hash is a strong entity tag, quoted; a request whose precondition is absent, weak, a list, `If-Match: *`, or both headers at once is refused before the disk is read, because each of those either names no bytes or names more than one.
 
 ## 6. Two Dirty Notions
 
@@ -196,7 +198,7 @@ A saved file whose bytes differ from the repository's `HEAD` has a `WorkingState
 
 ## 7. Readiness
 
-> **Status: Partial.** The states and their order (`READINESS_ORDER`, `readinessAtLeast`) ship in `packages/protocol/src/project-state.ts`. No host tracks or reports readiness.
+> **Status: Implemented.** The states and their order (`READINESS_ORDER`, `readinessAtLeast`) ship in `packages/protocol/src/project-state.ts`, and the conformance suite asserts the machine: a host held below `indexed` still answers, readiness advances one state at a time, an install's own lockfile write moves nothing, and only a dependency or extension-set change moves it back (§10.4). Which hosts track readiness is each host's own item (§10.1 to §10.3).
 
 A host reports how far it has prepared the project, as one of five ordered states:
 
@@ -286,12 +288,12 @@ The cloud host is the project's Durable Object. Hibernation drops memory, so its
 
 ### 10.4 Conformance suite
 
-> **Status: Pending.** No suite exists.
+> **Status: Implemented.** `runProjectStateConformance` and the `ProjectStateDriver` interface ship in `packages/protocol/src/project-state-conformance.ts`, exported as `@jxsuite/protocol/project-state-conformance`. The suite takes `describe`, `test` and `expect` as a parameter rather than importing a runner, so it runs under `bun:test` here and under Vitest in a Worker. An in-memory reference host (`packages/protocol/tests/reference-host.ts`) passes every case below that applies to all hosts, and `packages/protocol/tests/project-state-conformance.test.ts` turns the suite on deliberately broken variants of it to show each rule fails a host that breaks it. The suite has no §8 or §9 cases yet. A host that serves neither section runs a negative case for each (it emits no `dependentsInvalidated`, no `operationApplied`), and a driver that declares the `graph` or `rename` hook gets a failing case naming the missing section instead, so declaring a hook can never switch a check off; the cases listed below for those sections join the suite with them. Once a host is ready every fixture file must be `indexed: true`, unless its driver declares the graph partial (`graph: { complete: false }`, §8.2).
 
 One suite tests every host through the same driver interface: create a project from fixture files, write through the contract, change a file behind the host's back, restart the host, and observe the subscription. The suite covers at least:
 
 - a first subscribe gets a snapshot, also while the host is below `indexed`, and the `docChanged` events that fill it in follow;
-- a resubscribe within the window gets exactly the missed events, and one after a restart or outside the window gets a snapshot;
+- a resubscribe within the window gets exactly the missed events, and one after a restart that started a new epoch, or outside the window, gets a snapshot (a host whose log survives a restart, §10.3, replays instead);
 - revisions are strictly increasing and gap-free;
 - a write's reply carries the revision of its own file event, and no second event follows when the watcher reports the same bytes;
 - a write of the bytes already on disk answers the current revision and emits nothing;
@@ -348,13 +350,13 @@ The host logic (index, hashing, graph, log) may later move into one Rust core, c
 
 External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md).
 
-| Standard                                            | Class        | Binds | Evidence                                                                              | Note                                                                                                                                                                                                                                                                                                                       |
-| --------------------------------------------------- | ------------ | ----- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Subresource Integrity](https://www.w3.org/TR/SRI/) | **Borrowed** | §2.1  | packages/protocol/src/project-state.ts, packages/protocol/tests/project-state.test.ts | Shape only: a content hash is spelled as SRI's hash expression for SHA-256 (`sha256-` and base64). Nothing fetches by it or verifies a response against it, and the other algorithms and options of the grammar are not accepted.                                                                                          |
-| [WHATWG HTML](https://html.spec.whatwg.org/)        | **Pending**  | §3.2  | —                                                                                     | `gap:project-state-sse-replay` The Server-Sent Events section, with `Last-Event-ID` read as a replay cursor (`<epoch>:<rev>`) on the dev server's project stream. The reload stream of `server.md` §3.1 keeps its deliberate non-replay.                                                                                   |
-| [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455)  | **Pending**  | §3.2  | —                                                                                     | `gap:project-state-websocket` The desktop RPC socket and the cloud `/events` socket carry the subscribe exchange as JSON text frames.                                                                                                                                                                                      |
-| [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110)  | **Pending**  | §5    | —                                                                                     | `gap:project-state-if-match` The content hash is a strong entity tag: a write's base travels as `If-Match` (`If-None-Match: *` for a create), and a refused write is `412 Precondition Failed`.                                                                                                                            |
-| [RFC 6902](https://www.rfc-editor.org/rfc/rfc6902)  | **Rejected** | §4    | —                                                                                     | because: an event names what changed and the hash of the result, and a client reads the bytes by path when it needs them. Shipping JSON Patch deltas would make every non-JSON format unrepresentable and duplicate the structural merge collaboration already performs (`collab.md`), for no gain the hash does not give. |
+| Standard                                            | Class        | Binds | Evidence                                                                                            | Note                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------- | ------------ | ----- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Subresource Integrity](https://www.w3.org/TR/SRI/) | **Borrowed** | §2.1  | packages/protocol/src/project-state.ts, packages/protocol/tests/project-state.test.ts               | Shape only: a content hash is spelled as SRI's hash expression for SHA-256 (`sha256-` and base64). Nothing fetches by it or verifies a response against it, and the other algorithms and options of the grammar are not accepted.                                                                                                                     |
+| [WHATWG HTML](https://html.spec.whatwg.org/)        | **Subset**   | §3.2  | packages/protocol/src/project-state-frames.ts, packages/protocol/tests/project-state-frames.test.ts | The Server-Sent Events section: the dev server's project stream writes `id`, `event` and `data` fields, `Last-Event-ID` is read as a replay cursor (`<epoch>:<rev>`), and `parseSseBlock` reads one block as the event-stream parser does. The stream never sends `retry`, and the reload stream of `server.md` §3.1 keeps its deliberate non-replay. |
+| [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455)  | **Subset**   | §3.2  | packages/protocol/src/project-state-frames.ts, packages/protocol/tests/project-state-frames.test.ts | The desktop RPC socket and the cloud `/events` socket carry the subscribe exchange as JSON text frames, one message per frame. No binary frame, subprotocol or extension is used.                                                                                                                                                                     |
+| [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110)  | **Subset**   | §5    | packages/protocol/src/project-state-frames.ts, packages/protocol/tests/project-state-frames.test.ts | The content hash is a strong entity tag: a write's base travels as `If-Match` (`If-None-Match: *` for a create), and a refused write is `412 Precondition Failed`. Only one strong tag is accepted: `If-Match: *`, weak tags and tag lists are refused, because each names no bytes or more than one.                                                 |
+| [RFC 6902](https://www.rfc-editor.org/rfc/rfc6902)  | **Rejected** | §4    | —                                                                                                   | because: an event names what changed and the hash of the result, and a client reads the bytes by path when it needs them. Shipping JSON Patch deltas would make every non-JSON format unrepresentable and duplicate the structural merge collaboration already performs (`collab.md`), for no gain the hash does not give.                            |
 
 ## Changelog
 
