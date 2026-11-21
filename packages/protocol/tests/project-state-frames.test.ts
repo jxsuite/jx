@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   PRECONDITION_FAILED_STATUS,
+  PROJECT_ENDED_METHOD,
   PROJECT_EVENTS_METHOD,
   PROJECT_EVENTS_PATH,
   PROJECT_SUBSCRIBE_METHOD,
@@ -15,6 +16,7 @@ import {
   createSubscriptionCursor,
   decodeCloudClientMessage,
   decodeCloudHostMessage,
+  decodeDesktopEnded,
   decodeDesktopPush,
   decodeDesktopRequest,
   decodeDesktopSubscribeReply,
@@ -24,6 +26,7 @@ import {
   encodeCloudEvents,
   encodeCloudSubscribe,
   encodeCloudSubscribeAnswer,
+  encodeDesktopEnded,
   encodeDesktopEvents,
   encodeDesktopSubscribe,
   encodeDesktopSubscribeReply,
@@ -409,6 +412,19 @@ describe("desktop binding", () => {
       TypeError,
     );
     expect(() => encodeDesktopEvents("e1", [])).toThrow(RangeError);
+  });
+
+  test("the end of a subscription is a push naming its epoch", () => {
+    const ended = encodeDesktopEnded("e1");
+    expect(JSON.parse(ended)).toEqual({ method: PROJECT_ENDED_METHOD, params: { epoch: "e1" } });
+    expect(decodeDesktopEnded(ended)).toEqual({ epoch: "e1" });
+    const events = encodeDesktopEvents("e1", [changed(4)]);
+    expect(decodeDesktopEnded(events)).toBeNull();
+    expect(decodeDesktopEnded("1")).toBeNull();
+    expect(decodeDesktopPush(ended)).toBeNull();
+    expect(() => decodeDesktopEnded(JSON.stringify({ method: PROJECT_ENDED_METHOD }))).toThrow(
+      TypeError,
+    );
   });
 });
 

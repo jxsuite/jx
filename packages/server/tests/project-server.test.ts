@@ -1,8 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createProjectServer } from "../src/project-server.ts";
-import type { ProjectServerHandle, ProjectServerSession } from "../src/project-server.ts";
+import { createProjectServer, RpcProblemError } from "../src/project-server.ts";
+import type {
+  ProjectServerHandle,
+  ProjectServerSession,
+  RpcConnection,
+} from "../src/project-server.ts";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
@@ -83,8 +87,39 @@ const session1: ProjectServerSession = {
   handlers: {
     echo: (params) => Promise.resolve({ echoed: params }),
     boom: () => Promise.reject(new Error("kaboom")),
+    refuse: () =>
+      Promise.reject(
+        new RpcProblemError({
+          detail: "a.json moved on",
+          status: 412,
+          title: "Precondition Failed",
+          type: "about:blank",
+        }),
+      ),
+    refuseQuietly: () =>
+      Promise.reject(new RpcProblemError({ status: 412, title: "Refused", type: "about:blank" })),
+    hold: (_params, connection) => {
+      held = connection ?? null;
+      connection?.afterReply(() => {
+        throw new Error("a listener that fails is reported, not answered");
+      });
+      connection?.afterReply(() => {
+        connection.send(JSON.stringify({ method: "afterReply", params: connection.buffered() }));
+      });
+      connection?.onClose(() => {
+        throw new Error("a close listener that fails is reported, and the next still runs");
+      });
+      connection?.onClose(() => {
+        closedHeld += 1;
+      });
+      return Promise.resolve({ held: true });
+    },
   },
 };
+
+/** The connection the `hold` handler was last handed, and how many times one closed. */
+let held: RpcConnection | null = null;
+let closedHeld = 0;
 
 const session2: ProjectServerSession = {
   projectRoot: PROJECT2,
@@ -568,6 +603,68 @@ describe("ws dispatch", () => {
       // Either way, the server closed the socket fail-closed.
     } finally {
       session1Alive = true;
+      ws.close();
+    }
+  });
+});
+
+describe("the request's connection", () => {
+  test("a frame sent after the reply follows it, and the connection knows when it closes", async () => {
+    const ws = await openWs(`?token=${token}&win=one`);
+    const frames: JsonObject[] = [];
+    ws.addEventListener("message", (event) => {
+      frames.push(parseFrame(event));
+    });
+    const reply = await rpcRaw(ws, "hold");
+    expect(reply.result).toEqual({ held: true });
+    const deadline = Date.now() + 2000;
+    while (frames.length < 2 && Date.now() < deadline) {
+      await Bun.sleep(5);
+    }
+    expect(frames.map((frame) => ("id" in frame ? "reply" : frame.method))).toEqual([
+      "reply",
+      "afterReply",
+    ]);
+    const before = closedHeld;
+    ws.close();
+    const closedBy = Date.now() + 2000;
+    const isClosed = () => closedHeld > before;
+    while (!isClosed() && Date.now() < closedBy) {
+      await Bun.sleep(5);
+    }
+    expect(closedHeld).toBe(before + 1);
+    expect(held?.send("{}")).toBe(false);
+    expect(held?.buffered()).toBe(0);
+    expect(held?.id).toEqual(expect.any(Number));
+    let late = false;
+    held?.onClose(() => {
+      late = true;
+    });
+    expect(late).toBe(true);
+  });
+
+  test("a refusal carries its problem document beside the sentence", async () => {
+    const ws = await openWs(`?token=${token}&win=one`);
+    try {
+      const res = await rpcRaw(ws, "refuse");
+      if (!res.timedOut) {
+        expect(res.error).toBe("a.json moved on");
+        expect(res.problem).toEqual({
+          detail: "a.json moved on",
+          status: 412,
+          title: "Precondition Failed",
+          type: "about:blank",
+        });
+      }
+      const titled = await rpcRaw(ws, "refuseQuietly");
+      if (!titled.timedOut) {
+        expect(titled.error).toBe("Refused");
+      }
+      const plain = await rpcRaw(ws, "boom");
+      if (!plain.timedOut) {
+        expect(plain.problem).toBeUndefined();
+      }
+    } finally {
       ws.close();
     }
   });

@@ -53,6 +53,7 @@ describe("extractRefs", () => {
       implicitLayout: false,
       prototypes: ["Array", "ContentCollection", "ContentEntry"],
       refs: [{ refType: "$elements", rootRelativeBare: false, value: "./x-icon.json" }],
+      tagCounts: { div: 1, "my-card": 2, "my-page": 1 },
       tags: ["my-card"],
     });
   });
@@ -518,9 +519,16 @@ describe("partial graphs (§8.2)", () => {
     // The unindexed document's own change is complete: its dependents are known.
     put(graph, "b", "pages/b.json", { $ref: "../content/x.md" }, "page");
     expect(graph.update("md", "content/x.md", null)[0]?.complete).toBe(true);
+    expect(graph.documents().find((doc) => doc.docId === "md")?.refs).toBeNull();
     graph.update("md", "content/x.md", NO_REFS);
     expect(graph.unindexed()).toEqual([]);
+    expect(graph.documents().find((doc) => doc.docId === "md")).toEqual({
+      docId: "md",
+      path: "content/x.md",
+      refs: NO_REFS,
+    });
     expect(graph.remove("md")[0]?.complete).toBe(true);
+    expect(graph.documents().map((doc) => doc.docId)).toEqual(["a", "base", "b"]);
   });
 });
 

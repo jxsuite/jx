@@ -73,8 +73,10 @@ import type {
   DependencyGraph,
   DependencyGraphConfig,
   DocumentRefs,
+  GraphDocument,
   Invalidation,
 } from "./graph.ts";
+import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import {
   DEPENDENCY_FIELDS,
   dependenciesInstalled,
@@ -90,6 +92,11 @@ import type {
   Installer,
   ProjectFormats,
 } from "./host-deps.ts";
+
+/* What a host embedder passes or falls back to: the default collection resolver, and the shapes
+   of the resolvers it may pass instead. */
+export { sourceCollections } from "./host-deps.ts";
+export type { CollectionInput, CollectionResolver } from "./host-deps.ts";
 
 // ─── Options ───────────────────────────────────────────────────────────────────────────────────
 
@@ -226,6 +233,18 @@ export interface ProjectStateSink {
   end?: () => void;
 }
 
+/**
+ * What the host's graph knows about every document's references, for the usage query (§8, §12):
+ * each document's path and extracted references, and the asset mounts a rooted reference resolves
+ * through.
+ */
+export interface ProjectReferences {
+  documents: GraphDocument[];
+  mounts: readonly AssetMount[];
+  /** The file extensions the project's loaded formats parse, beside JSON and Jx Notation. */
+  extensions: readonly string[];
+}
+
 /** One open subscription. */
 export interface ProjectStateSubscription {
   response: SubscribeResponse;
@@ -251,6 +270,14 @@ export interface ProjectStateHost {
   rename: (operation: RenameOperation) => Promise<never>;
   /** The whole state at the current revision (§3.1). */
   snapshot: () => ProjectSnapshot;
+  /** The document id at `path` now, `null` when nothing indexed is there (§2.2). */
+  docIdAt: (path: string) => string | null;
+  /**
+   * The graph's documents and their references once the host is `indexed` (§7, §8), `null` before
+   * and while its watcher is degraded (§4.8): below `indexed` the graph is still being built, and a
+   * degraded watcher no longer follows the disk, so the usage query walks the tree instead.
+   */
+  references: () => ProjectReferences | null;
   /** Run an install; its writes carry its own write id and leave readiness where it was (§7). */
   install: () => Promise<void>;
   /** Let a host created with `hold` advance (§7). */
@@ -689,9 +716,13 @@ export async function createProjectStateHost(
   /** Classify a document and extract its references (§2.2, §8). */
   const describe = async (path: string, bytes: Uint8Array | null): Promise<Described> => {
     if (isConfigPath(path)) {
+      const read = readConfig(path, bytes);
+      /* Its references are extracted like any document's, so the usage query sees the layout and
+         the files it names; the graph takes the configuration's own edges through `configure`. */
       return {
         kind: "project-config",
-        refs: readConfig(path, bytes) === undefined ? null : NO_REFS,
+        // SAFETY: a parsed project file is a JSON object; `ProjectConfig` only names its members.
+        refs: read === undefined ? null : extractRefs(read as JsonValue, "project-config"),
       };
     }
     const extension = extname(path).toLowerCase();
@@ -1809,6 +1840,10 @@ export async function createProjectStateHost(
         return { rev: log.rev };
       }),
     delete: remove,
+    docIdAt: (path) => {
+      const entry = index.get(path);
+      return entry === undefined ? null : entry.docId;
+    },
     get epoch() {
       return log.epoch;
     },
@@ -1832,6 +1867,14 @@ export async function createProjectStateHost(
     get rev() {
       return log.rev;
     },
+    references: () =>
+      readinessAtLeast(readiness, "indexed") && !degraded
+        ? {
+            documents: graph.documents(),
+            extensions: formats?.extensions ?? [],
+            mounts: formats?.mounts ?? [],
+          }
+        : null,
     root,
     snapshot,
     subscribe(request, sink) {

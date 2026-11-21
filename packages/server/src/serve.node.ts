@@ -221,6 +221,7 @@ export async function serve<Data = undefined>(
         const socket: ServeSocket<Data> = {
           data,
           send: (message) => ws.send(message),
+          getBufferedAmount: () => ws.bufferedAmount,
           close: (code, reason) => ws.close(code, reason),
         };
         ws.on("message", (raw, isBinary) => {

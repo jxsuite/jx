@@ -2,11 +2,11 @@
  * The HTTP + WebSocket server surface the backend's servers are written against.
  *
  * It is the part of `Bun.serve` they use and nothing more: a Fetch-API handler that may upgrade, a
- * bound port and URL, `stop()`, an idle timeout, and a socket's `data`, `send` and `close`. Two
- * implementations answer it, selected at resolution time by the `#serve` import's conditions
- * (Node's conditional exports): `serve.bun.ts` passes through to `Bun.serve` under Bun, and
- * `serve.node.ts` is `node:http` plus `ws` everywhere else, which is the packaged desktop backend
- * (specs/desktop.md §7.1). A bundle built for Node therefore contains no Bun code at all.
+ * bound port and URL, `stop()`, an idle timeout, and a socket's `data`, `send`, `getBufferedAmount`
+ * and `close`. Two implementations answer it, selected at resolution time by the `#serve` import's
+ * conditions (Node's conditional exports): `serve.bun.ts` passes through to `Bun.serve` under Bun,
+ * and `serve.node.ts` is `node:http` plus `ws` everywhere else, which is the packaged desktop
+ * backend (specs/desktop.md §7.1). A bundle built for Node therefore contains no Bun code at all.
  *
  * `serve()` resolves once the server is listening, because Node binds asynchronously: a port read
  * straight after `listen()` is not there yet.
@@ -19,6 +19,8 @@ export interface ServeSocket<Data> {
   readonly data: Data;
   /** Send a text frame (a string) or a binary frame (bytes). A closed socket drops the frame. */
   send: (message: string | Uint8Array) => void;
+  /** How many bytes sent frames still hold in the socket's buffer, waiting for the peer to read. */
+  getBufferedAmount: () => number;
   close: (code?: number, reason?: string) => void;
 }
 

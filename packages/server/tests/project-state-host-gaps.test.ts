@@ -320,12 +320,17 @@ describe("the host's failures", () => {
     const root = await project({ "pages/index.json": json({ tagName: "main" }) });
     const watcher = fakeWatcher();
     const { events, host } = await start(root, { watcher: watcher.factory });
+    expect(host.references()).not.toBeNull();
     watcher.error("watch limit");
     watcher.error("again");
     expect(events.filter((event) => event.type === "watcherDegraded")).toHaveLength(1);
+    // A graph that no longer follows the disk answers no usage query.
+    expect(host.references()).toBeNull();
     const { epoch } = host;
     await host.restart();
     expect(host.epoch === epoch).toBe(false);
+    await host.idle(0);
+    expect(host.references()).not.toBeNull();
   });
 
   test("a root whose real path cannot be read indexes nothing", async () => {

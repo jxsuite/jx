@@ -476,6 +476,12 @@ export const PROJECT_SUBSCRIBE_METHOD = "projectSubscribe";
 /** The push that carries later events on the desktop socket. */
 export const PROJECT_EVENTS_METHOD = "projectEvents";
 
+/**
+ * The push that tells a desktop client the host ended its subscription (a restart, a watcher
+ * recovery, a re-rooted window, §4.8); the client subscribes again with its cursor.
+ */
+export const PROJECT_ENDED_METHOD = "projectEnded";
+
 /** The `projectSubscribe` request frame: `{ id, method, params }`. */
 export function encodeDesktopSubscribe(id: number, request: SubscribeRequest): string {
   return JSON.stringify({ id, method: PROJECT_SUBSCRIBE_METHOD, params: request });
@@ -530,6 +536,24 @@ export function decodeDesktopPush(text: string): ProjectEventsParams | null {
   const { params } = frame;
   const record = isRecord(params) ? params : {};
   return requireEvents(record.epoch, record.events);
+}
+
+/** A `projectEnded` push: `{ method, params: { epoch } }`, naming the epoch that ended. */
+export function encodeDesktopEnded(epoch: string): string {
+  return JSON.stringify({ method: PROJECT_ENDED_METHOD, params: { epoch } });
+}
+
+/** The client's reading of a `projectEnded` push: the epoch it names, else `null`. */
+export function decodeDesktopEnded(text: string): { epoch: string } | null {
+  const frame = parseJson(text);
+  if (!isRecord(frame) || frame.method !== PROJECT_ENDED_METHOD) {
+    return null;
+  }
+  const params = isRecord(frame.params) ? frame.params : {};
+  if (!isString(params.epoch)) {
+    throw new TypeError("A projectEnded push names the epoch that ended.");
+  }
+  return { epoch: params.epoch };
 }
 
 // ─── Dev server: Server-Sent Events (§3.2, WHATWG HTML §9.2) ───────────────────────────────────

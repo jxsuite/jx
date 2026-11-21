@@ -54,6 +54,11 @@ export interface DocumentRefs {
   refs: readonly ExtractedRef[];
   /** The custom-element tags the document instantiates, its own definition's excluded. */
   tags: readonly string[];
+  /**
+   * How many nodes carry each `tagName`, every tag and the document's own root included: the tally
+   * the usage query reads one tag of (`countTagUses`, §12).
+   */
+  tagCounts: Readonly<Record<string, number>>;
   /** The tag a component definition declares, `null` for every other document. */
   defines: string | null;
   /** Whether the document is a page that names no layout, so it wraps in `defaults.layout`. */
@@ -77,6 +82,7 @@ export const NO_REFS: DocumentRefs = Object.freeze({
   implicitLayout: false,
   prototypes: [],
   refs: [],
+  tagCounts: {},
   tags: [],
 });
 
@@ -168,9 +174,8 @@ export function extractRefs(doc: JsonValue, kind: DocKind): DocumentRefs {
   const root = isJsonObject(doc) ? doc : null;
   const rootTag = root !== null && isString(root.tagName) ? root.tagName : null;
   const defines = kind === "component" && rootTag?.includes("-") === true ? rootTag : null;
-  const tags = [...collectTagUses(doc).keys()]
-    .filter((tag) => tag.includes("-") && tag !== defines)
-    .toSorted();
+  const uses = collectTagUses(doc);
+  const tags = [...uses.keys()].filter((tag) => tag.includes("-") && tag !== defines).toSorted();
   const { contentTypes, prototypes } = queriesOf(doc);
   return {
     contentTypes,
@@ -178,6 +183,7 @@ export function extractRefs(doc: JsonValue, kind: DocKind): DocumentRefs {
     implicitLayout: kind === "page" && root !== null && root.$layout === undefined,
     prototypes,
     refs,
+    tagCounts: Object.fromEntries(uses),
     tags,
   };
 }
@@ -254,6 +260,18 @@ export interface DependencyGraph {
   dependentsAt: (path: string) => Map<DependencyKind, DocId[]>;
   /** The documents recorded with unknown references. */
   unindexed: () => DocId[];
+  /**
+   * Every document the graph holds, with its current path and the references it was given (`null`
+   * for one whose references are unknown, §8.2): what the usage query answers from (§12).
+   */
+  documents: () => GraphDocument[];
+}
+
+/** One document as the graph holds it. */
+export interface GraphDocument {
+  docId: DocId;
+  path: string;
+  refs: DocumentRefs | null;
 }
 
 /** The edge a reference makes, by the key that carried it; `null` for none. */
@@ -594,6 +612,8 @@ export function createDependencyGraph(options: DependencyGraphOptions = {}): Dep
       return invalidate(docId, [node.path], tags);
     },
     unindexed: () => [...unknown].toSorted(),
+    documents: () =>
+      [...nodes].map(([docId, node]) => ({ docId, path: node.path, refs: node.refs })),
     update(docId, path, refs) {
       const before = nodes.get(docId);
       const tags = definedBy(docId);

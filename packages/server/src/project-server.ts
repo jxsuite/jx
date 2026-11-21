@@ -45,6 +45,7 @@ import { createLoopbackAuthorizer, OAUTH_CALLBACK_PATH } from "./oauth-loopback.
 import type { LoopbackAuthorizer } from "./oauth-loopback.ts";
 import type { FsEventBatch } from "./sse.ts";
 import type { JsonPrimitive, JsonValue } from "@jxsuite/schema/types";
+import type { ProblemDetails } from "@jxsuite/protocol";
 import { bundleToString } from "@jxsuite/compiler/bundler";
 
 /**
@@ -54,8 +55,53 @@ import { bundleToString } from "@jxsuite/compiler/bundler";
  */
 export type RpcResult = JsonPrimitive | object | undefined;
 
-/** One RPC method: the request frame's decoded `params` in, the reply's `result` out. */
-export type RpcHandler = (params: JsonValue | undefined) => Promise<RpcResult>;
+/**
+ * The socket a request arrived on, for a handler that keeps talking to it after its reply: the
+ * project state subscription (`project-state.md` §3.2), whose later events go to the subscribing
+ * socket alone and end when it closes.
+ */
+export interface RpcConnection {
+  /** The socket's number, the same for every request it carries and unique within the server. */
+  readonly id: number;
+  /** Send one text frame to this socket; `false` when it has closed. */
+  send: (frame: string) => boolean;
+  /**
+   * How many bytes this socket still holds for a peer that has not read them, `0` once it has
+   * closed: a handler that streams checks it before it sends more.
+   */
+  buffered: () => number;
+  /** Run `listener` once this socket closes (at once when it already has). */
+  onClose: (listener: () => void) => void;
+  /**
+   * Run `listener` right after this request's reply is sent, before any other frame can be, so a
+   * frame the handler holds back cannot overtake the reply it follows.
+   */
+  afterReply: (listener: () => void) => void;
+}
+
+/**
+ * A refusal carried as an RFC 9457 problem document: the reply frame carries it as `problem` beside
+ * the `error` sentence, so a client can read its members (a `412` precondition failure names what
+ * is on disk, `project-state.md` §5).
+ */
+export class RpcProblemError extends Error {
+  readonly problem: ProblemDetails;
+
+  constructor(details: ProblemDetails) {
+    super(details.detail ?? details.title);
+    this.name = "RpcProblemError";
+    this.problem = details;
+  }
+}
+
+/**
+ * One RPC method: the request frame's decoded `params` in, the reply's `result` out. The connection
+ * is given to every request the server dispatches; a handler that never needs it leaves it off.
+ */
+export type RpcHandler = (
+  params: JsonValue | undefined,
+  connection?: RpcConnection,
+) => Promise<RpcResult>;
 
 /**
  * What an unsolicited push carries as its `params`: JSON, or the filesystem batch the sidebar
@@ -152,6 +198,38 @@ export async function createProjectServer(
      the socket's whole lifetime — added on open, dropped on close — so a push after a window is
      gone reaches nobody rather than throwing. */
   const sockets = new Set<ServeSocket<{ winId: string | null }>>();
+  /** What each socket runs when it closes (see RpcConnection.onClose). */
+  const closeListeners = new WeakMap<ServeSocket<{ winId: string | null }>, (() => void)[]>();
+  /** Each socket's number (see RpcConnection.id). */
+  const socketIds = new WeakMap<ServeSocket<{ winId: string | null }>, number>();
+  let socketSerial = 0;
+
+  /** The connection a handler is handed for a request on `ws`; `replied` collects afterReply. */
+  const connectionFor = (
+    ws: ServeSocket<{ winId: string | null }>,
+    replied: (() => void)[],
+  ): RpcConnection => ({
+    id: socketIds.get(ws) ?? 0,
+    afterReply: (listener) => {
+      replied.push(listener);
+    },
+    buffered: () => (sockets.has(ws) ? ws.getBufferedAmount() : 0),
+    onClose: (listener) => {
+      const listeners = closeListeners.get(ws);
+      if (listeners === undefined) {
+        listener();
+      } else {
+        listeners.push(listener);
+      }
+    },
+    send: (frame) => {
+      if (!sockets.has(ws)) {
+        return false;
+      }
+      ws.send(frame);
+      return true;
+    },
+  });
 
   const server = await serve<{ winId: string | null }>({
     hostname,
@@ -357,9 +435,21 @@ export async function createProjectServer(
     websocket: {
       open(ws) {
         sockets.add(ws);
+        closeListeners.set(ws, []);
+        socketSerial += 1;
+        socketIds.set(ws, socketSerial);
       },
       close(ws) {
         sockets.delete(ws);
+        const listeners = closeListeners.get(ws) ?? [];
+        closeListeners.delete(ws);
+        for (const listener of listeners) {
+          try {
+            listener();
+          } catch (error) {
+            console.error("[project-server] a close listener failed:", error);
+          }
+        }
       },
       async message(ws, raw) {
         let msg: RpcRequestFrame;
@@ -405,14 +495,23 @@ export async function createProjectServer(
           return;
         }
 
+        const replied: (() => void)[] = [];
         try {
-          const result = await handler(msg.params);
+          const result = await handler(msg.params, connectionFor(ws, replied));
           ws.send(JSON.stringify({ id: msg.id, result: result ?? null }));
+          for (const listener of replied) {
+            try {
+              listener();
+            } catch (error) {
+              console.error("[project-server] an after-reply listener failed:", error);
+            }
+          }
         } catch (error: unknown) {
           ws.send(
             JSON.stringify({
               error: error instanceof Error ? error.message : String(error),
               id: msg.id,
+              ...(error instanceof RpcProblemError && { problem: error.problem }),
             }),
           );
         }

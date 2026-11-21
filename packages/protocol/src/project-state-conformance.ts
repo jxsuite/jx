@@ -23,7 +23,7 @@ import {
   encodeCloudSubscribeAnswer,
   encodeDesktopEvents,
 } from "./project-state-frames.ts";
-import { contentHash, isOwnOrigin, READINESS_ORDER } from "./project-state.ts";
+import { contentHash, isOwnOrigin, READINESS_ORDER, readinessAtLeast } from "./project-state.ts";
 import { PROJECT_FILE_NAMES } from "@jxsuite/schema/project-file";
 import type { JsonValue } from "@jxsuite/schema/types";
 import type {
@@ -74,8 +74,8 @@ export type FixtureFiles = Record<string, string | Uint8Array>;
 /** How the suite asks for a host. */
 export interface ProjectStateHostOptions {
   /**
-   * Hold the host at a readiness state below `indexed` until {@link ProjectStateHost.release}; it
-   * still answers a subscribe (§3.1, §7).
+   * Hold the host below `extensions-resolved` until {@link ProjectStateHost.release}; it still
+   * answers a subscribe, and still takes writes (§2.2, §3.1, §7).
    */
   hold?: boolean;
   /** The replay window, in events, so the suite can step outside it (§2.3). */
@@ -198,6 +198,19 @@ const CONFIG = {
   name: "Fixture",
 };
 
+/**
+ * The fixture's extension (`extensions.md` §3): a local one, so no install produces it, that
+ * registers one document format. The configuration does not name it; a case that needs it loaded
+ * names it, as an author enabling an extension does.
+ */
+const NOTES_EXTENSION = "extensions/notes";
+
+/** The file extension the fixture's extension registers a format for (§2.2). */
+const NOTE_EXTENSION = ".note";
+
+/** The configuration with the fixture's extension enabled. */
+const WITH_NOTES = { ...CONFIG, extensions: [`./${NOTES_EXTENSION}`] };
+
 /** The fixture every case starts from: one document of each kind, and the paths §2.2 excludes. */
 export const CONFORMANCE_FIXTURE: Readonly<FixtureFiles> = Object.freeze({
   ".cache/build.json": json({}),
@@ -209,7 +222,37 @@ export const CONFORMANCE_FIXTURE: Readonly<FixtureFiles> = Object.freeze({
   "content/posts/hello.md": "# Hello\n",
   "data/items.json": json([{ id: 1 }]),
   "dist/index.html": "<!doctype html>\n",
-  "extensions/noop.js": "export default {};\n",
+  [`${NOTES_EXTENSION}/jx-extension.json`]: json({
+    classes: { Note: "./Note.class.json" },
+    name: "notes",
+  }),
+  [`${NOTES_EXTENSION}/Note.class.json`]: json({
+    $defs: {
+      methods: {
+        parse: {
+          $prototype: "Function",
+          identifier: "parse",
+          parameters: [{ identifier: "source", type: { type: "string" } }],
+          role: "parse",
+          scope: "static",
+          timing: ["compiler", "server", "client"],
+        },
+      },
+    },
+    $implementation: "./note.js",
+    $prototype: "Class",
+    extends: "Object",
+    format: { documentKinds: ["content"], extensions: [NOTE_EXTENSION] },
+    title: "Note",
+  }),
+  [`${NOTES_EXTENSION}/note.js`]: [
+    "export class Note {",
+    "  static parse(source) {",
+    '    return { tagName: "article", textContent: source.trim() };',
+    "  }",
+    "}",
+    "",
+  ].join("\n"),
   "layouts/base.json": json({ children: [{ tagName: "slot" }], tagName: "div" }),
   "media/logo.png": LOGO,
   "node_modules/dep/index.js": "export {};\n",
@@ -360,14 +403,18 @@ const NO_SNAPSHOT: ProjectSnapshot = {
 function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): void {
   const { describe, expect } = api;
 
-  /** Register a case that runs against a fresh host and always closes it. */
+  /**
+   * Register a case that runs against a fresh host and always closes it. `files` replaces or adds
+   * fixture files for that case alone.
+   */
   const hostCase = (
     name: string,
     run: (host: ProjectStateHost) => Promise<void>,
     options: ProjectStateHostOptions = {},
+    files: FixtureFiles = {},
   ): void => {
     api.test(name, async () => {
-      const host = await driver.create({ ...CONFORMANCE_FIXTURE }, options);
+      const host = await driver.create({ ...CONFORMANCE_FIXTURE, ...files }, options);
       try {
         await host.settle();
         await run(host);
@@ -589,6 +636,54 @@ function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): voi
           expect(fileIn(snapshot, path).kind, `${path} is a ${kind}`).toBe(kind);
         }
       });
+
+      hostCase(
+        "a document in an extension's format is other until extensions-resolved",
+        async (host) => {
+          const first = "content/posts/first.note";
+          const second = "content/posts/second.note";
+          const sub = await watch(host);
+          const held = snapshotOf(sub.response);
+          expect(
+            readinessAtLeast(held.readiness, "extensions-resolved"),
+            "a held host is below extensions-resolved",
+          ).toBe(false);
+          expect(fileIn(held, first).kind, "a format document is other while held").toBe("other");
+          const added = await host.write({
+            baseHash: null,
+            contents: "Second\n",
+            path: second,
+            writeId: nextWriteId(),
+          });
+          expect(added.ok, "the write is accepted while held").toBe(true);
+          await host.settle();
+          expect(
+            sub.events.some(
+              (event) =>
+                event.type === "readiness" && readinessAtLeast(event.state, "extensions-resolved"),
+            ),
+            "a held host stays below extensions-resolved",
+          ).toBe(false);
+          const noted = ofType(sub.events, "docChanged").filter((event) =>
+            event.path.endsWith(NOTE_EXTENSION),
+          );
+          for (const event of noted) {
+            expect(event.kind, `${event.path} is other before extensions-resolved`).toBe("other");
+          }
+          expect(noted.length > 0, "the held write's docChanged was observed").toBe(true);
+          await host.release();
+          await host.settle();
+          const ready = await currentSnapshot(host);
+          for (const path of [first, second]) {
+            const file = fileIn(ready, path);
+            expect(file.kind, `${path} is classified once the extension is loaded`).toBe("content");
+            expectIndexed(path, file.indexed);
+          }
+          expectStream(sub);
+        },
+        { hold: true },
+        { [CONFIG_FILE]: json(WITH_NOTES), "content/posts/first.note": "First\n" },
+      );
 
       hostCase(
         "revisions start at 1 in an epoch and replay from there",
@@ -1127,11 +1222,7 @@ function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): voi
 
       hostCase("a formatsChanged token is the one the next snapshot carries", async (host) => {
         const sub = await watch(host);
-        await writeOver(
-          host,
-          CONFIG_FILE,
-          json({ ...CONFIG, extensions: ["./extensions/noop.js"] }),
-        );
+        await writeOver(host, CONFIG_FILE, json(WITH_NOTES));
         await host.settle();
         const tokens = ofType(sub.events, "formatsChanged").map((event) => event.formats);
         const snapshot = await currentSnapshot(host);
@@ -1655,11 +1746,7 @@ function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): voi
         await writeOver(host, CONFIG_FILE, json({ ...CONFIG, name: "Still the same set" }));
         await host.settle();
         expect(ofType(sub.events, "readiness"), "another configuration change").toEqual([]);
-        await writeOver(
-          host,
-          CONFIG_FILE,
-          json({ ...CONFIG, extensions: ["./extensions/noop.js"] }),
-        );
+        await writeOver(host, CONFIG_FILE, json(WITH_NOTES));
         await host.settle();
         const states = ofType(sub.events, "readiness").map((event) => event.state);
         expect(states[0], "back to installed").toBe("installed");
