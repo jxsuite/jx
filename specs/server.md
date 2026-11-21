@@ -108,6 +108,8 @@ Two event streams share the connection: the default (unnamed) `reload` message t
 
 The `id:` is **not** a replay cursor. It exists so the browser sends `Last-Event-ID` on reconnect, which is the only way the server can tell a reconnection from a first connection; a reconnecting client is then pushed exactly **one** reload and no history. Nothing is buffered against the id. That is not an unfinished implementation, it is the correct one: the page the client is holding was built before the disconnect, a reload is idempotent and total, so one subsumes every event missed and finishes sooner than a replay would. A first connection is pushed nothing at all — reloading a page that just loaded is a reload loop.
 
+**The project state stream is the one that replays.** The `fs` frames on this stream are deltas with no revision, and a reconnect re-lists rather than replaying them (`studio.md` §9.2). `project-state.md` gives the dev server a second stream for that, `GET /__studio/project/events`, whose `id:` is a replay cursor over a revision-numbered log (`project-state.md` §3.2, §10.2). It is not built. Nothing about this stream changes when it is: the reload stream's single-reload answer stays correct for what it carries.
+
 ### 3.2 `$prototype`/`$src` Proxy (`POST /__jx_resolve__`)
 
 When the runtime encounters an external `$prototype` with `$src` during development, it POSTs to the dev server for server-side resolution. The server:

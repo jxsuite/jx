@@ -37,6 +37,7 @@ export const PROVISIONAL_ORDER = [
   "studio-ui-guidelines",
   "studio",
   "desktop",
+  "project-state",
   "standards",
 ] as const;
 
