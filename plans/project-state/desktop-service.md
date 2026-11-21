@@ -10,6 +10,7 @@ workspaces:
 size: L
 prs:
   - jxsuite/jx#726
+  - jxsuite/jx#727
 ---
 
 # Collaboration rooms are keyed by document, follow renames and save through the base-hash write
