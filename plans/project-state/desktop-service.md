@@ -5,8 +5,7 @@ claims:
   - project-state.md#2.2
   - project-state.md#10.1
   - project-state.md#11.3
-requires:
-  - project-state/dependency-graph
+requires: []
 workspaces:
   - packages/server
   - packages/desktop
@@ -32,6 +31,7 @@ size: L
 - **Decided:** a watcher event is hashed after chokidar's `awaitWriteFinish` settles; the host skips the read when size and mtime equal its last record, per §2.4. Removals are held for `atomicSaveMs` (chokidar's `atomic`) to pair atomic-rename saves.
 - **Decided:** readiness steps back only on a changed install fingerprint (lockfile hash plus the manifest's dependency fields) or a changed extension set (§7), and an install's own writes carry its operation's `writeId`.
 - **Decided:** the git monitor is a chokidar watch on `.git/HEAD`, `.git/index` and `.git/refs` with a 150 ms debounce, then `git status --porcelain=v2 -z`, reusing `git-scope.ts` for project-relative paths.
+- **Decided:** the host keeps one `createDependencyGraph()` (`@jxsuite/server/project-state/graph`, §8): it parses each document with the project's parsers and calls `update` with `extractRefs` of the result (`null` for a document it cannot parse, §8.2) when its bytes change or it is added, `configure` with `defaults.layout` and `imports` as authored, the asset mounts and the collection loader's resolved entry lists and then `update` of the configuration on `projectConfigChanged`, `remove` on `fileRemoved` and `relabel` on `fileRenamed`, and appends `invalidationEvents` of each answer after the file event and its `docChanged`. On every `fileAdded`, `fileChanged`, `fileRemoved` and `fileRenamed` under a collection's source it re-resolves that collection with the loader and calls `setEntryTypes` for each path whose membership the event can move (both paths of a rename) before the `update`, `remove` or `relabel`, so an entry joining or leaving a type, by arrival, removal or a frontmatter edit against `where`, reaches the type's readers in that change's one event per kind.
 - **Decided:** the session keeps `onFileEvents` and `onFileResync` alive beside the subscription; `plan:project-state/resync-retirement` removes them once every host serves it (§3.3).
 
 ## Implementation

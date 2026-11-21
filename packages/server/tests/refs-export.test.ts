@@ -5,7 +5,8 @@
  * `node:` specifier, bare Node builtin or `chokidar` anywhere in its module graph, and on any use
  * of the ambient `process` or `Bun` globals in the bundled code, which no specifier reveals. The
  * `./refactor` index and a scratch module reading `process.env` are the controls: each detector is
- * proven to see what it is looking for.
+ * proven to see what it is looking for. The dependency graph (project-state.md §8) is held to the
+ * same rule through its own subpath, because every host builds its graph from the same walk.
  */
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -92,6 +93,17 @@ describe("@jxsuite/server/refactor/refs", () => {
     const entry = fileURLToPath(import.meta.resolve("@jxsuite/server/refactor/refs"));
     const { code } = await probeBundle(entry, "browser");
     expect(code).toContain("walkDocRefs");
+    expect(ambientIo(code)).toEqual([]);
+  });
+
+  test("the dependency graph is a published subpath with the same pure module graph", async () => {
+    expect(pkg.exports["./project-state/graph"]).toBe("./src/project-state/graph.ts");
+    const entry = fileURLToPath(import.meta.resolve("@jxsuite/server/project-state/graph"));
+    const { code, specifiers } = await probeBundle(entry, "browser");
+    expect(specifiers).toContain("../refactor/refs.ts");
+    expect(specifiers.some((s) => s.includes("refactor/index") || s === "./index.ts")).toBe(false);
+    expect(ioImports(specifiers)).toEqual([]);
+    expect(code).toContain("createDependencyGraph");
     expect(ambientIo(code)).toEqual([]);
   });
 
