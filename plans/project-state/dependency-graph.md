@@ -5,7 +5,6 @@ claims:
   - project-state.md#8
 requires:
   - project-state/protocol-and-conformance
-  - project-state/ref-extraction
 workspaces:
   - packages/server
   - packages/protocol
@@ -25,6 +24,7 @@ size: M
 ## Decisions
 
 - **Decided:** the graph is built from `walkDocRefs` and `countTagUses` only, so it cannot disagree with the usage query.
+- **Decided:** `graph.ts` imports `walkDocRefs` and `countTagUses` from `@jxsuite/server/refactor/refs` (or `../refactor/refs.ts`), never from the `./refactor` index, whose module graph loads the watcher. The graph module stays I/O-free, so the cloud host can bundle the same graph; `packages/server/tests/refs-export.test.ts` gains a browser bundle of `graph.ts` once it exists.
 - **Decided:** format-registry documents are parsed with the project's parsers where the host can run them; a document it cannot parse stays `indexed: false` (§8.2's rule applies to every host, not only the cloud).
 - **Decided:** `layout-page` edges are built from the page's resolved layout (its `$layout`, else `defaults.layout`, none for `$layout: false`), and the implicit ones are recomputed on `projectConfigChanged`, because most pages name no layout.
 - **Decided:** the graph keeps edges to referenced paths that do not exist yet, so a `fileAdded` there reaches its referrers.
