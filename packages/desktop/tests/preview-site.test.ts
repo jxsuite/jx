@@ -223,14 +223,19 @@ describe("the overlay", () => {
     }
   });
 
-  test("clears one document, or the whole project when it names none", () => {
+  test("clears one document, or every one the client set when it names none", () => {
     const root = project();
     try {
       const session = createProjectSession(authorized(root));
+      session.setPreviewOverlay({ contents: "{}", path: "pages/index.json" });
+      session.setPreviewOverlay({ contents: "{}", path: "pages/about.json" });
       session.clearPreviewOverlay({ path: "pages/index.json" });
       expect(clearLivePreviewOverlay.mock.calls.at(-1)).toEqual([root, "pages/index.json"]);
+      clearLivePreviewOverlay.mockClear();
+      session.clearPreviewOverlay({ path: "pages/missing.json" });
+      expect(clearLivePreviewOverlay.mock.calls).toEqual([]);
       session.clearPreviewOverlay({});
-      expect(clearLivePreviewOverlay.mock.calls.at(-1)).toEqual([root, undefined]);
+      expect(clearLivePreviewOverlay.mock.calls).toEqual([[root, "pages/about.json"]]);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

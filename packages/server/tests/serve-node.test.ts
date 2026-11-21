@@ -297,7 +297,7 @@ describe("serve (node:http)", () => {
         open: (ws) => events.push(`open ${ws.data.who}`),
         message: (ws: ServeSocket<{ who: string }>, message) => {
           if (isString(message)) {
-            ws.send(`echo ${message} from ${ws.data.who}`);
+            ws.send(`echo ${message} from ${ws.data.who} (${ws.getBufferedAmount() >= 0})`);
           } else {
             ws.send(new Uint8Array([...message].map((byte) => byte + 1)));
           }
@@ -346,7 +346,7 @@ describe("serve (node:http)", () => {
     ws.send("hi");
     const textReply = await text;
     expect(textReply.isBinary).toBe(false);
-    expect(textReply.data.toString()).toBe("echo hi from ann");
+    expect(textReply.data.toString()).toBe("echo hi from ann (true)");
 
     const binary = nextMessage(ws);
     ws.send(new Uint8Array([1, 2, 3]));

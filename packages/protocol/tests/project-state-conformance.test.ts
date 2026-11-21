@@ -97,6 +97,7 @@ describe("the suite catches a host that breaks the contract", () => {
     ["index-fill-write-origin", "a host below indexed answers a snapshot"],
     ["unindexed", "a host below indexed answers a snapshot"],
     ["unindexed", "every file and directory in the index scope is in the snapshot"],
+    ["classifies-early", "a document in an extension's format is other until extensions-resolved"],
   ] as const)("%s fails “%s”", async (bug, fragment) => {
     expect(await fails(bug, fragment)).toBe(true);
   });

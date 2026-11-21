@@ -12,7 +12,7 @@
  * @docs studio/desktop
  */
 import type { AppInfo, KeyValuePatch } from "@jxsuite/protocol";
-import type { RpcHandler, RpcResult } from "@jxsuite/server/project-server";
+import type { RpcConnection, RpcHandler, RpcResult } from "@jxsuite/server/project-server";
 import { listStarters } from "@jxsuite/starters";
 import { createGitOps } from "./git";
 import { githubSignIn, githubSignOut, githubTokenStatus } from "./github-signin";
@@ -88,6 +88,35 @@ function wire<P>(handler: (params: P) => Promise<RpcResult> | Promise<void>): Rp
 }
 
 /**
+ * {@link wire} for a handler that also reads the socket the request arrived on: the project state
+ * subscription streams to it, and an overlay is owned by it when its client names no `clientId`.
+ */
+function wireConnected<P>(
+  // oxlint-disable-next-line typescript/no-invalid-void-type -- an overlay call answers nothing
+  handler: (params: P, connection?: RpcConnection) => Promise<RpcResult> | RpcResult | void,
+): RpcHandler {
+  /* SAFETY: as in `wire`: `params` is the decoded frame for this method, whose shape
+     rpc-schema.ts declares and `handler`'s signature (P) restates. */
+  return async (params, connection) => (await handler(params as P, connection)) ?? undefined;
+}
+
+/**
+ * {@link wire} for an unconditional write or delete: refused on a socket that has subscribed to the
+ * project state, which writes with a base (`project-state.md` §5), and served to any other.
+ */
+function wireUnconditional<P>(
+  method: string,
+  session: HubWindow["session"],
+  handler: (params: P) => Promise<RpcResult> | Promise<void>,
+): RpcHandler {
+  return async (params, connection) => {
+    session.refuseUnconditional(method, connection);
+    /* SAFETY: as in `wire`. */
+    return (await handler(params as P)) ?? undefined;
+  };
+}
+
+/**
  * Build the map for one window.
  *
  * @param window The window the handlers answer for.
@@ -100,9 +129,7 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
   return {
     addPackage: wire(pkg.addPackage),
     buildSite: () => session.buildSite(),
-    clearPreviewOverlay: wire(async (params: Parameters<typeof session.clearPreviewOverlay>[0]) =>
-      session.clearPreviewOverlay(params),
-    ),
+    clearPreviewOverlay: wireConnected(session.clearPreviewOverlay),
     codeService: wire(session.codeService),
     createDirectory: wire(session.handleCreateDirectory),
     createProject: wire(async (params: Parameters<typeof session.createProject>[0]) => {
@@ -117,7 +144,7 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
     dataPush: wire(session.dataPush),
     dataRows: wire(session.dataRows),
     dataUpdateRow: wire(session.dataUpdateRow),
-    deleteFile: wire(session.handleDeleteFile),
+    deleteFile: wireUnconditional("deleteFile", session, session.handleDeleteFile),
     dependenciesNeedInstall: () => pkg.dependenciesNeedInstall(),
     discoverComponents: wire(session.discoverComponents),
     fetchPluginSchema: wire(session.fetchPluginSchema),
@@ -180,6 +207,9 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
       return picked && { name: picked.name, root: picked.root };
     },
     previewSite: wire(session.previewSite),
+    projectDelete: wire(session.projectDelete),
+    projectSubscribe: wireConnected(session.projectSubscribe),
+    projectWrite: wire(session.projectWrite),
     readFile: wire(session.handleReadFile),
     readFileBytes: wire(session.handleReadFileBytes),
     removePackage: wire(pkg.removePackage),
@@ -190,9 +220,7 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
     ),
     searchFiles: wire(session.searchFiles),
     setPackageVersions: wire(pkg.setPackageVersions),
-    setPreviewOverlay: wire(async (params: Parameters<typeof session.setPreviewOverlay>[0]) =>
-      session.setPreviewOverlay(params),
-    ),
+    setPreviewOverlay: wireConnected(session.setPreviewOverlay),
     setSecrets: wire(session.setSecrets),
     setWindowProject: wire(async ({ root }: { root: string }) => {
       // Before anything asks about, or binds to, a folder that is not there.
@@ -226,7 +254,7 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
     }),
     // Each document once: a page collects what is queued, and whatever it took is no longer queued.
     takeOpenDocuments: () => Promise.resolve(window.pendingDocuments.splice(0)),
-    uploadFile: wire(session.handleUploadFile),
-    writeFile: wire(session.handleWriteFile),
+    uploadFile: wireUnconditional("uploadFile", session, session.handleUploadFile),
+    writeFile: wireUnconditional("writeFile", session, session.handleWriteFile),
   } satisfies Record<string, RpcHandler>;
 }

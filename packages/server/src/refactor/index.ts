@@ -8,6 +8,7 @@ export type { ApplyRenameOptions, FileChange, RenameReport } from "./apply.ts";
 export { findReferences, invalidateReferenceCache } from "./find-refs.ts";
 export type {
   FindReferencesOptions,
+  GraphReferences,
   ReferenceFile,
   ReferenceHit,
   ReferencesResult,

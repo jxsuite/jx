@@ -106,6 +106,15 @@ function fakeSession(): FakeSession {
           case "openProject": {
             return () => Promise.resolve(answers.openProject);
           }
+          // Refuses a socket that subscribed (here, socket 13) the unconditional writes (§5).
+          case "refuseUnconditional": {
+            return (method: string, connection?: { id: number }) => {
+              calls.push({ args: [method, connection], name: "session.refuseUnconditional" });
+              if (connection?.id === 13) {
+                throw new Error(`${method} refused`);
+              }
+            };
+          }
           // Synchronous and void in the real session; the handler map is where they become promises.
           case "setPreviewOverlay":
           case "clearPreviewOverlay": {
@@ -302,6 +311,56 @@ describe("the preview overlay", () => {
       { contents: "{}", path: "a.json" },
     ]);
     expect(callsTo("session.clearPreviewOverlay")[0]?.args).toEqual([{ path: "a.json" }]);
+  });
+});
+
+describe("the project state binding", () => {
+  test("projectSubscribe hands the session the socket it streams to; writes and deletes pass through", async () => {
+    const { handlers } = build();
+    const connection = {
+      afterReply: () => {},
+      buffered: () => 0,
+      id: 7,
+      onClose: () => {},
+      send: () => true,
+    };
+    await handlers.projectSubscribe({ clientId: "w" }, connection);
+    expect(callsTo("session.projectSubscribe")[0]?.args[0]).toEqual({ clientId: "w" });
+    expect(callsTo("session.projectSubscribe")[0]?.args[1]).toBe(connection);
+    await handlers.setPreviewOverlay({ clientId: "w", contents: "{}", path: "a.json" }, connection);
+    expect(callsTo("session.setPreviewOverlay")[0]?.args[1]).toBe(connection);
+    const write = { baseHash: null, contents: "{}", path: "a.json", writeId: "w" };
+    expect(await handlers.projectWrite(write)).toEqual({ via: "session.projectWrite" });
+    expect(callsTo("session.projectWrite")[0]?.args).toEqual([write]);
+    const remove = { base: { hash: "sha256-x" }, path: "a.json", writeId: "d" };
+    expect(await handlers.projectDelete(remove)).toEqual({ via: "session.projectDelete" });
+    expect(callsTo("session.projectDelete")[0]?.args).toEqual([remove]);
+  });
+
+  test("an unconditional write, upload or delete asks the session whether its socket may", async () => {
+    const { handlers } = build();
+    const subscribed = {
+      afterReply: () => {},
+      buffered: () => 0,
+      id: 13,
+      onClose: () => {},
+      send: () => true,
+    };
+    for (const [name, target] of [
+      ["writeFile", "session.handleWriteFile"],
+      ["uploadFile", "session.handleUploadFile"],
+      ["deleteFile", "session.handleDeleteFile"],
+    ] as const) {
+      await expect(handlers[name]({ path: "a.json" }, subscribed)).rejects.toThrow(
+        `${name} refused`,
+      );
+      expect(callsTo(target)).toEqual([]);
+    }
+    expect(callsTo("session.refuseUnconditional").map((call) => call.args[0])).toEqual([
+      "writeFile",
+      "uploadFile",
+      "deleteFile",
+    ]);
   });
 });
 

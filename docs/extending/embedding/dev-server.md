@@ -6,6 +6,7 @@ spec:
   - server.md#4 # studio filesystem API
   - server.md#4.2 # security
   - server.md#5 # code services
+  - project-state.md#3.2 # the desktop binding
 code:
   - packages/server/src/server.ts
   - packages/server/src/studio-api.ts
@@ -81,6 +82,14 @@ The resolve proxies import and execute arbitrary project code by design. Keep th
 :::doc-note
 **No response ever carries an `Access-Control-Allow-` header.** The entire model rests on the browser refusing cross-origin reads, so one CORS header would give that away. A check enforces the absence rather than trusting it; nothing in the code makes a load-bearing absence visible.
 :::
+
+## The desktop project server's socket
+
+The desktop's `createProjectServer` carries Studio's requests over one WebSocket per window: a request is `{ id, method, params }`, and its reply is `{ id, result }` or `{ id, error }`. Three things on it go beyond a request and its reply:
+
+- **A handler can keep talking to the socket that asked.** Each handler is given the request's connection, whose `send` writes a frame to that socket alone, `buffered` reports how many bytes the socket still holds for a reader that has not taken them, `onClose` runs when it closes, and `afterReply` runs right after the reply is sent, so nothing the handler holds back can arrive before the reply. The project state subscription is built on it: `projectSubscribe` answers with a snapshot or the missed events, then pushes `projectEvents` frames to that socket and a `projectEnded` frame when the backend ends the subscription ([`project-state.md` §3.2](https://github.com/jxsuite/jx/blob/main/specs/project-state.md#32-transport-bindings)). A socket holds one subscription, so subscribing again replaces it, and a socket that falls more than 4 MiB behind is sent `projectEnded` instead of more events, so it catches up by subscribing again.
+- **A socket that subscribed writes with a base.** Once a socket has subscribed, `writeFile`, `uploadFile` and `deleteFile` are refused on it with an `invalid-request` problem, and it writes through `projectWrite` and `projectDelete`. A socket that never subscribed keeps the unconditional calls, last-writer-wins.
+- **A refusal can say why in a structured form.** A handler that throws `RpcProblemError` sends its RFC 9457 problem document as `problem` beside the `error` sentence. A conditional write or delete whose base is stale (`projectWrite`, `projectDelete`) is refused with the `412` `precondition-failed` problem, which names the path, the document and the hash on disk.
 
 ## Related
 

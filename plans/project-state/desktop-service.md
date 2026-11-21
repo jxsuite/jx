@@ -2,59 +2,54 @@
 status: active
 disposition: implement
 claims:
-  - project-state.md#2.2
-  - project-state.md#10.1
   - project-state.md#11.3
 requires: []
 workspaces:
   - packages/server
-  - packages/desktop
+  - packages/collab
 size: L
 prs:
   - jxsuite/jx#726
 ---
 
-# The desktop backend owns the project: index, hashes, replay log, graph, readiness and git, served over the window's socket
+# Collaboration rooms are keyed by document, follow renames and save through the base-hash write
 
 ## Context
 
-`specs/project-state.md` §10.1 is `Pending`: the window's `ProjectSession` (`packages/desktop/src/backend/project-session.ts`) forwards `createFsWatcher` batches as `onFileEvents`, pushes `onFileResync { reason: "open" }` after each watcher scan, and keeps no index, hash, log, graph, readiness state or git monitor. Source Control polls git from Studio (`studio.md` §5.5). §11.3 is `Pending`: collaboration rooms are per path and the live preview overlay is set and cleared by each client (`setPreviewOverlay` in the same file). §2.2 carries a later `Partial` marker: no conformance case shows that a document in an extension-registered format is `other` until `extensions-resolved`, because the fixture's extension (`extensions/noop.js` in `packages/protocol/src/project-state-conformance.ts`) registers no format.
+`specs/project-state.md` §11.3 is `Partial`. The overlay half is built: the desktop session keys the live preview overlay by `DocId` and the setting client (`createOverlayRegistry` in `packages/server/src/project-state/overlays.ts`, run by `packages/desktop/src/backend/project-state.ts`), it follows renames and removals, and it outlives a client's subscriptions by `overlayGraceMs`. The room half is not: collaboration rooms are created per path on demand (`collab.md` §2, `createCollabHost` in `packages/collab/src/ws-room.ts`), and the dev server's registry (`packages/server/src/collab.ts`) persists a room with an unconditional `writeFile`. The desktop backend has no collaboration endpoint at all, so the only rooms that exist are the dev server's, and the dev server runs no project state host until `plan:project-state/devserver-service` lands.
+
+§10.1 and §2.2 landed in `plan:project-state/desktop-service#PSD1.3`: the session runs the host, serves `projectSubscribe`, `projectWrite` and `projectDelete` with a `projectEnded` push (§3.2), passes the collection loader's lists, answers the usage query from the graph, and the conformance fixture's extension registers a format.
 
 ## Outcome
 
-- §2.2 → Implemented: the conformance fixture gains an extension that registers a format, and a case holds the host below `extensions-resolved` to assert a document in that format is `other` until it gets there; the desktop host is the first that loads extensions, so it is the first that can pass it.
-- §10.1 → Implemented: `packages/server/src/project-state/` holds the host (`createProjectStateHost`), and the desktop session runs it and serves the `projectSubscribe` binding; the conformance suite passes against it on Node.
-- §11.3 → Implemented: rooms and overlays are keyed by `DocId` and follow renames; a room holds its shared buffer state and saves through the base-hash write (`packages/server/src/collab.ts`); an overlay is keyed by the subscriber's `clientId` and dropped after `overlayGraceMs` with no subscription for it.
+- §11.3 → Implemented: a room is keyed by the `DocId` of its document, follows it across a rename and closes when it is removed, holds the hash it hydrated from or last saved, and saves through the host's `write` with that base and its own `writeId`; a refusal reaches the room's participants (§6.1).
 
 ## Decisions
 
 - **Decided:** the host lives in `packages/server` so the dev server runs the same module under Bun (`plan:project-state/devserver-service`).
-- **Decided:** a write or delete appends its event and updates the index in the same step as the disk change, before replying, writing through a temporary file and a re-hash of the target (§5); the watcher's echo is then dropped by the equal-hash rule, and the ledger only catches stale observations (§2.4).
-- **Decided:** a watcher event is hashed after chokidar's `awaitWriteFinish` settles; the host skips the read when size and mtime equal its last record, per §2.4. Removals are held for `atomicSaveMs` (chokidar's `atomic`) to pair atomic-rename saves.
-- **Decided:** readiness steps back only on a changed install fingerprint (lockfile hash plus the manifest's dependency fields) or a changed extension set (§7), and an install's own writes carry its operation's `writeId`.
-- **Decided:** the git monitor is a chokidar watch on `.git/HEAD`, `.git/index` and `.git/refs` with a 150 ms debounce, then `git status --porcelain=v2 -z`, reusing `git-scope.ts` for project-relative paths.
-- **Decided:** the host keeps one `createDependencyGraph()` (`@jxsuite/server/project-state/graph`, §8): it parses each document with the project's parsers and calls `update` with `extractRefs` of the result (`null` for a document it cannot parse, §8.2) when its bytes change or it is added, `configure` with `defaults.layout` and `imports` as authored, the asset mounts and the collection loader's resolved entry lists and then `update` of the configuration on `projectConfigChanged`, `remove` on `fileRemoved` and `relabel` on `fileRenamed`, and appends `invalidationEvents` of each answer after the file event and its `docChanged`. On every `fileAdded`, `fileChanged`, `fileRemoved` and `fileRenamed` under a collection's source it re-resolves that collection with the loader and calls `setEntryTypes` for each path whose membership the event can move (both paths of a rename) before the `update`, `remove` or `relabel`, so an entry joining or leaving a type, by arrival, removal or a frontmatter edit against `where`, reaches the type's readers in that change's one event per kind.
+- **Decided:** the overlay registry is a pure module beside the host (`project-state/overlays.ts`), so the dev server reuses it unchanged; the desktop session feeds it the host's file events through a subscription of its own.
+- **Decided:** an overlay set by a client that never subscribed keeps the behaviour it had before overlays had owners (one shared owner per project), so a Studio that does not subscribe yet is not regressed. A socket that subscribes adopts the shared layers it set last, and what it sets with no `clientId` afterwards is its own and dropped when it closes.
+- **Decided:** a removal drops an overlay by path as well as by `DocId`, rather than re-keying overlays on a new epoch, so a fallback `path:` key and an id from before a restart are both covered with no epoch bookkeeping.
 - **Decided:** the session keeps `onFileEvents` and `onFileResync` alive beside the subscription; `plan:project-state/resync-retirement` removes them once every host serves it (§3.3).
+- **Decided:** the rooms half waits for a host on the dev server, because that is where rooms exist. A room addressed by path on the wire (`collab.md` §2) but keyed by `DocId` on the host needs the registry to resolve each subscribed path through `docIdAt` and to keep serving a renamed room at its old path until its peers resubscribe, which touches the collab wire contract this spec only hosts.
 
 ## Implementation
 
-`packages/server/src/project-state/host.ts` (index, `DocId` minting, hashing, `createEchoLedger`, `createMemoryEventLog`, readiness, write precondition), `git-monitor.ts`, and `packages/desktop/src/backend/project-session.ts` wiring plus `projectSubscribe` in `rpc-schema.ts` and `handlers.ts`. The usage query (`findReferences`) answers from the graph.
+`packages/server/src/collab.ts` takes the host (`createProjectStateHost`) and keys rooms by `host.docIdAt(path)`, persisting through `host.write({ baseHash, writeId })`; `packages/collab/src/ws-room.ts` gains a re-key for a renamed document. The dev server wires both once it runs the host.
 
-**Integration contract.** `createProjectStateHost({ root, fs, watcher, git })` returns `{ subscribe, write, rename, snapshot, close }`; `plan:project-state/devserver-service` wraps it in the SSE binding and `plan:project-state/rename-cascade` implements `rename`.
-
-As built by `plan:project-state/desktop-service#PSD1.1` and `#PSD1.2`: `createProjectStateHost(options)` in `packages/server/src/project-state/host.ts` resolves once the watcher is armed, the index scanned and the git summary read, and advances to `ready` on its own unless `hold` is set. Every option but `root` is injectable: `fs` (a `node:fs/promises` subset), `watcher` (a factory; `chokidarProjectWatcher` by default), `git` (a `GitRunner`, or `false` for no monitor), `gitWatch`, `gitDebounceMs`, `extensions` (an `ExtensionLoader`, the editor's registry by default), `installer` (the package service's install by default), `installed`, `collections` (a `CollectionResolver`; the default resolves each type's `source` and `exclude` over the index and evaluates no `where`, so the wiring slice should pass the collection loader's list), `atomicSaveMs`, `stabilityMs`, `logCapacity`, `hold` and `onError`; the defaults live in `host-deps.ts`. The host answers `{ subscribe(request, sink), write, delete, createDirectory, rename, snapshot, install, release, restart, idle(quietMs), close }` plus `epoch`, `rev` and `readiness` getters. `subscribe` is synchronous and returns `{ response, close }`; the sink's `events` receives one event per call and its `end` fires on restart or close, which is what the desktop binding needs to send `projectEvents` frames. `rename` always rejects until the rename cascade lands. `idle` is the conformance driver's `settle` and a shutdown barrier, not a protocol member. The git monitor is `createGitMonitor` in `git-monitor.ts`, and the host also schedules it after every file event, since an edit moves the working state without touching `.git/`. The usage query still walks the tree (`packages/server/src/refactor/find-refs.ts`); moving it onto the graph is the wiring slice's.
+**Integration contract.** `createProjectStateHost(options)` answers `{ subscribe, write, delete, createDirectory, rename, snapshot, docIdAt, references, install, release, restart, idle, close }`; `docIdAt(path)` names the document at a path and `references()` the graph's documents once `indexed`, `null` while the watcher is degraded. `createOverlayRegistry({ publish, unpublish, graceMs })` keys an overlay by document and owner, follows `apply(events)`, and moves layers between owners with `adopt(from, to, docIds)`. `plan:project-state/devserver-service` wraps the host in the SSE binding and runs the overlay registry beside it; `plan:project-state/rename-cascade` implements `rename`.
 
 ## Tests
 
-The conformance suite through a Node driver (`packages/server/tests/project-state-host.test.ts`), the git monitor against a real repository, and `packages/desktop/tests/hub-handlers.test.ts` for the new request. Coverage in `packages/server` and `packages/desktop`.
+`packages/server/tests/collab*.test.ts` for a room that survives a rename, closes on a removal and is refused a stale save. Coverage in `packages/server` and `packages/collab`.
 
 ## Specs & docs
 
-§10.1 and §11.3 → Implemented; `desktop.md` §7.3 and §10.1 name the host. Fragments for `project-state.md` (minor) and `desktop.md` (minor). `docs/extending/embedding/platform-adapter.md` gains the subscription once a client uses it (`plan:project-state/client-store`).
+§11.3 → Implemented. A fragment for `project-state.md` (minor), and `collab.md` if the wire changes.
 
 ## Acceptance
 
-The suite passes against the desktop host; `bun run plans:check`; `bun run docs:check`.
+`bun run plans:check`; `bun run docs:check`; the collab suites.
 
 ## Slices
 
@@ -62,5 +57,6 @@ The suite passes against the desktop host; `bun run plans:check`; `bun run docs:
 | ------ | --------------------------------------------------------- | ------ | ----- |
 | PSD1.1 | Host core: index, ids, hashes, ledger, log, preconditions | §10.1  | done  |
 | PSD1.2 | Readiness machine and git monitor                         | §10.1  | done  |
-| PSD1.3 | Desktop wiring and the `projectSubscribe` binding         | §10.1  | open  |
-| PSD1.4 | Rooms and overlays keyed by document                      | §11.3  | open  |
+| PSD1.3 | Desktop wiring and the `projectSubscribe` binding         | §10.1  | done  |
+| PSD1.4 | The live preview overlay keyed by document and client     | §11.3  | done  |
+| PSD1.5 | Collaboration rooms keyed by document, saving with a base | §11.3  | open  |

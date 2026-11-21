@@ -75,6 +75,16 @@ import type {
   RenameReport,
 } from "@jxsuite/server/refactor";
 import { openExternal } from "./open-external.ts";
+import { collectionLoaderResolver, createProjectStateService } from "./project-state.ts";
+import type {
+  ProjectStateService,
+  ProjectStateServiceOptions,
+  ProjectWriteParams,
+} from "./project-state.ts";
+import { RpcProblemError } from "@jxsuite/server/project-server";
+import type { RpcConnection } from "@jxsuite/server/project-server";
+import { problemDetails } from "@jxsuite/protocol/problems";
+import type { DeleteRequest, SubscribeResponse } from "@jxsuite/protocol/project-state";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { classifyJxn, isJxnPath, kdlProblem, parseJxn } from "@jxsuite/schema/jxn";
@@ -635,9 +645,16 @@ function byPathOrder<T extends { path: string }>(entries: T[]): T[] {
   return entries.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
+/** What a session may be told beyond its root and gate: test seams for the project state host. */
+export interface ProjectSessionOptions {
+  /** Passed to each root's project state service (`createHost`, `overlayGraceMs`). */
+  projectState?: Pick<ProjectStateServiceOptions, "createHost" | "overlayGraceMs">;
+}
+
 export function createProjectSession(
   initialRoot: AuthorizedRoot | null,
   gate: RootGate = REFUSE_EVERY_ROOT,
+  sessionOptions: ProjectSessionOptions = {},
 ) {
   let projectRoot: string | null = initialRoot;
   /** Set when the window is gone, after which no answer can bind this session to anything. */
@@ -733,13 +750,111 @@ export function createProjectSession(
    * `writeFile` uses, so what a reader sees and what saving would produce cannot drift. Held in
    * memory and written nowhere, so a crash leaves the preview showing the saved state.
    */
-  function setPreviewOverlay(params: { path: string; contents: string }): void {
-    setLivePreviewOverlay(requireRoot(), params.path, params.contents);
+  function setPreviewOverlay(
+    params: { path: string; contents: string; clientId?: string },
+    connection?: RpcConnection,
+  ): void {
+    stateService().setOverlay(params, connection);
   }
 
-  /** Drop one document's unsaved bytes, or every one of this project's. */
-  function clearPreviewOverlay(params: { path?: string }): void {
-    clearLivePreviewOverlay(requireRoot(), params.path);
+  /**
+   * Drop one document's unsaved bytes, or every one the client set. An overlay is keyed by the
+   * document and the client that set it (`project-state.md` §11.3), so one window clearing its own
+   * never unpublishes another's.
+   */
+  function clearPreviewOverlay(
+    params: { path?: string; clientId?: string },
+    connection?: RpcConnection,
+  ): void {
+    stateService().clearOverlay(params, connection);
+  }
+
+  // ─── The project state service (`project-state.md` §10.1) ────────────────────
+
+  let projectState: ProjectStateService | null = null;
+  /** Services closing after a re-root or a close, which `dispose` still waits for. */
+  const retiring = new Set<Promise<void>>();
+  /** Each open socket that has subscribed: it writes and deletes with a base (§5). */
+  const subscribers = new Set<number>();
+
+  /** Close `service`, reporting a failure rather than leaving it unhandled. */
+  function retire(service: ProjectStateService): Promise<void> {
+    const closing = service.close().catch((error: Error) => {
+      console.error(`[desktop] closing the project state of ${service.root}: ${error.message}`);
+    });
+    retiring.add(closing);
+    void closing.finally(() => retiring.delete(closing));
+    return closing;
+  }
+
+  /** The service for the current root, created on first use; its host starts when one is needed. */
+  function stateService(): ProjectStateService {
+    const root = requireRoot();
+    // A re-root has already let the previous root's service go (`reroot` below).
+    if (projectState?.root !== root) {
+      projectState = createProjectStateService({
+        ...sessionOptions.projectState,
+        collections: collectionLoaderResolver(getExtensionRegistry),
+        publish: (path, contents) => {
+          setLivePreviewOverlay(root, path, contents);
+        },
+        root,
+        unpublish: (path) => {
+          clearLivePreviewOverlay(root, path);
+        },
+      });
+    }
+    return projectState;
+  }
+
+  /** Close the current root's service: its host stops and every subscription ends. */
+  async function closeProjectState(): Promise<void> {
+    const service = projectState;
+    projectState = null;
+    if (service !== null) {
+      await retire(service);
+    }
+  }
+
+  /** Answer `projectSubscribe` and stream the project's events to the socket that asked (§3.2). */
+  async function projectSubscribe(
+    params: JsonValue | undefined,
+    connection?: RpcConnection,
+  ): Promise<SubscribeResponse> {
+    const response = await stateService().subscribe(params, connection);
+    if (connection !== undefined && !subscribers.has(connection.id)) {
+      subscribers.add(connection.id);
+      connection.onClose(() => {
+        subscribers.delete(connection.id);
+      });
+    }
+    return response;
+  }
+
+  /**
+   * Refuse an unconditional write or delete from a socket that has subscribed (`project-state.md`
+   * §5): it names a base through `projectWrite` and `projectDelete`, and the last-writer-wins
+   * `writeFile` and `deleteFile` stay for clients that have not.
+   */
+  function refuseUnconditional(method: string, connection?: RpcConnection): void {
+    if (connection !== undefined && subscribers.has(connection.id)) {
+      throw new RpcProblemError(
+        problemDetails(
+          "invalidRequest",
+          `${method} writes with no base; a client that subscribed to the project state uses projectWrite or projectDelete.`,
+        ),
+      );
+    }
+  }
+
+  /** A write that names the bytes it replaces (`project-state.md` §5). */
+  function projectWrite(params: ProjectWriteParams) {
+    return stateService().write(params);
+  }
+
+  /** A delete that names what it removes (`project-state.md` §5). */
+  function projectDelete(params: DeleteRequest) {
+    return stateService().delete(params);
   }
 
   /**
@@ -759,6 +874,7 @@ export function createProjectSession(
       return;
     }
     if (projectRoot && projectRoot !== next) {
+      void closeProjectState();
       clearLivePreviewOverlay(projectRoot);
     }
     projectRoot = next;
@@ -1298,7 +1414,10 @@ export function createProjectSession(
       assertUnderRoot(resolve(root, params.path), root);
     }
     const registry = await getFormatRegistry();
+    /* The running host's graph answers when it is indexed (`project-state.md` §12); without one,
+       the engine walks the tree. */
     return findReferences({
+      graph: projectState?.root === root ? await projectState.references() : null,
       path: params.path ?? null,
       registry,
       root,
@@ -1605,7 +1724,18 @@ export function createProjectSession(
     setProjectRoot: reroot,
     close,
     setFileEventSink,
-    dispose: stopWatching,
+    /**
+     * Let go of the watcher and the project state host, resolving once both have, and once every
+     * host an earlier re-root or close let go of has closed too.
+     */
+    dispose: async (): Promise<void> => {
+      await Promise.all([stopWatching(), closeProjectState()]);
+      await Promise.all(retiring);
+    },
+    refuseUnconditional,
+    projectSubscribe,
+    projectWrite,
+    projectDelete,
     listFormats,
     listExtensionCatalog,
     listExtensions,

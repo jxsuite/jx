@@ -1,6 +1,15 @@
 // oxlint-disable typescript/no-invalid-void-type -- `void` marks a request with no payload or no reply
 import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import type { FsEventPayload, ReferencesResult, RenameReport } from "@jxsuite/server/refactor";
+import type {
+  ContentHash,
+  DeleteRequest,
+  SubscribeRequest,
+  SubscribeResponse,
+  WireContents,
+  WriteRequest,
+} from "@jxsuite/protocol/project-state";
+import type { ProjectEventsParams } from "@jxsuite/protocol/project-state-frames";
 import type { StarterMeta } from "@jxsuite/starters";
 import type { FormatActionRequest } from "@jxsuite/studio/types";
 import type { FormatEntry } from "@jxsuite/schema/format-registry";
@@ -300,12 +309,13 @@ export interface StudioRPC {
        * rather than the disk. Held in memory and written nowhere.
        */
       setPreviewOverlay: {
-        params: { path: string; contents: string };
+        /** `clientId` names the window across reconnects (`project-state.md` §11.3). */
+        params: { path: string; contents: string; clientId?: string };
         response: void;
       };
-      /** Drop one document's unsaved bytes, or every one of this project's. */
+      /** Drop one document's unsaved bytes, or every one this client set. */
       clearPreviewOverlay: {
-        params: { path?: string };
+        params: { path?: string; clientId?: string };
         response: void;
       };
       // Files
@@ -322,6 +332,26 @@ export interface StudioRPC {
       findReferences: {
         params: { path?: string; tagName?: string };
         response: ReferencesResult;
+      };
+      // Project state (`project-state.md` §3.2, §5)
+      /**
+       * Subscribe to the project's state: a snapshot or the missed events, then `projectEvents`
+       * pushes to this socket, and `projectEnded` when the host ends the subscription.
+       */
+      projectSubscribe: {
+        params: SubscribeRequest;
+        response: SubscribeResponse;
+      };
+      /** A write naming the bytes it replaces; a stale base is refused with a `412` problem. */
+      projectWrite: {
+        /** A `WriteRequest` whose `contents` is a `WireContents`; `writeId` is required. */
+        params: Omit<WriteRequest, "contents"> & { contents: WireContents };
+        response: { rev: number; hash: ContentHash };
+      };
+      /** A delete naming what it removes; a stale base is refused with a `412` problem. */
+      projectDelete: {
+        params: DeleteRequest;
+        response: { rev: number };
       };
       // Formats
       listFormats: {
@@ -554,6 +584,10 @@ export interface StudioRPC {
       documentsPending: Record<string, never>;
       fileChanged: { path: string };
       onFileEvents: { events: FsEventPayload[] };
+      /** A subscription's later events, batched (`project-state.md` §3.2). */
+      projectEvents: ProjectEventsParams;
+      /** The host ended a subscription; the client subscribes again (`project-state.md` §3.2). */
+      projectEnded: { epoch: string };
       /** The watcher on the window's root is ready: re-list what is cached (`studio.md` §9.2). */
       onFileResync: { reason: "open" };
     };

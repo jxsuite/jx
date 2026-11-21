@@ -21,6 +21,23 @@ import type {
   DataRowUpdate,
   KeyValuePatch,
 } from "@jxsuite/protocol";
+import {
+  conflictFromProblem,
+  decodeDesktopEnded,
+  decodeDesktopPush,
+  encodeWireContents,
+  PROJECT_ENDED_METHOD,
+  PROJECT_EVENTS_METHOD,
+} from "@jxsuite/protocol/project-state-frames";
+import type { ProjectEventsParams } from "@jxsuite/protocol/project-state-frames";
+import type {
+  DeleteRequest,
+  DeleteResult,
+  SubscribeRequest,
+  SubscribeResponse,
+  WriteRequest,
+  WriteResult,
+} from "@jxsuite/protocol/project-state";
 import type { StudioRPC } from "../shared/rpc-schema";
 import type { ShellBridge } from "../shared/bridge";
 import { PROJECT_FILE_NAMES, parseProjectSource } from "@jxsuite/schema/project-file";
@@ -80,7 +97,41 @@ interface ServerFrame {
   method?: string;
   params?: PushParams;
   error?: string;
+  /** A refusal's RFC 9457 problem document, beside its `error` sentence. */
+  problem?: JsonValue;
   result?: JsonValue;
+}
+
+/** A request the backend refused, carrying the problem document it refused it with. */
+export class BackendRefusalError extends Error {
+  readonly problem: JsonValue | undefined;
+
+  constructor(message: string, problem: JsonValue | undefined) {
+    super(message);
+    this.name = "BackendRefusalError";
+    this.problem = problem;
+  }
+}
+
+/**
+ * Where a project state subscription's later frames go (`project-state.md` §3.2): its batched
+ * events, and its end, after which the client subscribes again. A subscription ends when the host
+ * announces it with `projectEnded`, and also when the socket reconnects: the backend ends a
+ * subscription with the socket it streamed to, and a closed socket can be told nothing, so the
+ * adapter reports that end itself, once the new socket is open to subscribe on.
+ */
+export interface ProjectStateListener {
+  events: (params: ProjectEventsParams) => void;
+  ended?: (epoch: string) => void;
+}
+
+/** The conflict a refused conditional write or delete carries, or the error itself. */
+function conflictOf(error: Error): WriteResult & { ok: false } {
+  const conflict = error instanceof BackendRefusalError ? conflictFromProblem(error.problem) : null;
+  if (conflict === null) {
+    throw error;
+  }
+  return { conflict, ok: false };
 }
 
 /** An in-flight request's settlement, keyed in `pending` by the id its reply will echo. */
@@ -167,6 +218,38 @@ export function createDesktopPlatform() {
       },
     ],
   ]);
+
+  /** The project state subscription's listener (`projectState.subscribe` below). */
+  let projectListener: ProjectStateListener | null = null;
+  /** The epoch of the subscription the backend is streaming, `null` when none is open. */
+  let projectEpoch: string | null = null;
+
+  /** Tell the listener its subscription is over, once. */
+  function endProjectSubscription(epoch: string): void {
+    projectEpoch = null;
+    projectListener?.ended?.(epoch);
+  }
+
+  /** Hand a `projectEvents` or `projectEnded` push to the subscription's listener. */
+  function relayProjectState(text: string): void {
+    const listener = projectListener;
+    if (listener === null) {
+      return;
+    }
+    try {
+      const events = decodeDesktopPush(text);
+      if (events !== null) {
+        listener.events(events);
+        return;
+      }
+      const ended = decodeDesktopEnded(text);
+      if (ended !== null) {
+        endProjectSubscription(ended.epoch);
+      }
+    } catch (error) {
+      console.error("[platform] a malformed project state frame:", error);
+    }
+  }
 
   // The studio sidebar's live-sync subscriber, if any. Set via subscribeFileEvents below.
   let fileEventHandler: ((events: FsEvent[]) => void) | null = null;
@@ -269,6 +352,10 @@ export function createDesktopPlatform() {
         reportResync(everOpened ? "reconnect" : "open");
         everOpened = true;
         resolve();
+        // The old socket took its subscription with it (see ProjectStateListener).
+        if (projectEpoch !== null) {
+          endProjectSubscription(projectEpoch);
+        }
       });
     });
 
@@ -277,6 +364,11 @@ export function createDesktopPlatform() {
          server, which sends nothing but text frames it built with `JSON.stringify`: replies as
          `{ id, result }` / `{ id, error }` and pushes as `{ method, params }`. */
       const msg = JSON.parse(event.data as string) as ServerFrame;
+      if (msg.method === PROJECT_EVENTS_METHOD || msg.method === PROJECT_ENDED_METHOD) {
+        // SAFETY: the frame just parsed as JSON text, so `data` is that text (see above).
+        relayProjectState(event.data as string);
+        return;
+      }
       if (msg.method) {
         // Unsolicited: dispatch by name. An unknown method is a newer launcher talking to an older
         // Shell, which is not an error — it is a message this build has no use for.
@@ -294,7 +386,11 @@ export function createDesktopPlatform() {
       }
       pending.delete(msg.id);
       if (msg.error) {
-        p.reject(new Error(msg.error));
+        p.reject(
+          msg.problem === undefined
+            ? new Error(msg.error)
+            : new BackendRefusalError(msg.error, msg.problem),
+        );
       } else {
         p.resolve(msg.result);
       }
@@ -576,6 +672,55 @@ export function createDesktopPlatform() {
 
     async findReferences(target: { path?: string; tagName?: string }) {
       return request("findReferences", target);
+    },
+
+    /**
+     * The project state service (`project-state.md` §3.2, §5): the desktop binding's subscribe, and
+     * the writes and deletes that name their base. Not a `StudioPlatform` member: Studio's content
+     * store is what will read it.
+     */
+    projectState: {
+      /**
+       * Subscribe, and hand every later frame to `listener` until the next subscribe replaces it
+       * (the backend ends this socket's earlier subscription too). Send it on every connect with
+       * the cursor's request, the first one included; `listener.ended` reports a reconnect.
+       */
+      async subscribe(
+        subscribeRequest: SubscribeRequest,
+        listener: ProjectStateListener,
+      ): Promise<SubscribeResponse> {
+        projectListener = listener;
+        projectEpoch = null;
+        const response = await request("projectSubscribe", subscribeRequest);
+        if (projectListener === listener) {
+          projectEpoch = response.epoch;
+        }
+        return response;
+      },
+      /** A write naming the bytes it replaces; a stale base answers its conflict. */
+      async write(write: WriteRequest): Promise<WriteResult> {
+        try {
+          const done = await request("projectWrite", {
+            baseHash: write.baseHash,
+            contents: encodeWireContents(write.contents),
+            path: write.path,
+            writeId: write.writeId,
+            ...(write.bufferRev !== undefined && { bufferRev: write.bufferRev }),
+          });
+          return { hash: done.hash, ok: true, rev: done.rev };
+        } catch (error) {
+          return conflictOf(error instanceof Error ? error : new Error(String(error)));
+        }
+      },
+      /** A delete naming what it removes; a stale base answers its conflict. */
+      async delete(remove: DeleteRequest): Promise<DeleteResult> {
+        try {
+          const done = await request("projectDelete", remove);
+          return { ok: true, rev: done.rev };
+        } catch (error) {
+          return conflictOf(error instanceof Error ? error : new Error(String(error)));
+        }
+      },
     },
 
     /**

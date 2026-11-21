@@ -87,7 +87,9 @@ export type ReferenceBug =
   /** Emit a kind's dependents as two events rather than one (§8). */
   | "graph-split-kind"
   /** Put every other document under every kind, dependent or not (§8). */
-  | "graph-over-invalidate";
+  | "graph-over-invalidate"
+  /** Classify a document in a format an extension may register before `extensions-resolved` (§2.2). */
+  | "classifies-early";
 
 export interface ReferenceHostOptions extends ProjectStateHostOptions {
   /** The pairing bound for an atomic-rename save (§2.4). */
@@ -207,6 +209,12 @@ const KIND_BY_DIR = new Map<string, DocKind>([
   ["pages", "page"],
 ]);
 
+/**
+ * Whether a document's format is one the host reads without an extension: the configuration, JSON
+ * and Jx Notation documents, stylesheets and media. Any other may be an extension's (§2.2).
+ */
+const NATIVE_FORMAT = /\.(?:json|jxn|css)$/;
+
 function classify(path: string, bytes: Uint8Array | undefined): DocKind {
   if (path === CONFIG_PATH) {
     return "project-config";
@@ -310,6 +318,19 @@ export async function createReferenceHost(
   let head = 1;
   let lastGit: GitSummary = { branch: "main", changed: {}, head: "c1" };
   let chain: Promise<unknown> = Promise.resolve();
+
+  /**
+   * A document's kind as the host can decide it now: a document in a format an extension may
+   * register is `other` until the host reaches `extensions-resolved` (§2.2).
+   */
+  const kindOf = (path: string, bytes: Uint8Array | undefined): DocKind =>
+    readinessAtLeast(readiness, "extensions-resolved") ||
+    bugs.has("classifies-early") ||
+    path === CONFIG_PATH ||
+    NATIVE_FORMAT.test(path) ||
+    MEDIA.test(path)
+      ? classify(path, bytes)
+      : "other";
 
   /** Run `task` after every earlier operation, so each one is atomic with respect to the rest. */
   const exclusive = <T>(task: () => Promise<T> | T): Promise<T> => {
@@ -634,7 +655,7 @@ export async function createReferenceHost(
     hash: await contentHash(bytes),
     indexed: true,
     isDir: false,
-    kind: classify(path, bytes),
+    kind: kindOf(path, bytes),
   });
 
   /** Put a file's new bytes into the index and emit its events (§4.2, §4.3). */
@@ -655,7 +676,7 @@ export async function createReferenceHost(
       }
       existing.hash = hash;
       existing.bytes = bytes;
-      existing.kind = classify(path, bytes);
+      existing.kind = kindOf(path, bytes);
       existing.indexed = true;
       event = emit({ docId: existing.docId, hash, origin, path, type: "fileChanged" });
     } else {
@@ -887,7 +908,7 @@ export async function createReferenceHost(
       const bytes = disk.get(path)!;
       entry.bytes = bytes;
       entry.hash = await contentHash(bytes);
-      entry.kind = classify(path, bytes);
+      entry.kind = kindOf(path, bytes);
       entry.indexed = !bugs.has("unindexed");
       emit({
         docId: entry.docId,
