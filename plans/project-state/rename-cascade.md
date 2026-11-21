@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - project-state.md#9
 requires:
-  - project-state/dependency-graph
   - project-state/desktop-service
   - project-state/client-store
 workspaces:

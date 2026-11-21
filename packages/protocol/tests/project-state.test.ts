@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  DEPENDENCY_KIND_ORDER,
   ECHO_LEDGER_DEPTH,
   EVENT_LOG_CAPACITY,
   READINESS_ORDER,
@@ -431,5 +432,18 @@ describe("package index", () => {
     expect(protocol.answerSubscribe).toBe(answerSubscribe);
     expect(protocol.createEchoLedger).toBe(createEchoLedger);
     expect(protocol.READINESS_ORDER).toBe(READINESS_ORDER);
+    expect(protocol.DEPENDENCY_KIND_ORDER).toBe(DEPENDENCY_KIND_ORDER);
+  });
+
+  test("lists every dependency kind once, in §8.1's order", () => {
+    expect([...DEPENDENCY_KIND_ORDER]).toEqual([
+      "component-instance",
+      "layout-page",
+      "content-collection",
+      "media-referrer",
+      "data-consumer",
+      "project-config",
+    ]);
+    expect(Object.isFrozen(DEPENDENCY_KIND_ORDER)).toBe(true);
   });
 });

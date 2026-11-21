@@ -196,6 +196,16 @@ export type DependencyKind =
   | "data-consumer"
   | "project-config";
 
+/** Every {@link DependencyKind} in §8.1's order, the order a host emits one change's events in. */
+export const DEPENDENCY_KIND_ORDER: readonly DependencyKind[] = Object.freeze([
+  "component-instance",
+  "layout-page",
+  "content-collection",
+  "media-referrer",
+  "data-consumer",
+  "project-config",
+]);
+
 // ─── Events (§4) ───────────────────────────────────────────────────────────────────────────────
 
 /** Fields every event carries (§4.1). */

@@ -1,8 +1,8 @@
 /**
  * The conformance suite (`specs/project-state.md` §10.4) against the in-memory reference host: once
  * with every optional hook, once as a host with no watcher, and once with a log that survives a
- * restart, as the cloud's does. Then the suite is turned on deliberately broken hosts, to prove
- * each rule it claims to check fails a host that breaks it.
+ * restart and no dependency graph, as the cloud's does. Then the suite is turned on deliberately
+ * broken hosts, to prove each rule it claims to check fails a host that breaks it.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -12,7 +12,7 @@ import { contentHash } from "../src/project-state";
 import { createReferenceHost, inScope, referenceDriver } from "./reference-host";
 import type { ReferenceBug } from "./reference-host";
 
-runProjectStateConformance(referenceDriver("reference host", { watcher: true }), {
+runProjectStateConformance(referenceDriver("reference host", { graph: true, watcher: true }), {
   describe,
   expect,
   test,
@@ -20,6 +20,7 @@ runProjectStateConformance(referenceDriver("reference host", { watcher: true }),
 
 runProjectStateConformance(
   referenceDriver("reference host without a watcher, links or move pairing", {
+    graph: true,
     pairMoves: false,
     symlinks: false,
   }),
@@ -39,6 +40,7 @@ runProjectStateConformance(
 function collectCases(
   bugs: readonly ReferenceBug[],
   hooks: Pick<ProjectStateDriver, "graph" | "rename"> = {},
+  graph = false,
 ): Map<string, () => Promise<void>> {
   const cases = new Map<string, () => Promise<void>>();
   const path: string[] = [];
@@ -54,15 +56,15 @@ function collectCases(
     },
   };
   runProjectStateConformance(
-    { ...referenceDriver("broken", { bugs, watcher: true }), ...hooks },
+    { ...referenceDriver("broken", { bugs, graph, watcher: true }), ...hooks },
     api,
   );
   return cases;
 }
 
 /** Whether the case whose name contains `fragment` fails against a host with `bug`. */
-async function fails(bug: ReferenceBug, fragment: string): Promise<boolean> {
-  const cases = collectCases([bug]);
+async function fails(bug: ReferenceBug, fragment: string, graph = false): Promise<boolean> {
+  const cases = collectCases([bug], {}, graph);
   const matching = [...cases].filter(([name]) => name.includes(fragment));
   expect(matching.length).toBe(1);
   try {
@@ -99,20 +101,69 @@ describe("the suite catches a host that breaks the contract", () => {
     expect(await fails(bug, fragment)).toBe(true);
   });
 
-  test("declaring a graph or rename hook adds a failing case instead of removing one", async () => {
+  /** The three §8 cases, by a fragment of each name. */
+  const COMPONENT = "deleting a component invalidates its instances";
+  const MEDIA = "renaming a media file outside Studio";
+  const LAYOUT = "editing the default layout";
+
+  test.each([
+    ["graph-lists-cause", COMPONENT],
+    ["graph-lists-cause", MEDIA],
+    ["graph-lists-cause", LAYOUT],
+    ["graph-duplicate-dependent", COMPONENT],
+    ["graph-duplicate-dependent", MEDIA],
+    ["graph-duplicate-dependent", LAYOUT],
+    ["graph-incomplete", COMPONENT],
+    ["graph-incomplete", MEDIA],
+    ["graph-incomplete", LAYOUT],
+    ["graph-split-kind", COMPONENT],
+    ["graph-split-kind", MEDIA],
+    ["graph-split-kind", LAYOUT],
+    ["graph-over-invalidate", COMPONENT],
+    ["graph-over-invalidate", MEDIA],
+    ["graph-over-invalidate", LAYOUT],
+    ["graph-early", MEDIA],
+    ["graph-early", LAYOUT],
+  ] as const)("%s fails “%s”", async (bug, fragment) => {
+    expect(await fails(bug, fragment, true)).toBe(true);
+  });
+
+  test("a correct graph passes the same §8 cases", async () => {
+    const cases = [...collectCases([], {}, true)].filter(([name]) => name.includes("§8 "));
+    expect(cases.length).toBe(3);
+    for (const [, run] of cases) {
+      await run();
+    }
+  });
+
+  test("declaring the rename hook adds a failing case instead of removing one", async () => {
     const plain = [...collectCases([]).keys()];
-    for (const [hooks, removed, added] of [
-      [{ graph: { complete: true } }, "emits no dependentsInvalidated", "the §8 cases"],
-      [
-        { rename: { failStep: () => null, rename: async () => ({ ok: true }) } },
-        "emits no operationApplied",
-        "the §9 cases",
-      ],
-    ] as const) {
-      const cases = collectCases([], hooks);
-      expect(cases.size).toBe(plain.length);
-      expect([...cases.keys()].some((name) => name.includes(removed))).toBe(false);
-      const [, run] = [...cases].find(([name]) => name.includes(added))!;
+    const cases = collectCases([], {
+      rename: { failStep: () => null, rename: async () => ({ ok: true }) },
+    });
+    expect(cases.size).toBe(plain.length);
+    expect([...cases.keys()].some((name) => name.includes("emits no operationApplied"))).toBe(
+      false,
+    );
+    const [, run] = [...cases].find(([name]) => name.includes("the §9 cases"))!;
+    expect(
+      await run().then(
+        () => "passed",
+        () => "failed",
+      ),
+    ).toBe("failed");
+  });
+
+  test("declaring the graph hook on a host with no graph fails every §8 case", async () => {
+    const plain = [...collectCases([]).keys()];
+    const cases = collectCases([], { graph: { complete: true } });
+    expect([...cases.keys()].some((name) => name.includes("emits no dependentsInvalidated"))).toBe(
+      false,
+    );
+    const graphCases = [...cases].filter(([name]) => name.includes("§8 dependency graph"));
+    expect(graphCases.length).toBe(3);
+    expect(cases.size).toBe(plain.length - 1 + graphCases.length);
+    for (const [, run] of graphCases) {
       expect(
         await run().then(
           () => "passed",
@@ -120,6 +171,45 @@ describe("the suite catches a host that breaks the contract", () => {
         ),
       ).toBe("failed");
     }
+  });
+
+  test("a host whose graph is partial may report an incomplete invalidation", async () => {
+    const driver = referenceDriver("partial", { graph: true, partialGraph: true });
+    expect(driver.graph).toEqual({ complete: false });
+    const graphCases: (() => Promise<void>)[] = [];
+    let inGraph = false;
+    runProjectStateConformance(driver, {
+      describe: (name, body) => {
+        const outer = inGraph;
+        inGraph ||= name === "§8 dependency graph";
+        body();
+        inGraph = outer;
+      },
+      expect,
+      test: (_name, body) => {
+        if (inGraph) {
+          graphCases.push(body);
+        }
+      },
+    });
+    expect(graphCases.length).toBe(3);
+    for (const run of graphCases) {
+      await run();
+    }
+    // The cases above passed on events that really are incomplete.
+    const host = await createReferenceHost(CONFORMANCE_FIXTURE, {
+      graph: true,
+      partialGraph: true,
+    });
+    await host.settle();
+    const sub = await host.subscribe({});
+    await host.external.write("layouts/base.json", "{}\n");
+    await host.settle();
+    const found = sub.events.filter((event) => event.type === "dependentsInvalidated");
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.map((event) => event.complete)).toEqual(found.map(() => false));
+    sub.close();
+    await host.close();
   });
 
   test("a host that declares its graph partial need only say whether a file is indexed", async () => {

@@ -8,6 +8,7 @@
  * - `rewriteDocRefs` — recompute every file-path reference across a rename (Pillar B).
  * - `rewriteTagName` — rename a custom-element tag wherever it is used (Pillar C).
  * - `countTagUses` — the same tag walk, counting instead of writing (the usage query).
+ * - `collectTagUses` — the same tag walk again, counting every tag at once (the dependency graph).
  *
  * The walk dispatches by JSON key rather than searching strings, and mutates the passed document in
  * place — callers parse a fresh object per file, so this is safe. Precision comes from
@@ -337,8 +338,31 @@ export function rewriteDocRefs(doc: JsonValue, ctx: RemapCtx): RewriteResult {
 }
 
 /**
- * Recursive tag walk. With `newTag` set, every `tagName === oldTag` is rewritten; with `newTag`
- * null, they are only counted — the read side of the same traversal.
+ * Recursive tag walk: every object node carrying a string `tagName`, in document order. The one
+ * traversal behind {@link rewriteTagName}, {@link countTagUses} and {@link collectTagUses}, so the
+ * write side, the usage count and the dependency graph cannot disagree about what a use is.
+ */
+function walkTagNodes(node: JsonValue | undefined, visit: (node: JsonObject, tag: string) => void) {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      walkTagNodes(item, visit);
+    }
+    return;
+  }
+  if (!isJsonObject(node)) {
+    return;
+  }
+  if (isString(node.tagName)) {
+    visit(node, node.tagName);
+  }
+  for (const key of Object.keys(node)) {
+    walkTagNodes(node[key], visit);
+  }
+}
+
+/**
+ * With `newTag` set, every `tagName === oldTag` is rewritten; with `newTag` null, they are only
+ * counted — the read side of the same traversal.
  */
 function walkTags(
   node: JsonValue | undefined,
@@ -346,24 +370,14 @@ function walkTags(
   newTag: string | null,
   counter: { n: number },
 ): void {
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      walkTags(item, oldTag, newTag, counter);
+  walkTagNodes(node, (found, tag) => {
+    if (tag === oldTag) {
+      if (newTag !== null) {
+        found.tagName = newTag;
+      }
+      counter.n += 1;
     }
-    return;
-  }
-  if (!isJsonObject(node)) {
-    return;
-  }
-  if (node.tagName === oldTag) {
-    if (newTag !== null) {
-      node.tagName = newTag;
-    }
-    counter.n += 1;
-  }
-  for (const key of Object.keys(node)) {
-    walkTags(node[key], oldTag, newTag, counter);
-  }
+  });
 }
 
 /**
@@ -390,4 +404,17 @@ export function countTagUses(doc: JsonValue, tag: string): number {
   const counter = { n: 0 };
   walkTags(doc, tag, null, counter);
   return counter.n;
+}
+
+/**
+ * Every `tagName` in `doc` with its use count: {@link countTagUses} for all tags at once. Read-only.
+ * `collectTagUses(doc).get(tag) ?? 0` equals `countTagUses(doc, tag)` for every tag, because both
+ * are the same walk.
+ */
+export function collectTagUses(doc: JsonValue): Map<string, number> {
+  const uses = new Map<string, number>();
+  walkTagNodes(doc, (_node, tag) => {
+    uses.set(tag, (uses.get(tag) ?? 0) + 1);
+  });
+  return uses;
 }

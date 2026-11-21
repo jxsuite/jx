@@ -8,10 +8,10 @@
  * where the cloud host lives. A host passes when every case registered for it is green.
  *
  * A host that does not serve §8 (the dependency graph) or §9 (the rename cascade) runs a negative
- * case for each instead: it emits no `dependentsInvalidated` or `operationApplied`. The cases §10.4
- * lists for a host that does serve them are not written yet, so a driver that declares the matching
- * hook ({@link ProjectStateDriver.graph}, {@link ProjectStateDriver.rename}) gets a failing case
- * naming the missing section rather than fewer checks.
+ * case for each instead: it emits no `dependentsInvalidated` or `operationApplied`. A driver that
+ * declares {@link ProjectStateDriver.graph} runs §10.4's §8 cases in place of the first. The §9
+ * cases are not written yet, so a driver that declares {@link ProjectStateDriver.rename} gets a
+ * failing case naming the missing section rather than fewer checks.
  *
  * @module
  */
@@ -28,6 +28,7 @@ import { PROJECT_FILE_NAMES } from "@jxsuite/schema/project-file";
 import type { JsonValue } from "@jxsuite/schema/types";
 import type {
   ContentHash,
+  DependencyKind,
   EventOrigin,
   DeleteRequest,
   DeleteResult,
@@ -148,9 +149,9 @@ export interface ProjectStateHost {
 }
 
 /**
- * The hook a host that serves the dependency graph (§8) supplies; its cases join the suite with §8.
- * Every case drives the host through {@link ProjectStateHost}, so the hook only declares how
- * complete the host's graph is over the fixture.
+ * The hook a host that serves the dependency graph (§8) supplies, which runs the §8 cases. Every
+ * case drives the host through {@link ProjectStateHost}, so the hook only declares how complete the
+ * host's graph is over the fixture.
  */
 export interface ProjectStateGraphHooks {
   /** Whether the host extracts references from every document in the fixture (§8.2). */
@@ -213,7 +214,10 @@ export const CONFORMANCE_FIXTURE: Readonly<FixtureFiles> = Object.freeze({
   "media/logo.png": LOGO,
   "node_modules/dep/index.js": "export {};\n",
   "package.json": json(MANIFEST),
-  "pages/about.json": json({ children: [{ tagName: "my-card" }], tagName: "main" }),
+  "pages/about.json": json({
+    children: [{ tagName: "my-card" }, { src: "../media/logo.png", tagName: "img" }],
+    tagName: "main",
+  }),
   "pages/index.json": json({ tagName: "main", textContent: "Home" }),
   "pages/node_modules/stray.js": "export {};\n",
   "site/index.html": "<!doctype html>\n",
@@ -1161,22 +1165,16 @@ function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): voi
       }
 
       /*
-       * A hook replaces the negative case above with the cases of its section. Until those cases
-       * are written, declaring a hook registers one that fails, so a hook can never switch a check
-       * off without switching another on.
+       * A hook replaces the negative case above with the cases of its section. Until §9's cases
+       * are written, declaring its hook registers one that fails, so a hook can never switch a
+       * check off without switching another on.
        */
-      for (const [hook, section] of [
-        [driver.graph, "§8"],
-        [driver.rename, "§9"],
-      ] as const) {
-        if (hook !== undefined) {
-          hostCase(`the ${section} cases a declared hook asks for exist`, async () => {
-            expect(
-              false,
-              `the suite has no ${section} cases yet, so a driver may not declare its hook`,
-            ).toBe(true);
-          });
-        }
+      if (driver.rename !== undefined) {
+        hostCase("the §9 cases a declared hook asks for exist", async () => {
+          expect(false, "the suite has no §9 cases yet, so a driver may not declare its hook").toBe(
+            true,
+          );
+        });
       }
 
       hostCase("a degraded watcher is reported, and recovery starts a new epoch", async (host) => {
@@ -1201,6 +1199,119 @@ function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): voi
         back.close();
       });
     });
+
+    // ─── §8 Dependency graph ───────────────────────────────────────────────────────────────
+    const { graph } = driver;
+    if (graph !== undefined) {
+      /**
+       * The `dependentsInvalidated` events `cause` produced through `kind`, each well-formed: its
+       * dependents listed once, never the cause, complete when the host's graph is (§8, §8.2).
+       */
+      const invalidatedBy = (
+        events: readonly ProjectEvent[],
+        cause: string,
+        kind: DependencyKind,
+      ): Extract<ProjectEvent, { type: "dependentsInvalidated" }>[] => {
+        const found = ofType(events, "dependentsInvalidated").filter(
+          (event) => event.cause.docId === cause && event.cause.kind === kind,
+        );
+        for (const event of found) {
+          expect(new Set(event.docIds).size, "each dependent at most once").toBe(
+            event.docIds.length,
+          );
+          expect(event.docIds.includes(cause), "the cause is not its own dependent").toBe(false);
+          if (graph.complete) {
+            expect(event.complete, "a complete graph's invalidation is complete").toBe(true);
+          } else {
+            expect(BOOLEANS.has(event.complete), "it says whether it is complete").toBe(true);
+          }
+        }
+        return found;
+      };
+
+      describe("§8 dependency graph", () => {
+        hostCase("deleting a component invalidates its instances", async (host) => {
+          const snapshot = await currentSnapshot(host);
+          const card = fileIn(snapshot, "components/my-card.json");
+          const about = fileIn(snapshot, "pages/about.json");
+          const home = fileIn(snapshot, "pages/index.json");
+          const sub = await watch(host);
+          const result = await host.delete({
+            base: { hash: card.hash! },
+            path: "components/my-card.json",
+            writeId: nextWriteId(),
+          });
+          await host.settle();
+          expect(result.ok, "the delete is accepted").toBe(true);
+          const [removed] = ofType(sub.events, "fileRemoved");
+          const found = invalidatedBy(sub.events, card.docId, "component-instance");
+          expect(found.length, "one event for the kind").toBe(1);
+          expect(found[0]!.docIds.includes(about.docId), "the page using the tag").toBe(true);
+          expect(found[0]!.docIds.includes(home.docId), "not a page without the tag").toBe(false);
+          expect(found[0]!.tags.includes("my-card"), "the definition's tag").toBe(true);
+          expect(found[0]!.rev > removed!.rev, "after the file event").toBe(true);
+          expectStream(sub);
+        });
+
+        hostCase(
+          "renaming a media file outside Studio invalidates the documents that reference it",
+          async (host) => {
+            const snapshot = await currentSnapshot(host);
+            const logo = fileIn(snapshot, "media/logo.png");
+            const about = fileIn(snapshot, "pages/about.json");
+            const home = fileIn(snapshot, "pages/index.json");
+            const sub = await watch(host);
+            await host.external.rename("media/logo.png", "media/brand.png");
+            await host.settle();
+            // A paired move is a fileRenamed, an unpaired one a removal; either names the logo.
+            const moved = fileEvents(sub.events).find(
+              (event) => event.docId === logo.docId && event.type !== "fileAdded",
+            );
+            expect(moved === undefined, "the move names the logo").toBe(false);
+            const found = invalidatedBy(sub.events, logo.docId, "media-referrer");
+            expect(found.length, "one event for the kind").toBe(1);
+            expect(found[0]!.docIds.includes(about.docId), "the page that shows it").toBe(true);
+            expect(found[0]!.docIds.includes(home.docId), "not a page that does not").toBe(false);
+            expect(found[0]!.rev > moved!.rev, "after the file event").toBe(true);
+            expectStream(sub);
+          },
+        );
+
+        hostCase(
+          "editing the default layout invalidates the pages that name no layout",
+          async (host) => {
+            await writeOver(host, "pages/bare.json", json({ $layout: false, tagName: "main" }));
+            await host.settle();
+            const snapshot = await currentSnapshot(host);
+            const layout = fileIn(snapshot, "layouts/base.json");
+            const sub = await watch(host);
+            await host.external.write(
+              "layouts/base.json",
+              json({ children: [{ tagName: "slot" }], tagName: "section" }),
+            );
+            await host.settle();
+            const changed = ofType(sub.events, "docChanged").find(
+              (event) => event.docId === layout.docId,
+            );
+            const found = invalidatedBy(sub.events, layout.docId, "layout-page");
+            expect(found.length, "one event for the kind").toBe(1);
+            const pages = ["pages/index.json", "pages/about.json"].map(
+              (path) => fileIn(snapshot, path).docId,
+            );
+            expect(
+              pages.every((docId) => found[0]!.docIds.includes(docId)),
+              "every page that falls back to the default",
+            ).toBe(true);
+            expect(
+              found[0]!.docIds.includes(fileIn(snapshot, "pages/bare.json").docId),
+              "not a page whose $layout is false",
+            ).toBe(false);
+            expect(found[0]!.rev > changed!.rev, "after the layout's docChanged").toBe(true);
+            expectStream(sub);
+          },
+        );
+      });
+    }
 
     // ─── §5 Writes and preconditions ───────────────────────────────────────────────────────
     describe("§5 writes and preconditions", () => {

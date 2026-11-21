@@ -20,6 +20,7 @@ import {
   contentHash,
   createEchoLedger,
   createMemoryEventLog,
+  DEPENDENCY_KIND_ORDER,
   READINESS_ORDER,
   readinessAtLeast,
 } from "../src/project-state";
@@ -29,6 +30,7 @@ import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type {
   ContentHash,
   DeleteBase,
+  DependencyKind,
   DocKind,
   EchoLedger,
   EventOrigin,
@@ -73,7 +75,19 @@ export type ReferenceBug =
   /** Skip a revision now and then. */
   | "revision-gap"
   /** Deliver every event with an origin the contract does not have. */
-  | "malformed-event";
+  | "malformed-event"
+  /** List an invalidation's cause among its own dependents (§8). */
+  | "graph-lists-cause"
+  /** List one dependent twice in an invalidation (§8). */
+  | "graph-duplicate-dependent"
+  /** Emit a change's invalidations before its file event and its `docChanged` (§8). */
+  | "graph-early"
+  /** Mark every invalidation incomplete while the graph is complete (§8.2). */
+  | "graph-incomplete"
+  /** Emit a kind's dependents as two events rather than one (§8). */
+  | "graph-split-kind"
+  /** Put every other document under every kind, dependent or not (§8). */
+  | "graph-over-invalidate";
 
 export interface ReferenceHostOptions extends ProjectStateHostOptions {
   /** The pairing bound for an atomic-rename save (§2.4). */
@@ -86,6 +100,13 @@ export interface ReferenceHostOptions extends ProjectStateHostOptions {
   symlinks?: boolean;
   /** Pair a watcher-observed move by hash into one `fileRenamed` (§4.2 allows either). */
   pairMoves?: boolean;
+  /** Keep a dependency graph and emit `dependentsInvalidated` (§8). */
+  graph?: boolean;
+  /**
+   * Declare the graph partial (§8.2) and mark every invalidation `complete: false`, as a host that
+   * cannot extract every document's references does.
+   */
+  partialGraph?: boolean;
   bugs?: readonly ReferenceBug[];
 }
 
@@ -95,6 +116,8 @@ interface Entry {
   hash?: ContentHash;
   kind: DocKind;
   indexed: boolean;
+  /** The bytes last indexed, so a removed component's tag is still known (§8). */
+  bytes?: Uint8Array;
 }
 
 interface Observation {
@@ -207,6 +230,50 @@ const parents = (path: string): string[] =>
     .slice(0, -1)
     .map((_, at, parts) => parts.slice(0, at + 1).join("/"));
 
+/** Resolve `ref` against the directory `dir`, project-relative; `null` for anything not a path. */
+function resolvePath(dir: string, ref: string): string | null {
+  if (/^[a-z][a-z0-9+.-]*:|^\/\/|^#/i.test(ref)) {
+    return null;
+  }
+  const out: string[] = ref.startsWith("/") ? [] : dir.split("/").filter(Boolean);
+  for (const part of ref.split(/[?#]/)[0]!.split("/")) {
+    if (part === "..") {
+      out.pop();
+    } else if (part !== "" && part !== ".") {
+      out.push(part);
+    }
+  }
+  return out.join("/");
+}
+
+/** Whether any node in `node` has `tagName === tag`. */
+function usesTag(node: JsonValue | undefined, tag: string): boolean {
+  if (Array.isArray(node)) {
+    return node.some((item) => usesTag(item, tag));
+  }
+  return (
+    isJsonObject(node) && (node.tagName === tag || Object.values(node).some((v) => usesTag(v, tag)))
+  );
+}
+
+/** Every `src`, `href` and `$src` string in `node`, with the key that carried it. */
+function fileRefs(node: JsonValue | undefined, out: [string, string][] = []): [string, string][] {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      fileRefs(item, out);
+    }
+  } else if (isJsonObject(node)) {
+    for (const [key, value] of Object.entries(node)) {
+      if (isString(value) && (key === "src" || key === "href" || key === "$src")) {
+        out.push([key, value]);
+      } else {
+        fileRefs(value, out);
+      }
+    }
+  }
+  return out;
+}
+
 /** A running reference host. */
 export interface ReferenceHost extends ProjectStateHost {
   /** Advance the virtual clock (the pairing bound is measured on it). */
@@ -295,6 +362,9 @@ export async function createReferenceHost(
   };
 
   const emit = (init: ProjectEventInit): ProjectEvent => {
+    if (bugs.has("graph-early") && options.graph === true) {
+      invalidateEarly(init);
+    }
     if (bugs.has("revision-gap") && log.rev % 5 === 4) {
       log.append({ origin: "external", reason: "skipped", type: "watcherDegraded" });
     }
@@ -355,6 +425,173 @@ export async function createReferenceHost(
 
   const formatsToken = (): string => `formats:${extensions}`;
 
+  /** The configuration's `defaults.layout`, project-relative. */
+  const defaultLayout = (): string | null => {
+    const defaults = parseJson(disk.get(CONFIG_PATH))?.defaults;
+    const layout = isJsonObject(defaults) ? defaults.layout : undefined;
+    return isString(layout) ? resolvePath("", layout) : null;
+  };
+
+  /**
+   * The documents one edge away from `path`, and from the definitions of `tags`, by kind. A simple
+   * graph: it reads every indexed document on each question, which a production host does not.
+   */
+  const directDependents = (
+    path: string,
+    tags: readonly string[],
+  ): Map<DependencyKind, string[]> => {
+    const out = new Map<DependencyKind, string[]>();
+    const add = (kind: DependencyKind, other: string): void => {
+      out.set(kind, [...(out.get(kind) ?? []), other]);
+    };
+    const layout = defaultLayout();
+    for (const [other, entry] of index) {
+      if (entry.isDir || other === path) {
+        continue;
+      }
+      if (path === CONFIG_PATH) {
+        add("project-config", other);
+        continue;
+      }
+      const doc = other === CONFIG_PATH ? null : parseJson(disk.get(other));
+      if (doc === null) {
+        continue;
+      }
+      if (tags.some((tag) => usesTag(doc, tag))) {
+        add("component-instance", other);
+      }
+      const named = doc.$layout;
+      const wrapped = isString(named)
+        ? resolvePath("", named) === path
+        : named === undefined && entry.kind === "page" && layout === path;
+      if (wrapped) {
+        add("layout-page", other);
+      }
+      const dir = parents(other).at(-1) ?? "";
+      for (const [key, ref] of fileRefs(doc)) {
+        if (resolvePath(dir, ref) === path) {
+          add(key === "$src" ? "data-consumer" : "media-referrer", other);
+        }
+      }
+    }
+    return out;
+  };
+
+  /** The tag a component's bytes declare, as a list. */
+  const tagsOf = (...versions: (Uint8Array | undefined)[]): string[] =>
+    versions.flatMap((bytes) => {
+      const tag = componentTag(bytes);
+      return tag === null ? [] : [tag];
+    });
+
+  /** The `dependentsInvalidated` events for the dependents of `paths`, one per kind (§8). */
+  const invalidations = (
+    cause: string,
+    paths: readonly string[],
+    tags: readonly string[],
+    origin: EventOrigin,
+  ): ProjectEventInit[] => {
+    const first = new Map<DependencyKind, Set<string>>();
+    for (const path of paths) {
+      for (const [kind, others] of directDependents(path, tags)) {
+        first.set(kind, new Set([...(first.get(kind) ?? []), ...others]));
+      }
+    }
+    const everyone = [...index.values()].flatMap((entry) => (entry.isDir ? [] : [entry.docId]));
+    const out: ProjectEventInit[] = [];
+    for (const kind of DEPENDENCY_KIND_ORDER) {
+      const seen = first.get(kind);
+      if (seen === undefined && !bugs.has("graph-over-invalidate")) {
+        continue;
+      }
+      const pending = [...(seen ?? [])];
+      const reached = new Set(seen);
+      while (pending.length > 0) {
+        const at = pending.pop()!;
+        for (const others of directDependents(at, tagsOf(disk.get(at))).values()) {
+          for (const other of others) {
+            if (!reached.has(other) && !paths.includes(other)) {
+              reached.add(other);
+              pending.push(other);
+            }
+          }
+        }
+      }
+      let docIds = [...reached].flatMap((path) => {
+        const id = index.get(path)!.docId;
+        return id === cause ? [] : [id];
+      });
+      if (bugs.has("graph-over-invalidate")) {
+        docIds = everyone.filter((id) => id !== cause);
+      }
+      if (docIds.length === 0) {
+        continue;
+      }
+      docIds = docIds.toSorted();
+      if (bugs.has("graph-lists-cause")) {
+        docIds.push(cause);
+      }
+      if (bugs.has("graph-duplicate-dependent")) {
+        docIds.push(docIds[0]!);
+      }
+      const event = {
+        cause: { docId: cause, kind },
+        complete: !(bugs.has("graph-incomplete") || options.partialGraph === true),
+        origin,
+        tags: [...new Set(tags)].toSorted(),
+        type: "dependentsInvalidated" as const,
+      };
+      if (bugs.has("graph-split-kind")) {
+        out.push({ ...event, docIds: docIds.slice(0, 1) }, { ...event, docIds: docIds.slice(1) });
+      } else {
+        out.push({ ...event, docIds });
+      }
+    }
+    return out;
+  };
+
+  /** The cause whose invalidations the `graph-early` bug already emitted. */
+  let emittedEarly: string | null = null;
+
+  /** Emit one `dependentsInvalidated` per kind that reaches a dependent of `paths` (§8). */
+  const invalidate = (
+    cause: string,
+    paths: readonly string[],
+    tags: readonly string[],
+    origin: EventOrigin,
+  ): void => {
+    if (options.graph !== true) {
+      return;
+    }
+    if (emittedEarly === cause) {
+      emittedEarly = null;
+      return;
+    }
+    for (const event of invalidations(cause, paths, tags, origin)) {
+      emit(event);
+    }
+  };
+
+  /**
+   * The `graph-early` bug: emit a changed or renamed file's invalidations ahead of its file event,
+   * then let the regular call after it emit nothing.
+   */
+  const invalidateEarly = (init: ProjectEventInit): void => {
+    if (init.type === "fileChanged" || init.type === "fileRenamed") {
+      const path = init.type === "fileChanged" ? init.path : init.to;
+      const paths = init.type === "fileChanged" ? [path] : [init.from, path];
+      emittedEarly = init.docId;
+      for (const event of invalidations(
+        init.docId,
+        paths,
+        tagsOf(index.get(path)?.bytes),
+        init.origin,
+      )) {
+        emit(event);
+      }
+    }
+  };
+
   /** Derived events after a file at `path` changed (§4.3, §4.4, §7). */
   const afterChange = async (path: string, origin: EventOrigin): Promise<void> => {
     const tags = currentComponents();
@@ -392,6 +629,7 @@ export async function createReferenceHost(
   };
 
   const entryFor = async (path: string, bytes: Uint8Array): Promise<Entry> => ({
+    bytes,
     docId: mintDocId(),
     hash: await contentHash(bytes),
     indexed: true,
@@ -408,6 +646,7 @@ export async function createReferenceHost(
     keep?: Entry,
   ): Promise<ProjectEvent | null> => {
     const existing = keep ?? index.get(path);
+    const previous = existing?.bytes;
     let event: ProjectEvent;
     if (existing !== undefined && !existing.isDir) {
       index.set(path, existing);
@@ -415,6 +654,7 @@ export async function createReferenceHost(
         return null;
       }
       existing.hash = hash;
+      existing.bytes = bytes;
       existing.kind = classify(path, bytes);
       existing.indexed = true;
       event = emit({ docId: existing.docId, hash, origin, path, type: "fileChanged" });
@@ -440,6 +680,7 @@ export async function createReferenceHost(
       path,
       type: "docChanged",
     });
+    invalidate(entry.docId, [path], tagsOf(previous, bytes), origin);
     await afterChange(path, origin);
     return event;
   };
@@ -484,6 +725,7 @@ export async function createReferenceHost(
     for (const [path, { entry }] of held) {
       held.delete(path);
       emit({ docId: entry.docId, isDir: false, origin: "external", path, type: "fileRemoved" });
+      invalidate(entry.docId, [path], tagsOf(entry.bytes), "external");
       await afterChange(path, "external");
     }
   };
@@ -536,6 +778,7 @@ export async function createReferenceHost(
           path,
           type: "fileRemoved",
         });
+        invalidate(pairing.entry.docId, [path], tagsOf(pairing.entry.bytes), "external");
         await afterChange(path, "external");
       }
       const moved = [...held].find(([, { entry }]) => entry.hash === hash);
@@ -551,6 +794,7 @@ export async function createReferenceHost(
           to: path,
           type: "fileRenamed",
         });
+        invalidate(entry.docId, [from, path], tagsOf(entry.bytes), "external");
         continue;
       }
       await applyFile(path, bytes, hash, "external");
@@ -641,6 +885,7 @@ export async function createReferenceHost(
         continue;
       }
       const bytes = disk.get(path)!;
+      entry.bytes = bytes;
       entry.hash = await contentHash(bytes);
       entry.kind = classify(path, bytes);
       entry.indexed = !bugs.has("unindexed");
@@ -797,6 +1042,9 @@ export async function createReferenceHost(
           return refused;
         }
         const isDir = !disk.has(path);
+        const gone = [...index].filter(
+          ([key, removed]) => !removed.isDir && (key === path || key.startsWith(`${path}/`)),
+        );
         removeDisk(path);
         dropFromIndex(path);
         const event = emit({
@@ -806,6 +1054,9 @@ export async function createReferenceHost(
           path,
           type: "fileRemoved",
         });
+        for (const [key, removed] of gone) {
+          invalidate(removed.docId, [key], tagsOf(removed.bytes), event.origin);
+        }
         await afterChange(path, event.origin);
         return { ok: true as const, rev: event.rev };
       }),
@@ -942,6 +1193,9 @@ export function referenceDriver(
   };
   if (options.persistentLog === true) {
     driver.persistentLog = true;
+  }
+  if (options.graph === true) {
+    driver.graph = { complete: options.partialGraph !== true };
   }
   return driver;
 }
