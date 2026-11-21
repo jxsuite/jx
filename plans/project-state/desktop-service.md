@@ -1,5 +1,5 @@
 ---
-status: drafted
+status: active
 disposition: implement
 claims:
   - project-state.md#2.2
@@ -10,6 +10,8 @@ workspaces:
   - packages/server
   - packages/desktop
 size: L
+prs:
+  - jxsuite/jx#726
 ---
 
 # The desktop backend owns the project: index, hashes, replay log, graph, readiness and git, served over the window's socket
