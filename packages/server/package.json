@@ -36,6 +36,7 @@
     "./refactor": "./src/refactor/index.ts",
     "./refactor/refs": "./src/refactor/refs.ts",
     "./project-state/graph": "./src/project-state/graph.ts",
+    "./project-state/host": "./src/project-state/host.ts",
     "./resolve": "./src/resolve.ts",
     "./types": "./src/types.ts",
     "./jx-mounts": "./src/jx-mounts.ts",
