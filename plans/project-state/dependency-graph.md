@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - project-state.md#8
-requires:
-  - project-state/protocol-and-conformance
+requires: []
 workspaces:
   - packages/server
   - packages/protocol

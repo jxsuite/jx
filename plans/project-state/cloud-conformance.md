@@ -6,7 +6,6 @@ claims:
   - project-state.md#10.3
   - project-state.md#13.1
 requires:
-  - project-state/protocol-and-conformance
   - project-state/dependency-graph
 workspaces:
   - packages/protocol

@@ -5,7 +5,6 @@ claims:
   - project-state.md#6
   - project-state.md#11.1
 requires:
-  - project-state/protocol-and-conformance
   - project-state/desktop-service
 workspaces:
   - packages/studio
