@@ -15,4 +15,4 @@ export type {
 export { coalesceFsEvents, toFsEvent } from "./fs-events.ts";
 export type { FsEventPayload } from "./fs-events.ts";
 export { createFsWatcher } from "./watcher.ts";
-export type { FsWatcherHandle } from "./watcher.ts";
+export type { FsWatcherHandle, FsWatcherOptions } from "./watcher.ts";

@@ -31,6 +31,7 @@ import {
   setTemplateErrorHandler,
 } from "@jxsuite/runtime";
 import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
 import { canvasBaseOrigin, documentBase, hostResolveToken } from "../canvas/canvas-origin";
 import { npmModuleUrl } from "../canvas/npm-modules";
@@ -40,7 +41,7 @@ import { componentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { loadFormats, formatForPath } from "../format/format-host";
 import { parseSourceForPath } from "../files/file-ops";
-import { renderComponentPreview } from "../panels/component-preview";
+import { renderComponentInstance } from "../panels/component-preview";
 import { componentExampleProps } from "./component-examples";
 import { loadProjectPreviewSheets } from "./preview-style";
 import type { ComponentEntry } from "../files/components";
@@ -83,6 +84,7 @@ export interface PreviewCache {
  */
 export function createPreviewCache(limit: number = PREVIEW_CACHE_LIMIT): PreviewCache {
   const entries = new Map<string, HTMLElement>();
+  liveCaches.add(new WeakRef(entries));
 
   function evict() {
     // Insertion order is LRU order, and deleting the entry being visited is safe mid-iteration.
@@ -119,6 +121,90 @@ export function createPreviewCache(limit: number = PREVIEW_CACHE_LIMIT): Preview
     },
     size: () => entries.size,
   };
+}
+
+// ─── Retrying a failed preview ───────────────────────────────────────────────
+
+/** Bumped by {@link invalidatePreviews}: a preview that failed before the bump may succeed now. */
+let _invalidations = 0;
+/** A stable number per object, so an identity can be part of {@link previewEpoch}. */
+const _identities = new WeakMap<object, number>();
+let _nextIdentity = 0;
+
+/** The inputs whose identity the epoch tracks: the open project and the registry array. */
+type EpochInput = NonNullable<typeof projectState> | ComponentEntry[];
+
+function identityOf(value: EpochInput | null): number {
+  if (value === null) {
+    return 0;
+  }
+  let id = _identities.get(value);
+  if (id === undefined) {
+    _nextIdentity += 1;
+    id = _nextIdentity;
+    _identities.set(value, id);
+  }
+  return id;
+}
+
+/**
+ * What a preview's outcome depends on beyond its own file, as one comparable key.
+ *
+ * A preview that failed is not retried on every repaint (a document that does not render would be
+ * read once per scroll frame); it is retried once this key moves. It moves when the project is
+ * replaced, when the component registry is rescanned or gains or loses an entry, and whenever a
+ * caller says the inputs moved ({@link invalidatePreviews}: a finished scan, a saved file).
+ */
+export function previewEpoch(): string {
+  return `${_invalidations}:${identityOf(projectState)}:${identityOf(componentRegistry)}:${componentRegistry.length}`;
+}
+
+/** Who repaints when the inputs move: each mounted view that draws previews. */
+const _invalidationListeners = new Set<() => void>();
+
+/**
+ * Say that every failed preview is worth trying again, and tell each view that draws previews.
+ *
+ * Whatever changes what a preview renders from calls this: a finished scan, a rescanned component
+ * registry, a written dependency. A view that only waited for its next repaint would wait forever
+ * when nothing else on it changed, which is how a card stayed blank after the project had settled.
+ */
+export function invalidatePreviews(): void {
+  _invalidations += 1;
+  for (const listener of _invalidationListeners) {
+    listener();
+  }
+}
+
+/**
+ * Be told when {@link invalidatePreviews} runs. Answers the function that stops listening.
+ *
+ * @param listener Called synchronously, after the epoch has moved.
+ */
+export function onPreviewsInvalidated(listener: () => void): () => void {
+  _invalidationListeners.add(listener);
+  return () => {
+    _invalidationListeners.delete(listener);
+  };
+}
+
+/** The failures already reported, one line each, so a repaint does not repeat them. */
+const _reported = new Set<string>();
+
+/**
+ * Report a preview failure on the console, once per file and message.
+ *
+ * Not a Problem: a document mid-edit that does not render yet is a real state of the project, not
+ * something the author must act on. But a failure nobody can see is how "the cards have no
+ * previews" went undiagnosed, so the reason is written where a developer looks.
+ */
+function reportPreviewFailure(path: string, message: string): void {
+  const key = `${path}\n${message}`;
+  if (_reported.has(key)) {
+    return;
+  }
+  _reported.add(key);
+  console.warn(`Jx Studio: no preview for ${path}: ${message}`);
 }
 
 // ─── Rendering one preview ───────────────────────────────────────────────────
@@ -213,7 +299,7 @@ async function projectComponentPreview(
   }
   const props = componentExampleProps(definition);
   return (await rendersWith(definition, path, props))
-    ? renderComponentPreview(component, props)
+    ? renderComponentInstance(component, props)
     : null;
 }
 
@@ -256,20 +342,30 @@ export async function rendersWith(
     /* A template binding that throws no longer unwinds the render (spec.md §6.1): it draws nothing
        and waits for its data. The trial still has to see it, so the throw is collected for the one
        synchronous render, as the render critic collects it. */
-    let bindingThrew = false;
-    setTemplateErrorHandler(() => {
-      bindingThrew = true;
+    const trial: TemplateTrial = { error: null };
+    setTemplateErrorHandler((error) => {
+      trial.error ??= error;
     });
     // Its own tag would make an instance, and the instance's render is the one that cannot be caught.
     const { stop } = runScoped(() => renderNode({ ...definition, tagName: "div" }, scope));
     stopRender = stop;
-    return !bindingThrew;
-  } catch {
+    if (trial.error !== null) {
+      reportPreviewFailure(path, trial.error.message);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    reportPreviewFailure(path, errorMessage(error));
     return false;
   } finally {
     setTemplateErrorHandler(null);
     stopRender?.();
   }
+}
+
+/** What one trial render's template error handler saw: the first binding that threw, if any. */
+interface TemplateTrial {
+  error: Error | null;
 }
 
 /** A component whose definition is a JSON file in the project, which is what can be tried first. */
@@ -280,6 +376,10 @@ function isProjectDefinition(component: ComponentEntry): boolean {
 /**
  * The preview for one file — a registered component's own preview when there is one, the document
  * render otherwise. Cached; a cache hit does no work at all.
+ *
+ * `undefined` is never cached: the caller decides when to ask again (see {@link previewEpoch} and
+ * {@link PreviewObserver.observeAgain}), so a preview that failed while the project was still
+ * settling is drawn once it can be.
  */
 export async function previewFor(
   path: string,
@@ -300,9 +400,12 @@ export async function previewFor(
     if (component && isProjectDefinition(component)) {
       rendered = await projectComponentPreview(component, path);
     } else {
-      rendered = component ? await renderComponentPreview(component) : await renderDocPreview(path);
+      rendered = component
+        ? await renderComponentInstance(component)
+        : await renderDocPreview(path);
     }
-  } catch {
+  } catch (error) {
+    reportPreviewFailure(path, errorMessage(error));
     return undefined;
   }
   if (!rendered) {
@@ -315,7 +418,11 @@ export async function previewFor(
 // ─── Visibility ──────────────────────────────────────────────────────────────
 
 export interface PreviewObserver {
-  /** Start watching a card. Safe to call repeatedly for the same element. */
+  /**
+   * Start watching a card. Safe to call repeatedly for the same element. A card parked by
+   * {@link PreviewObserver.observeAgain} is asked for afresh: its next record counts even if it
+   * never left view, because the caller only does this once the inputs it failed under have moved.
+   */
   observe: (element: Element) => void;
   /**
    * Stop watching every card the document no longer contains; answers how many went.
@@ -330,6 +437,15 @@ export interface PreviewObserver {
    * and an individual card never does. One caller, at one moment, over the whole set.
    */
   releaseDetached: () => number;
+  /**
+   * Watch a card whose preview failed, and report it the next time it ENTERS view.
+   *
+   * Not `observe`: a card on screen would be reported at once, fail again, and loop. This one waits
+   * for the card to leave first, so scrolling a card away and back is a retry and sitting still is
+   * not. A no-op where there is no `IntersectionObserver`, since there is no "entering" to wait
+   * for.
+   */
+  observeAgain: (element: Element) => void;
   destroy: () => void;
 }
 
@@ -358,13 +474,24 @@ export function createPreviewObserver(onVisible: (element: Element) => void): Pr
         /* Nothing to disconnect. */
       },
       observe: (element) => onVisible(element),
+      observeAgain() {
+        /* Nothing can enter view here; a retry waits for the inputs to move instead. */
+      },
       releaseDetached: () => 0,
     };
   }
   const watched = new Set<Element>();
+  /** Cards that must be seen OUT of view before an entry counts (`observeAgain`). */
+  const awaitingExit = new WeakSet<Element>();
   const observer = new IntersectionObserver(
     (records) => {
       for (const record of records) {
+        if (awaitingExit.has(record.target)) {
+          if (!record.isIntersecting) {
+            awaitingExit.delete(record.target);
+          }
+          continue;
+        }
         if (record.isIntersecting) {
           watched.delete(record.target);
           observer.unobserve(record.target);
@@ -381,11 +508,29 @@ export function createPreviewObserver(onVisible: (element: Element) => void): Pr
       watched.clear();
     },
     observe(element) {
+      /* A card parked by `observeAgain` is being asked for NOW: the inputs it failed under have
+         moved, so its next record counts whether or not it ever left view. Re-observing is a no-op
+         in the browser while it is still observed, so it is let go and observed afresh, which is
+         what makes the observer deliver an initial record for it. */
+      if (awaitingExit.has(element)) {
+        awaitingExit.delete(element);
+        observer.unobserve(element);
+        observer.observe(element);
+        return;
+      }
       // Re-observing is a no-op in the browser, but the repaint that follows every scroll frame
       // Hands the same slot back, and a call per card per frame is work nobody needs.
       if (watched.has(element)) {
         return;
       }
+      watched.add(element);
+      observer.observe(element);
+    },
+    observeAgain(element) {
+      if (watched.has(element)) {
+        return;
+      }
+      awaitingExit.add(element);
       watched.add(element);
       observer.observe(element);
     },
@@ -395,6 +540,7 @@ export function createPreviewObserver(onVisible: (element: Element) => void): Pr
       for (const element of watched) {
         if (!element.isConnected) {
           watched.delete(element);
+          awaitingExit.delete(element);
           observer.unobserve(element);
           released += 1;
         }
@@ -402,4 +548,39 @@ export function createPreviewObserver(onVisible: (element: Element) => void): Pr
       return released;
     },
   };
+}
+
+// ─── Eviction by path ────────────────────────────────────────────────────────
+
+/**
+ * Every preview cache's entries, held weakly: a cache lives as long as the panel that made it, and
+ * a panel that was torn down must not be kept alive by this list.
+ */
+const liveCaches = new Set<WeakRef<Map<string, HTMLElement>>>();
+
+/**
+ * Drop one path's rendered preview from every cache, detaching it from the card it was in, so the
+ * next paint renders the file again (`services/live-components.ts`, when a component definition
+ * changes). The card's box is left empty, and the previews are invalidated ({@link
+ * invalidatePreviews}) so every pane that subscribed repaints and its settle pass refills it,
+ * rather than waiting for something else to repaint the Library.
+ */
+export function evictPreview(path: string): void {
+  let evicted = false;
+  for (const ref of liveCaches) {
+    const entries = ref.deref();
+    if (!entries) {
+      liveCaches.delete(ref);
+      continue;
+    }
+    const stale = entries.get(path);
+    if (stale) {
+      entries.delete(path);
+      stale.remove();
+      evicted = true;
+    }
+  }
+  if (evicted) {
+    invalidatePreviews();
+  }
 }

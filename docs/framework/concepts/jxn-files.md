@@ -17,6 +17,7 @@ code:
   - packages/server/src/convert.ts
   - packages/server/src/format.ts
   - packages/site/src/serve.ts
+  - packages/server/src/jxn-response.ts
   - packages/studio/src/services/jxn-language.ts
   - packages/studio/src/format/format-host.ts
   - packages/vscode/src/extension.ts
@@ -170,7 +171,7 @@ See [`jx convert`](/docs/framework/build/cli#jx-convert) for what it refuses. Da
 
 ## On a site
 
-A build never ships Jx Notation: components become modules and pages become HTML. If a browser asks a Jx site for a `.jxn` file directly, the site answers JSON, so pages never load a KDL parser.
+A build never ships Jx Notation: components become modules and pages become HTML. If a browser asks a Jx site for a `.jxn` file directly, the site answers JSON, so pages never load a KDL parser. The dev server and the desktop application answer the same way, so a `.jxn` component previews in Studio's canvas, the Library and the Site panel on both.
 
 ## Saving keeps your comments
 

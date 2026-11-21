@@ -461,7 +461,9 @@ export function createDevServerPlatform() {
      * `EventSource` reconnects by itself, and the dev server does not replay what it sent while the
      * stream was down — a restarted `bun run dev` is the usual cause. So every `open` after the
      * first reports a `"reconnect"` resync: one re-list of the cached tree is cheap next to an
-     * author editing a file the sidebar says is not there.
+     * author editing a file the sidebar says is not there. The first `open` reports `"open"`, as
+     * every other transport does: a listing made before the stream joined raced it, and a change
+     * broadcast before then reached nobody.
      */
     subscribeFileEvents(
       handler: (events: FsEvent[]) => void,
@@ -478,6 +480,8 @@ export function createDevServerPlatform() {
           // A reconnect is usually a restarted server, which comes back bound to no project.
           reclaimBinding();
           options?.onResync?.("reconnect");
+        } else {
+          options?.onResync?.("open");
         }
       });
       es.addEventListener("fs", (ev: MessageEvent<string>) => {

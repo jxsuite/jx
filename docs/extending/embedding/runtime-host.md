@@ -119,6 +119,8 @@ preloadModule("jx-ui:/behaviors/menu.ts", () => import("./behaviors/menu.ts"));
 
 The kit ships this table ready-made as `KIT_LOADERS` from `@jxsuite/ui/loaders`, the same specifiers as `KIT_MODULES` with every entry a thunk.
 
+A document that failed to load is not remembered. If a fetch fails or answers something that is not a document, the next request for that URL fetches it again, and a `defineElement` of it tries again too. When you know a document has changed, call `forgetSource(url)` to drop the copy the runtime holds, and the next request reads it afresh. A tag the browser has already registered stays registered, so use `redefineElement` (below) to change what it renders.
+
 `preloadModule` is also the only way a `timing: "server"` entry runs in your process. For any specifier you have not registered, the runtime posts the call to your host's `/__jx_server__` proxy and never imports the module. A host that answers no proxy leaves such an entry `null` and logs the failed call, and `skipServerFunctions` (below) skips the entries without a request.
 
 ## Run TypeScript function bodies

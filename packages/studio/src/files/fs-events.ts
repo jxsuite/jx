@@ -309,12 +309,24 @@ export interface FsSyncContext {
    * alone, since a reconnect usually changed nothing and a reload churns undo and repaints.
    */
   onResyncContent?: (paths: string[]) => void;
+  /**
+   * The working tree moved: re-read git status. Called for every batch, Studio's own echoes
+   * included (a write Studio made changes the status as much as anyone else's), and for every
+   * resync. The callee debounces; this module only reports. Injected for the reason
+   * `renderLeftPanel` is: the git flow sits far above the file layer.
+   */
+  noteRepositoryChange?: () => void;
 }
 
 /**
  * Subscribe the sidebar to backend filesystem events. Returns an unsubscribe function; a no-op when
  * the platform has no watcher (desktop without one, or tests). Bursts are debounced into one
  * render.
+ *
+ * The left panel repaints when a batch changed a cached listing, when it added, removed or renamed
+ * anything (a panel drawn from a derived index, such as the Site panel's pages and templates, has
+ * no listing of its own to change), and when the derived caches were dropped, echoes included,
+ * since a dropped cache is only re-read by the next paint.
  */
 export function startFsSync(ctx: FsSyncContext): () => void {
   const platform = getPlatform();
@@ -325,13 +337,23 @@ export function startFsSync(ctx: FsSyncContext): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let resyncReason: FsResyncReason | null = null;
   let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The derived caches were dropped since the last flush, so the next one repaints. */
+  let derivedDropped = false;
 
   const flush = () => {
     timer = null;
     const state = projectState;
     const batch = pending.filter((e) => !isRecentLocal(e.path));
     pending = [];
-    if (!state || batch.length === 0) {
+    const repaintDerived = derivedDropped;
+    derivedDropped = false;
+    if (!state) {
+      return;
+    }
+    if (batch.length === 0) {
+      if (repaintDerived) {
+        ctx.renderLeftPanel();
+      }
       return;
     }
     const changedDirs = applyFsEvents(state.dirs, state.expanded, batch);
@@ -342,7 +364,8 @@ export function startFsSync(ctx: FsSyncContext): () => void {
         }
       }
     }
-    if (changedDirs.size > 0) {
+    const structural = batch.some((ev) => ev.type !== "change");
+    if (repaintDerived || structural || changedDirs.size > 0) {
       ctx.renderLeftPanel();
     }
   };
@@ -397,6 +420,8 @@ export function startFsSync(ctx: FsSyncContext): () => void {
     if (reason !== "commit") {
       forgetAllVersions();
     }
+    // Every reason can mean the status moved, a commit above all: the events that said so are gone.
+    ctx.noteRepositoryChange?.();
     // A wider pass includes a narrower one's, so the widest reason wins a coalesced burst.
     if (!resyncReason || RESYNC_RANK[reason] > RESYNC_RANK[resyncReason]) {
       resyncReason = reason;
@@ -421,10 +446,15 @@ export function startFsSync(ctx: FsSyncContext): () => void {
       // Removed layout's `$head` to the open page, a `$paths` enumeration listing entries that are
       // Gone.
       invalidateUsages();
-      ctx.invalidateDerivedCaches?.(
-        events.map((event) => event.path),
-        events.some((event) => event.type !== "change"),
-      );
+      if (ctx.invalidateDerivedCaches) {
+        ctx.invalidateDerivedCaches(
+          events.map((event) => event.path),
+          events.some((event) => event.type !== "change"),
+        );
+        derivedDropped = true;
+      }
+      // Git status is derived from the tree too, and a self-write moves it like any other.
+      ctx.noteRepositoryChange?.();
       // Content versions are derived state of the same kind, and Studio's own writes change bytes:
       // A version kept past its echo would let an immutable cache answer with the old file.
       forgetEventVersions(events);

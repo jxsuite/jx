@@ -21,11 +21,13 @@ import type { CommandArgValues } from "../src/commands/command-args";
 const openFileInTab = mock(async (_path: string) => {});
 void mock.module("../src/files/files", () => ({ openFileInTab }));
 
-const previewFor = mock(async (path: string) => {
+/** The doubled render: a fresh element per call, so a re-render is a different node. */
+async function renderPreview(path: string): Promise<HTMLElement | undefined> {
   const element = document.createElement("span");
   element.dataset.preview = path;
   return element;
-});
+}
+const previewFor = mock(renderPreview);
 void mock.module("../src/browse/library-preview", () => ({
   createPreviewCache: () => ({ clear: () => {} }),
   createPreviewObserver: (onVisible: (element: Element) => void) => ({
@@ -56,8 +58,8 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 
 const { registerRenderer, setProjectState } = await import("../src/store");
 const { getPanel, resetPanels } = await import("../src/panels/panel-registry");
-const { loadComponentRegistry } = await import("../src/files/components");
-const { refreshFormats } = await import("../src/format/format-host");
+const { loadComponentRegistry, noteComponentSaved } = await import("../src/files/components");
+const { loadFormats, refreshFormats } = await import("../src/format/format-host");
 const { invalidateMediaCache } = await import("../src/ui/media-picker");
 const { closeAllTabs } = await import("../src/workspace/workspace");
 const { createCommandRegistry } = await import("../src/commands/registry");
@@ -69,6 +71,7 @@ const {
   invalidateSiteIndex,
   mediaDragData,
   mediaMoreLabel,
+  PREVIEW_ATTEMPT_LIMIT,
   SITE_MEDIA_LIMIT,
   registerSitePanel,
   resetSitePanel,
@@ -323,6 +326,52 @@ describe("Components", () => {
     expect(texts("card-label")).toEqual(["Acme button"]);
   });
 
+  test("a preview that failed is tried again on a later paint, and then left alone", async () => {
+    previewFor.mockImplementation(async () => {});
+    try {
+      // The paints the first read causes (the index landing) are already retries.
+      await paint();
+      expect(previewFor.mock.calls.length).toBeGreaterThan(1);
+      for (let paints = 0; paints < PREVIEW_ATTEMPT_LIMIT + 2; paints += 1) {
+        invalidateSiteIndex([]);
+        await flush(6);
+      }
+      // Bounded: a definition that cannot render is not re-rendered on every paint.
+      expect(previewFor).toHaveBeenCalledTimes(PREVIEW_ATTEMPT_LIMIT);
+      expect(part("card-preview")[0]?.shadowRoot ?? null).toBeNull();
+    } finally {
+      previewFor.mockImplementation(renderPreview);
+    }
+  });
+
+  test("a preview that failed once fills on the next paint", async () => {
+    previewFor.mockImplementationOnce(async () => {});
+    await paint();
+    expect(previewFor).toHaveBeenCalledTimes(2);
+    expect(part("card-preview")[0]?.shadowRoot?.querySelector("[data-preview]")).not.toBeNull();
+  });
+
+  test("a saved definition re-renders its card's preview", async () => {
+    await paint();
+    const box = part("card-preview")[0]!;
+    const first = box.shadowRoot?.firstElementChild;
+    expect(previewFor).toHaveBeenCalledTimes(1);
+    // A save rebuilds the registry entry; the next paint finds the box showing the old one.
+    noteComponentSaved("components/site-card.json", {
+      $props: { heading: "Changed" },
+      tagName: "site-card",
+    });
+    invalidateSiteIndex([]);
+    await flush(6);
+    expect(previewFor).toHaveBeenCalledTimes(2);
+    expect(part("card-preview")[0] === box).toBe(true);
+    expect(box.shadowRoot?.firstElementChild === first).toBe(false);
+    // Nothing changed since: the next paint asks for nothing.
+    invalidateSiteIndex([]);
+    await flush(6);
+    expect(previewFor).toHaveBeenCalledTimes(2);
+  });
+
   test("a card opens its definition, and drags an instance of the component", async () => {
     await paint();
     const card = host.querySelector<HTMLElement>('[part="component-card"]')!;
@@ -512,22 +561,73 @@ describe("reading each dynamic page's collection", () => {
     expect(kinds.get("pages/blog/[slug].json")).toBe("entry-page");
   });
 
-  test("only the files the build routes are pages: a backup and an unclaimed extension are not", async () => {
+  test("only the files the build routes are pages: a backup is not, a page missing its format says so", async () => {
     refreshFormats();
     await project(
       { listFormats: () => Promise.resolve([]) },
       {
         "pages/index.json.bak": '{"tagName":"main"}',
-        "pages/notes.md": "# Not a page in a project with no Markdown format",
+        "pages/notes.md": "# A page in a project whose Markdown format is not loaded",
       },
     );
     await paint();
-    const paths = [...section("pages").querySelectorAll<HTMLElement>("[data-path]")].map(
-      (el) => el.dataset.path,
+    const rows = new Map(
+      [...section("pages").querySelectorAll<HTMLElement>("[data-path]")].map((el) => [
+        el.dataset.path,
+        el,
+      ]),
     );
-    expect(paths).toContain("pages/index.json");
-    expect(paths).not.toContain("pages/index.json.bak");
-    expect(paths).not.toContain("pages/notes.md");
+    expect(rows.has("pages/index.json")).toBe(true);
+    expect(rows.has("pages/index.json.bak")).toBe(false);
+    // Listed, not hidden: the row says it needs its extension, and still opens (the opener reports why).
+    const notes = rows.get("pages/notes.md")!;
+    expect(notes.dataset.kind).toBe("unresolved");
+    expect(notes.querySelector('[part="row-detail"]')?.textContent).toBe("needs extension");
+    expect(notes.title).toContain("pages/notes.md needs the extension that reads it");
+    notes.click();
+    await flush(4);
+    expect(openFileInTab).toHaveBeenCalledWith("pages/notes.md");
+  });
+
+  test("a format that lands later turns the waiting page into a page, without an invalidation", async () => {
+    let formats: unknown[] = [];
+    refreshFormats();
+    await project({ listFormats: () => Promise.resolve(formats) }, { "pages/notes.md": "# Notes" });
+    await paint();
+    const kindOf = () =>
+      section("pages").querySelector<HTMLElement>('[data-path="pages/notes.md"]')?.dataset.kind;
+    expect(kindOf()).toBe("unresolved");
+    // The project's dependencies finish installing and the registry is read again.
+    formats = [MARKDOWN_PAGES];
+    refreshFormats();
+    await loadFormats();
+    await flush(10);
+    expect(kindOf()).toBe(undefined);
+    expect(
+      section("pages")
+        .querySelector<HTMLElement>('[data-path="pages/notes.md"]')
+        ?.closest<HTMLElement>('[part="page-item"]')?.dataset.kind,
+    ).toBe("page");
+  });
+
+  test("a format change that leaves the page extensions alone does not re-read the project", async () => {
+    let reads = 0;
+    let formats: unknown[] = [];
+    refreshFormats();
+    await project({ listFormats: () => Promise.resolve(formats) });
+    await paint();
+    const platform = getPlatform();
+    const listDirectory = platform.listDirectory.bind(platform);
+    platform.listDirectory = async (...args: Parameters<typeof listDirectory>) => {
+      reads += 1;
+      return listDirectory(...args);
+    };
+    // A format that reads no page: the registry changed, the page list's question did not.
+    formats = [{ ...MARKDOWN_PAGES, documentKinds: ["content"] }];
+    refreshFormats();
+    await loadFormats();
+    await flush(10);
+    expect(reads).toBe(0);
   });
 });
 

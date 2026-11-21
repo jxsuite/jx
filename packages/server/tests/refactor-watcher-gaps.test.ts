@@ -13,8 +13,16 @@ type AllListener = (eventType: string, changedPath: string) => void;
 type WatchFailure = Error | string;
 type ErrorListener = (error: WatchFailure) => void;
 
+/** The part of chokidar's options these tests read back. */
+interface WatchOptions {
+  awaitWriteFinish?: { pollInterval: number; stabilityThreshold: number };
+}
+
 class FakeWatcher {
   closed = false;
+  /** The options `watch()` was called with, so a test can read what was asked of chokidar. */
+  options: WatchOptions = {};
+  private readyListeners: (() => void)[] = [];
   private listeners: AllListener[] = [];
   private errorListeners: ErrorListener[] = [];
 
@@ -25,6 +33,19 @@ class FakeWatcher {
       this.listeners.push(subscription[1]);
     }
     return this;
+  }
+
+  /** Chokidar's one-shot `ready`, the only event this wrapper listens to with `once`. */
+  once(_event: "ready", listener: () => void): this {
+    this.readyListeners.push(listener);
+    return this;
+  }
+
+  /** Chokidar's `ready`: the initial scan is done. */
+  emitReady(): void {
+    for (const listener of this.readyListeners.splice(0)) {
+      listener();
+    }
   }
 
   emit(eventType: string, changedPath: string): void {
@@ -51,8 +72,9 @@ class FakeWatcher {
 
 let lastWatcher: FakeWatcher | null = null;
 void mock.module("chokidar", () => ({
-  watch: () => {
+  watch: (_root: string, options: WatchOptions) => {
     lastWatcher = new FakeWatcher();
+    lastWatcher.options = options;
     return lastWatcher;
   },
 }));
@@ -119,6 +141,63 @@ describe("createFsWatcher — watch errors", () => {
     } finally {
       console.error = original;
       void handle.close();
+    }
+  });
+});
+
+describe("createFsWatcher — readiness and errors", () => {
+  test("`ready` settles when chokidar finishes its initial scan, not before", async () => {
+    const handle = createFsWatcher(ROOT, () => {});
+    const watcher = lastWatcher!;
+    let settled = false;
+    void handle.ready.then(() => {
+      settled = true;
+    });
+    await sleep(5);
+    expect(settled).toBe(false);
+    watcher.emitReady();
+    await handle.ready;
+    expect(settled).toBe(true);
+    await handle.close();
+  });
+
+  test("closing before the scan finished still settles `ready`", async () => {
+    const handle = createFsWatcher(ROOT, () => {});
+    await handle.close();
+    await handle.ready;
+    expect(lastWatcher!.closed).toBe(true);
+  });
+
+  test("a write is reported once it is whole, as the dev server's watcher does", async () => {
+    const defaults = createFsWatcher(ROOT, () => {});
+    expect(lastWatcher!.options.awaitWriteFinish).toEqual({
+      pollInterval: 10,
+      stabilityThreshold: 50,
+    });
+    await defaults.close();
+    const tuned = createFsWatcher(ROOT, () => {}, { stabilityThreshold: 5 });
+    expect(lastWatcher!.options.awaitWriteFinish).toEqual({
+      pollInterval: 10,
+      stabilityThreshold: 5,
+    });
+    await tuned.close();
+  });
+
+  test("an `onError` callback receives watch errors instead of the log", async () => {
+    const seen: string[] = [];
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => logged.push(args.join(" "));
+    const handle = createFsWatcher(ROOT, () => {}, {
+      onError: (error) => seen.push(error.message),
+    });
+    try {
+      lastWatcher!.emitError("EMFILE: too many open files");
+      expect(seen).toEqual(["EMFILE: too many open files"]);
+      expect(logged).toEqual([]);
+    } finally {
+      console.error = original;
+      await handle.close();
     }
   });
 });

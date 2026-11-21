@@ -123,6 +123,7 @@ const {
   setLibrarySearch,
   shownCollection,
 } = await import("../src/browse/library-pane");
+const { invalidatePreviews } = await import("../src/browse/library-preview");
 const { invalidateCollectionPages } = await import("../src/content/collection-pages");
 const { templateDisplayName } = await import("../src/content/content-collections");
 const { invalidateEntrySummaries } = await import("../src/content/entry-summaries");
@@ -550,6 +551,68 @@ describe("mounting", () => {
     await flush();
     expect(parts("card").length).toBe(2);
     expect(part("doc-preview")?.shadowRoot?.firstElementChild ?? null).toBeNull();
+  });
+
+  test("a preview that failed is not re-read on every repaint, and is retried once its inputs move", async () => {
+    const reads: string[] = [];
+    let failing = true;
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
+      readFile: (path: string) => {
+        reads.push(path);
+        return failing
+          ? Promise.reject(new Error("not written yet"))
+          : Promise.resolve('{"tagName":"div","children":[]}');
+      },
+    });
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    await mount();
+    await flush();
+    const slot = () =>
+      host.querySelector<HTMLElement>('[part="doc-preview"][data-path="pages/index.json"]');
+    expect(slot()?.shadowRoot?.childElementCount ?? 0).toBe(0);
+    const afterFailure = reads.filter((path) => path === "pages/index.json").length;
+    // A repaint under the same inputs asks nothing: it would only fail again.
+    setLibrarySearch("");
+    await flush();
+    expect(reads.filter((path) => path === "pages/index.json").length).toBe(afterFailure);
+    // The inputs move (a scan finished, the registry loaded): the box is asked again, and filled.
+    failing = false;
+    invalidatePreviews();
+    await flush();
+    await flush();
+    expect(slot()?.shadowRoot?.childElementCount).toBe(1);
+  });
+
+  test("a preview that failed while its inputs moved is asked again at once", async () => {
+    let rejectFirst: (error: Error) => void = () => {};
+    let first = true;
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
+      readFile: (path: string) => {
+        if (path === "pages/index.json" && first) {
+          first = false;
+          return new Promise<string>((_resolve, reject) => {
+            rejectFirst = reject;
+          });
+        }
+        return Promise.resolve('{"tagName":"div","children":[]}');
+      },
+    });
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    await mount();
+    await flush();
+    const slot = () =>
+      host.querySelector<HTMLElement>('[part="doc-preview"][data-path="pages/index.json"]');
+    // The render is in flight when the inputs move: the settle pass finds the path busy and skips.
+    invalidatePreviews();
+    await flush();
+    // Then it fails, under inputs that are no longer current. Nothing else will ask again, so this
+    // Failure must, rather than wait for the card to leave view and come back.
+    rejectFirst(new Error("not written yet"));
+    await flush();
+    await flush();
+    expect(slot()?.shadowRoot?.childElementCount).toBe(1);
   });
 
   test("scans the project once and lists only the shown collection's files", async () => {

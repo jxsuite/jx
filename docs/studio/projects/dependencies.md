@@ -10,6 +10,7 @@ code:
   - packages/studio/src/settings/dependencies-editor.ts
   - packages/studio/src/packages/jxsuite-update.ts
   - packages/studio/src/packages/ensure-deps.ts
+  - packages/studio/src/files/open-sequence.ts
 ---
 
 # Dependencies and imports
@@ -20,7 +21,7 @@ Packages is where you decide which building blocks a document, or the whole site
 
 ## Opening a project that has never been installed
 
-When you open a project whose `node_modules` is missing, Studio installs its dependencies for you behind a progress dialog before the editor loads, so component and format resolution see the real dependency tree rather than an empty one. When that install runs, Studio re-reads the project's [extensions](/docs/extending/extensions/formats) afterwards, which is what puts `Markdown` in the [New File format picker](/docs/studio/interface#creating-a-file) on a project you have just cloned rather than in the session after.
+When you open a project whose `node_modules` is missing, Studio installs its dependencies for you behind a progress dialog before the editor loads, so component and format resolution see the real dependency tree rather than an empty one. When that install runs, Studio re-reads the project's [extensions](/docs/extending/extensions/formats) afterwards, which is what puts `Markdown` in the [New File format picker](/docs/studio/interface#creating-a-file) on a project you have just cloned rather than in the session after. This holds however the project was opened, including a project you have just created from a starter: its Markdown pages appear in the Site panel as soon as the install finishes.
 
 ## How Studio installs packages
 

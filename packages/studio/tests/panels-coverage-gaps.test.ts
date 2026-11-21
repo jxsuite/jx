@@ -54,6 +54,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item", () => ({
   extractInstruction: (data: { __instr?: Instruction }) => data.__instr ?? null,
 }));
 void mock.module("../src/panels/component-preview", () => ({
+  renderComponentInstance: async (comp: ComponentEntry) => document.createElement(comp.tagName),
   renderComponentPreview: async (comp: ComponentEntry) => {
     const el = document.createElement(comp.tagName);
     el.textContent = "preview";

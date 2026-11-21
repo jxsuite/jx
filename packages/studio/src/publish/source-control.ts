@@ -38,7 +38,7 @@ import { projectState } from "../store";
 import { shell } from "../shell";
 import type { GitLogEntry } from "../shell";
 import { showConfirmDialog, showPromptDialog } from "../ui/layers";
-import { POLL_GIT } from "../ui/timing";
+import { GIT_REFRESH_DEBOUNCE, POLL_GIT } from "../ui/timing";
 import { notify } from "../services/notify";
 import { authenticateGithub } from "../github/github-auth";
 import { createGithubRepository } from "../github/github-publish";
@@ -57,14 +57,19 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
  * read is the workspace's error line; a failed status still leaves the refresh to bump the
  * revision, because nothing about the tree is known to be unchanged.
  */
-async function readStatusAndBranches(): Promise<void> {
+async function readStatusAndBranches(current: () => boolean): Promise<void> {
   const plat = getPlatform();
   const { git } = shell;
   let status;
   try {
     status = await plat.gitStatus();
   } catch (error) {
-    git.error = errorMessage(error);
+    if (current()) {
+      git.error = errorMessage(error);
+    }
+    return;
+  }
+  if (!current()) {
     return;
   }
   git.status = status;
@@ -73,9 +78,62 @@ async function readStatusAndBranches(): Promise<void> {
     return;
   }
   try {
-    git.branches = await plat.gitBranches();
+    const branches = await plat.gitBranches();
+    if (current()) {
+      git.branches = branches;
+    }
   } catch (error) {
-    git.error = errorMessage(error);
+    if (current()) {
+      git.error = errorMessage(error);
+    }
+  }
+}
+
+/**
+ * The refresh generation. Every {@link refreshGitStatus} takes the next one, and a read writes to
+ * `shell.git` only while its generation is still the latest: two reads in flight can answer in
+ * either order, and the status the older one saw is older than the tree the newer one read.
+ * {@link cleanupSourceControl} takes one too, so a read of the previous project lands nowhere.
+ */
+let _generation = 0;
+/** How many {@link refreshGitStatus} calls are between their first read and their last write. */
+let _inFlight = 0;
+/** A refresh was asked for while one was in flight: run one more when the last one settles. */
+let _trailing = false;
+/** The pending {@link scheduleGitRefresh} timer. */
+let _scheduleTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * How many git verbs are running ({@link withGitVerb}). A verb owns `shell.git.loading` from its
+ * start to its end, so a status read that overlaps it (the watcher's, a save's, a trailing one)
+ * must neither clear the flag under it nor read the tree halfway through it: the flag is what keeps
+ * a second Publish or Pull from starting beside the first.
+ */
+let _verbs = 0;
+
+/**
+ * Run one git verb as the owner of `shell.git.loading`.
+ *
+ * The flag is raised for the whole verb. A status read asked for meanwhile is deferred rather than
+ * run, because every verb ends in a refresh of its own; one asked for after that refresh began is
+ * run once the verb ends. A verb may lower the flag itself on the way (a deploy is not source
+ * control being busy), and it is lowered here when the last verb ends with no read in flight.
+ *
+ * @param run The verb. Nested verbs (a refused push offering a branch) share the one ownership.
+ */
+export async function withGitVerb<T>(run: () => Promise<T>): Promise<T> {
+  _verbs += 1;
+  shell.git.loading = true;
+  shell.git.error = null;
+  try {
+    return await run();
+  } finally {
+    _verbs -= 1;
+    if (_verbs === 0 && _inFlight === 0) {
+      shell.git.loading = false;
+      if (takeTrailing()) {
+        void refreshGitStatus();
+      }
+    }
   }
 }
 
@@ -84,27 +142,95 @@ export async function refreshGitStatus(): Promise<void> {
   if (!projectState) {
     return;
   }
+  _generation += 1;
+  const generation = _generation;
+  const current = () => generation === _generation;
   const { git } = shell;
   git.loading = true;
   git.error = null;
+  _inFlight += 1;
+  // Every change asked about before this read began is in what it reads.
+  _trailing = false;
   try {
-    await readStatusAndBranches();
+    await readStatusAndBranches(current);
+    // A newer read started while this one waited: its answer is the one to draw.
+    if (!current()) {
+      return;
+    }
     git.lastUpdated = now();
     /* THE COMPARISON FOLLOWS THE TREE. Every git verb that can move the working tree ends here —
-       commit, discard, checkout, pull, fetch — and so does the 30s poll that notices a change made
-       outside Studio. Bumping the revision is what re-issues a Diff lens's read; the comparison
-       this module opened is re-read below, because nothing else owns it. */
+       commit, discard, checkout, pull, fetch — and so do the watcher's batches and the poll that
+       notice a change made outside Studio. Bumping the revision is what re-issues a Diff lens's
+       read; the comparison this module opened is re-read below, because nothing else owns it. */
     git.rev += 1;
-    await rereadOpenComparison();
+    await rereadOpenComparison(current);
     // The log moves with a commit, a pull or a checkout too; once it has been shown, keep it current.
-    if (git.logEntries !== null) {
+    if (current() && git.logEntries !== null) {
       await fetchGitLog();
     }
   } catch (error) {
-    git.error = errorMessage(error);
+    if (current()) {
+      git.error = errorMessage(error);
+    }
   } finally {
-    git.loading = false;
+    _inFlight -= 1;
+    /* The latest read clears the flag; a superseded one leaves it to the read that superseded it.
+       While a verb runs the flag is the verb's, and the verb lowers it ({@link withGitVerb}). */
+    if (_verbs === 0 && (current() || _inFlight === 0)) {
+      git.loading = false;
+    }
+    if (_verbs === 0 && _inFlight === 0 && takeTrailing()) {
+      void refreshGitStatus();
+    }
   }
+}
+
+/** Whether a trailing read was armed, disarming it. A call, so the answer is read when asked. */
+function takeTrailing(): boolean {
+  const armed = _trailing;
+  _trailing = false;
+  return armed;
+}
+
+/**
+ * Ask for a status read now, without stacking reads.
+ *
+ * A read already in flight may have read the tree before the change that asks for this one, so it
+ * is not enough to wait for it: one trailing read is armed and runs when it settles, however many
+ * requests arrive meanwhile. While a verb runs ({@link withGitVerb}) nothing is read: the verb ends
+ * in its own refresh, which clears the request if it began after it, and a request that came later
+ * still is run when the verb ends.
+ */
+export function requestGitRefresh(): void {
+  if (!projectState) {
+    return;
+  }
+  if (_inFlight > 0 || _verbs > 0) {
+    _trailing = true;
+    return;
+  }
+  // Held by a flow that ends in its own refresh, which will see the change.
+  if (shell.git.loading) {
+    return;
+  }
+  void refreshGitStatus();
+}
+
+/**
+ * Ask for a status read once the tree has been quiet for {@link GIT_REFRESH_DEBOUNCE}.
+ *
+ * The file watcher calls this for every batch it delivers, Studio's own writes included (a write
+ * Studio made changes the status exactly as much as anyone else's), and for every resync. A burst
+ * (a starter scaffolded, a checkout, a formatter run) is many batches and one read.
+ */
+export function scheduleGitRefresh(): void {
+  if (_scheduleTimer) {
+    clearTimeout(_scheduleTimer);
+  }
+  _scheduleTimer = setTimeout(() => {
+    _scheduleTimer = null;
+    requestGitRefresh();
+  }, GIT_REFRESH_DEBOUNCE);
 }
 
 /**
@@ -115,7 +241,7 @@ export async function refreshGitStatus(): Promise<void> {
  * true. A read that fails leaves the previous comparison up: a momentary git error is not a reason
  * to blank a review someone is in the middle of.
  */
-async function rereadOpenComparison(): Promise<void> {
+async function rereadOpenComparison(current: () => boolean): Promise<void> {
   const state = shell.git.diffState;
   if (!state) {
     return;
@@ -126,7 +252,10 @@ async function rereadOpenComparison(): Promise<void> {
     return;
   }
   try {
-    shell.git.diffState = await readGitDiff(state.filePath, change.status);
+    const next = await readGitDiff(state.filePath, change.status);
+    if (current()) {
+      shell.git.diffState = next;
+    }
   } catch {
     // Intentionally ignored: the comparison on screen is still the last one that read cleanly.
   }
@@ -144,11 +273,10 @@ async function rereadOpenComparison(): Promise<void> {
 export async function noteFileSaved(path: string | null): Promise<void> {
   shell.git.rev += 1;
   /* The count of unpublished changes is drawn on the Publish workspace tab in every workspace, and
-     the poll only runs while Publish is showing, so a save re-reads the status itself. Not
-     awaited: the comparison below does not depend on it. */
-  if (!shell.git.loading) {
-    void refreshGitStatus();
-  }
+     the poll only runs while Publish is showing, so a save re-reads the status itself. A read in
+     flight may predate the write, so it arms one more rather than being trusted. Not awaited: the
+     comparison below does not depend on it. */
+  requestGitRefresh();
   const state = shell.git.diffState;
   if (!path || state?.filePath !== path) {
     return;
@@ -327,17 +455,16 @@ export function changedFileAt(path: string): GitFileStatus | undefined {
  */
 export async function gitAction(run: (plat: StudioPlatform) => Promise<void>): Promise<boolean> {
   const plat = getPlatform();
-  shell.git.loading = true;
-  shell.git.error = null;
-  try {
-    await run(plat);
-    await refreshGitStatus();
-    return true;
-  } catch (error) {
-    shell.git.error = errorMessage(error);
-    shell.git.loading = false;
-    return false;
-  }
+  return withGitVerb(async () => {
+    try {
+      await run(plat);
+      await refreshGitStatus();
+      return true;
+    } catch (error) {
+      shell.git.error = errorMessage(error);
+      return false;
+    }
+  });
 }
 
 /**
@@ -371,18 +498,18 @@ export async function initRepository(): Promise<void> {
  */
 export async function pushCurrentBranch(): Promise<void> {
   const plat = getPlatform();
-  shell.git.loading = true;
-  shell.git.error = null;
-  try {
-    await plat.gitPush();
-    await refreshGitStatus();
-  } catch (error) {
-    shell.git.loading = false;
-    const message = errorMessage(error);
-    if ((await offerBranchForRefusedPush(message, { refresh: refreshGitStatus })) === null) {
-      shell.git.error = message;
+  await withGitVerb(async () => {
+    try {
+      await plat.gitPush();
+      await refreshGitStatus();
+    } catch (error) {
+      shell.git.loading = false;
+      const message = errorMessage(error);
+      if ((await offerBranchForRefusedPush(message, { refresh: refreshGitStatus })) === null) {
+        shell.git.error = message;
+      }
     }
-  }
+  });
 }
 
 /** Fetch from the remote. */
@@ -392,15 +519,14 @@ export async function fetchRemote(): Promise<void> {
 
 /** Pull through the package-aware orchestrator, under the same contract as {@link gitAction}. */
 export async function pullRemote(): Promise<void> {
-  shell.git.loading = true;
-  shell.git.error = null;
-  try {
-    await pullWithPackageSync();
-    await refreshGitStatus();
-  } catch (error) {
-    shell.git.error = errorMessage(error);
-    shell.git.loading = false;
-  }
+  await withGitVerb(async () => {
+    try {
+      await pullWithPackageSync();
+      await refreshGitStatus();
+    } catch (error) {
+      shell.git.error = errorMessage(error);
+    }
+  });
 }
 
 /** Create the GitHub repository for this project, named after it. */
@@ -651,16 +777,18 @@ let _pollTimer: ReturnType<typeof setInterval> | null = null;
 /**
  * Arm the background refresh, once. Idempotent.
  *
- * It refreshes only while the Publish workspace is showing and no read is in flight: the count on
- * the Publish tab is kept current by saves ({@link noteFileSaved}) everywhere else, and a poll that
- * ran in every workspace would spend a request every 30 seconds on a list nobody is looking at.
+ * A fallback, not the source of truth: the watcher's batches ({@link scheduleGitRefresh}) and saves
+ * ({@link noteFileSaved}) keep the status current, and the poll catches what no event reports (a
+ * commit made in a terminal touches only `.git`, which no watcher reports). It refreshes only while
+ * the Publish workspace is showing and no read is in flight, because a poll that ran in every
+ * workspace would spend a request every 30 seconds on a list nobody is looking at.
  */
 export function armGitPoll(): void {
   if (_pollTimer) {
     return;
   }
   _pollTimer = setInterval(() => {
-    if (shell.workspace === "publish" && !shell.git.loading) {
+    if (shell.workspace === "publish" && !shell.git.loading && _verbs === 0) {
       void refreshGitStatus();
     }
   }, POLL_GIT);
@@ -676,6 +804,13 @@ export function cleanupSourceControl(): void {
     clearInterval(_pollTimer);
     _pollTimer = null;
   }
+  if (_scheduleTimer) {
+    clearTimeout(_scheduleTimer);
+    _scheduleTimer = null;
+  }
+  // A read still in flight belongs to the repository being left: its answer must land nowhere.
+  _generation += 1;
+  _trailing = false;
   _shown = { paths: new Set(), root: "" };
 }
 

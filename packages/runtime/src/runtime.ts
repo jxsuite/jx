@@ -467,7 +467,36 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
     return doc;
   });
   _resolveCache.set(source, p);
+  /* Only a success is remembered: a failed fetch or parse leaves no entry, so the next request for
+     the same URL fetches again instead of replaying the rejection for the life of the realm. */
+  p.catch(() => {
+    if (_resolveCache.get(source) === p) {
+      _resolveCache.delete(source);
+    }
+  });
   return p;
+}
+
+/**
+ * Forget everything this realm remembers about a document URL: its resolved document and whether
+ * `defineElement` has been handed it. The next `resolve` or `defineElement` of that URL fetches
+ * afresh. A host whose documents change on disk (an editor) calls this before re-reading one; a tag
+ * already registered with `customElements` stays registered, so a changed definition still goes
+ * through `redefineElement`. Both spellings are dropped: the URL as given, and its absolute form.
+ *
+ * @param {string} url - The URL as a reference or `defineElement` named it
+ * @returns {void}
+ */
+export function forgetSource(url: string): void {
+  _resolveCache.delete(url);
+  _definedSources.delete(url);
+  try {
+    const { href } = new URL(url, location.href);
+    _resolveCache.delete(href);
+    _definedSources.delete(href);
+  } catch {
+    // Not a URL at all: the raw key was the only one it could have been stored under.
+  }
 }
 
 // ─── Step 2: Build scope ──────────────────────────────────────────────────────
@@ -6044,30 +6073,48 @@ function extendInstancePath(path: InstancePath, frame: InstanceFrame): InstanceP
   return { expansion: path.expansion, frames: [...path.frames, frame] };
 }
 
+/** The absolute URLs `defineElement` has been handed and has not given up on. */
+const _definedSources = new Set<string>();
+
 /**
  * Register a custom element from a Jx document.
  *
+ * A URL is claimed while its definition is in flight, so concurrent calls fetch it once. A claim
+ * that fails (the fetch, the parse, a dependency, a bad `tagName`) is released before the error
+ * propagates, so a later call for the same URL tries again rather than returning early with nothing
+ * defined.
+ *
  * @param {string | JxDocument} source - URL to .json file, or raw document object
- * @param {string} [base] - Base URL for resolving $src imports
+ * @param {string} [baseUrl] - Base URL for resolving $src imports
  * @returns {Promise<void>}
  */
-const _definedSources = new Set<string>();
-
 export async function defineElement(source: string | JxDocument, baseUrl?: string) {
-  let base = baseUrl;
-  let source_: JxDocument;
-  if (isString(source)) {
-    base = new URL(source, base ?? location.href).href;
-    if (_definedSources.has(base)) {
-      return;
-    }
-    _definedSources.add(base);
-    source_ = await resolve(source);
-  } else {
-    source_ = inlineDocument(source, new URL(base ?? location.href, location.href).href);
+  if (!isString(source)) {
+    const base = new URL(baseUrl ?? location.href, location.href).href;
+    await defineResolved(inlineDocument(source, base), baseUrl ?? location.href);
+    return;
   }
-  base ??= location.href;
+  const base = new URL(source, baseUrl ?? location.href).href;
+  if (_definedSources.has(base)) {
+    return;
+  }
+  _definedSources.add(base);
+  try {
+    await defineResolved(await resolve(source), base);
+  } catch (error) {
+    _definedSources.delete(base);
+    throw error;
+  }
+}
 
+/**
+ * Define the element a resolved document describes, its `$elements` dependencies first.
+ *
+ * @param {JxDocument} source_
+ * @param {string} base - Base URL for the document's relative references
+ * @returns {Promise<void>}
+ */
+async function defineResolved(source_: JxDocument, base: string): Promise<void> {
   const { tagName } = source_;
   if (!tagName || !tagName.includes("-")) {
     throw new Error(`Jx defineElement: tagName "${tagName}" must contain a hyphen`);

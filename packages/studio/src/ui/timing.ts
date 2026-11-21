@@ -53,8 +53,17 @@ export const HEAD_EDIT_DEBOUNCE = 300;
  */
 
 /**
- * Git status poll while the Git panel is open. Deliberately coarse: it exists to notice changes
- * made outside Studio, and each tick shells out to git, so a faster cadence buys little and costs
- * I/O.
+ * Git status poll while the Publish workspace is showing. A fallback: the file watcher's batches
+ * re-read the status ({@link GIT_REFRESH_DEBOUNCE}), so the poll exists for what no watcher reports
+ * (a commit made in a terminal touches only `.git`). Deliberately coarse, because each tick shells
+ * out to git, so a faster cadence buys little and costs I/O.
  */
 export const POLL_GIT = 30_000;
+
+/**
+ * How long the file watcher's batches must go quiet before git status is re-read. A burst (a
+ * starter scaffolded, a branch checked out, a formatter run over the tree) arrives as many batches,
+ * and each read shells out to git, so the burst is one read; short enough that the Publish tab's
+ * count follows a save or an outside edit without anyone reaching for Refresh.
+ */
+export const GIT_REFRESH_DEBOUNCE = 400;

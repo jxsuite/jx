@@ -30,22 +30,54 @@ function isIgnored(root: string, path: string): boolean {
 
 export interface FsWatcherHandle {
   close: () => Promise<void>;
+  /**
+   * Settles once chokidar's initial scan is done and every directory under the root is watched.
+   *
+   * `ignoreInitial` means nothing that existed, or was written, while the scan ran is announced: a
+   * consumer that listed the tree before this settles must list it again after, or a file written
+   * in that window (a scaffold, an install) stays invisible until something else touches it. It
+   * never rejects; a watcher closed before it was ready resolves it too.
+   */
+  ready: Promise<void>;
+}
+
+/** Options for {@link createFsWatcher}. */
+export interface FsWatcherOptions {
+  /** Quiet period, in ms, before a coalesced batch is delivered. Defaults to 40. */
+  debounce?: number;
+  /**
+   * How long, in ms, a file's size must hold still before its `add`/`change` is reported. Defaults
+   * to 50, the dev server's own watcher setting, so an editor's or an installer's partial write is
+   * reported once, finished, rather than as a half-written file.
+   */
+  stabilityThreshold?: number;
+  /**
+   * Told about every watcher error, a non-Error cause wrapped in one. Errors are never fatal;
+   * without this they are logged.
+   */
+  onError?: (error: Error) => void;
 }
 
 /**
  * Watch `root`, coalescing rapid changes and delivering batches to `sink`. Returns a handle whose
- * `close()` stops the watcher and clears any pending batch.
+ * `close()` stops the watcher and clears any pending batch, and whose `ready` settles when the
+ * initial scan has finished.
  */
 export function createFsWatcher(
   root: string,
   sink: (events: FsEventPayload[]) => void,
-  opts: { debounce?: number } = {},
+  opts: FsWatcherOptions = {},
 ): FsWatcherHandle {
   const debounceMs = opts.debounce ?? 40;
   let buffer: FsEventPayload[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const watcher = watch(root, {
+    // The same settings as the dev server's watcher (watch.ts), so both report a write once it is whole.
+    awaitWriteFinish: {
+      pollInterval: 10,
+      stabilityThreshold: opts.stabilityThreshold ?? 50,
+    },
     /* Left on deliberately: a symlink inside a project is project content, and its events belong
        in the sidebar. It is the link pointing OUT of the root that walks the watcher off into the
        rest of the filesystem, and createWatchIgnore drops exactly those — along with the sockets
@@ -81,11 +113,23 @@ export function createFsWatcher(
      watches. The filter above means these should now be rare; the listener means they are never
      fatal when they are not. */
   watcher.on("error", (cause) => {
+    if (opts.onError) {
+      opts.onError(cause instanceof Error ? cause : new Error(errorMessage(cause)));
+      return;
+    }
     console.error(`[fs-watch] ${errorMessage(cause)}`);
   });
 
+  // Assigned synchronously by the executor, so it is set before anything below can call it.
+  let markReady: (() => void) | undefined;
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve;
+  });
+  watcher.once("ready", () => markReady?.());
+
   return {
     close: async () => {
+      markReady?.();
       if (timer) {
         clearTimeout(timer);
         timer = null;
@@ -93,5 +137,6 @@ export function createFsWatcher(
       buffer = [];
       await watcher.close();
     },
+    ready,
   };
 }

@@ -48,7 +48,7 @@ void mock.module("@jxsuite/server/refactor", () => ({
   createFsWatcher: (root: string, onEvents: (events: unknown[]) => void) => {
     watchedRoots.push(root);
     emit = onEvents;
-    return { close: () => Promise.resolve() };
+    return { close: () => Promise.resolve(), ready: Promise.resolve() };
   },
   findReferences: () => Promise.resolve({}),
   invalidateReferenceCache: () => {},
@@ -147,6 +147,31 @@ describe("the watcher a preview needs", () => {
       hasOrigin = true;
       await session.previewSite({ route: "/" });
       expect(watchedRoots).toEqual([root]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  test("previewing again announces nothing: the watcher already running is kept, not re-announced", async () => {
+    /* Each announcement is an "open" resync in the window: a re-list of every loaded directory
+       and every content version forgotten. A preview click changes nothing on disk. */
+    const root = project();
+    try {
+      const session = createProjectSession(authorized(root));
+      const watching = mock(() => {});
+      session.setFileEventSink(() => {}, watching);
+      await Bun.sleep(0);
+      expect(watching).toHaveBeenCalledTimes(1);
+      hasOrigin = true;
+      await session.previewSite({ route: "/" });
+      await session.previewSite({ route: "/about" });
+      await Bun.sleep(0);
+      expect(watchedRoots).toEqual([root]);
+      expect(watching).toHaveBeenCalledTimes(1);
+      // A re-root still announces: the window re-lists after every one.
+      session.setProjectRoot(authorized(root));
+      await Bun.sleep(0);
+      expect(watching).toHaveBeenCalledTimes(2);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

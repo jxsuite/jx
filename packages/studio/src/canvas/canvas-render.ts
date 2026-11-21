@@ -1016,10 +1016,11 @@ export function renderCanvas(paneId: string = workspace.activePaneId) {
 }
 
 /**
- * A kit component was saved: redefine it in every live frame, then render every pane, because a
- * frame's instances keep the definition they rendered until something renders them again
- * (embedding.md §7). The render is what makes the redefinition visible; the message alone would
- * leave every open canvas drawing the old element beside a shell drawing the new one.
+ * A component definition changed (a kit component or a project's own, saved or rewritten on disk):
+ * redefine it in every live frame, then render every pane, because a frame's instances keep the
+ * definition they rendered until something renders them again (embedding.md §7). The render is what
+ * makes the redefinition visible; the message alone would leave every open canvas drawing the old
+ * element beside a shell drawing the new one.
  *
  * @param {JxMutableNode} doc The component document, as saved.
  * @param {string} base The URL the frame resolves the document's own references against — the

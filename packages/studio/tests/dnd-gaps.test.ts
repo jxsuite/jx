@@ -125,6 +125,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item", () => ({
 
 let previewRenders = 0;
 void mock.module("../src/panels/component-preview", () => ({
+  renderComponentInstance: async (comp: ComponentEntry) => document.createElement(comp.tagName),
   renderComponentPreview: async (comp: ComponentEntry) => {
     previewRenders += 1;
     const el = document.createElement(comp.tagName);

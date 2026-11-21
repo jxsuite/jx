@@ -1,6 +1,12 @@
 import "./harness";
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { CODE_DEBOUNCE, INPUT_DEBOUNCE, LIVE_PREVIEW, POLL_GIT } from "../src/ui/timing";
+import {
+  CODE_DEBOUNCE,
+  GIT_REFRESH_DEBOUNCE,
+  INPUT_DEBOUNCE,
+  LIVE_PREVIEW,
+  POLL_GIT,
+} from "../src/ui/timing";
 import { debouncedStyleCommit } from "../src/store";
 
 // ─── Local helpers ───────────────────────────────────────────────────────────
@@ -41,6 +47,7 @@ describe("timing constants", () => {
   test("the remaining constants hold their shipped values", () => {
     expect(LIVE_PREVIEW).toBe(350);
     expect(POLL_GIT).toBe(30_000);
+    expect(GIT_REFRESH_DEBOUNCE).toBe(400);
   });
 
   test("the ordering invariants hold", () => {
@@ -49,6 +56,8 @@ describe("timing constants", () => {
     expect(INPUT_DEBOUNCE).toBeLessThan(CODE_DEBOUNCE);
     // The git poll must outlive every input debounce: a tick mid-edit buys nothing and costs I/O.
     expect(CODE_DEBOUNCE).toBeLessThan(POLL_GIT);
+    // The watcher's trigger is the primary path; the poll is only its fallback.
+    expect(GIT_REFRESH_DEBOUNCE).toBeLessThan(POLL_GIT);
   });
 });
 

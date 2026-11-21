@@ -97,7 +97,14 @@ import {
   projectLocales,
 } from "./library-model";
 import { createLibrarySource, entryFieldColumns, libraryColumns } from "./library-source";
-import { createPreviewCache, createPreviewObserver, previewFor } from "./library-preview";
+import {
+  createPreviewCache,
+  createPreviewObserver,
+  invalidatePreviews,
+  onPreviewsInvalidated,
+  previewEpoch,
+  previewFor,
+} from "./library-preview";
 import { mountPreview, shownPreview } from "./preview-root";
 import { computeWindow } from "../ui/virtual-window";
 import { paneRegion } from "../ui/regions";
@@ -311,6 +318,7 @@ export function setLibraryLocale(locale: string, key: string = shownCollectionKe
 export function invalidateLibrary(): void {
   source = null;
   scanAttempted = false;
+  invalidatePreviews();
   for (const panel of _active.values()) {
     panel.cache.clear();
   }
@@ -418,6 +426,8 @@ async function loadLibrary(): Promise<void> {
   } finally {
     clearTimeout(timer);
     contentView.loading = false;
+    // A finished scan is new input: a preview that failed before it is worth asking again.
+    invalidatePreviews();
     bump();
     // The Collections panel draws the counts this scan just produced.
     renderOnly("leftPanel");
@@ -428,6 +438,7 @@ async function loadLibrary(): Promise<void> {
 export async function refreshLibrary(): Promise<void> {
   source = null;
   scanAttempted = false;
+  invalidatePreviews();
   for (const panel of _active.values()) {
     panel.cache.clear();
   }
@@ -459,6 +470,12 @@ interface ActiveLibraryPane {
    * and a scroll through a long list would read each document several times over.
    */
   pendingPaths: Set<string>;
+  /**
+   * Paths whose last preview attempt came back empty, with the {@link previewEpoch} it failed under.
+   * Such a path is not asked again on every repaint; it is asked once the epoch moves, or when its
+   * card scrolls out of view and back in.
+   */
+  failed: Map<string, string>;
   /** The coalesced post-repaint pass; see {@link scheduleSettle}. */
   settleTimer: ReturnType<typeof setTimeout> | null;
   /** Stops listening for the collection-pages index. */
@@ -501,6 +518,7 @@ export function detachLibraryPane(paneId: string): void {
   panel.cache.clear();
   panel.slots.clear();
   panel.pendingPaths.clear();
+  panel.failed.clear();
   panel.scope.stop();
   panel.surface.dispose();
   _active.delete(paneId);
@@ -534,17 +552,44 @@ function windowFor(
 async function fillPreview(panel: ActiveLibraryPane, path: string) {
   // Only ever entered once per path at a time: both callers refuse a path already in flight.
   panel.pendingPaths.add(path);
+  /** A box to ask again for at once, after this render has let go of the path. */
+  let retry: HTMLElement | null = null;
   try {
+    const epoch = previewEpoch();
     const rendered = await previewFor(path, panel.cache);
-    if (!rendered || activeIn(panel.paneId) !== panel) {
+    if (activeIn(panel.paneId) !== panel) {
       return;
     }
     const slot = panel.slots.get(path);
+    if (!rendered) {
+      /* Remember the failure rather than give up on the box: a preview that failed while the
+         project was still settling (the registry not yet scanned, a dependency not yet written)
+         is asked again once the inputs move, or when the card comes back into view. */
+      if (!slot?.isConnected) {
+        panel.failed.set(path, epoch);
+      } else if (epoch === previewEpoch()) {
+        panel.failed.set(path, epoch);
+        panel.pending.set(slot, path);
+        panel.observer.observeAgain(slot);
+      } else {
+        /* The inputs moved while this render ran, so the settle pass that moved them found the
+           path in flight and skipped it: ask again under the inputs as they are now. */
+        panel.failed.delete(path);
+        retry = slot;
+      }
+      return;
+    }
+    panel.failed.delete(path);
     if (slot?.isConnected && !shownPreview(slot)) {
       mountPreview(slot, rendered);
     }
   } finally {
     panel.pendingPaths.delete(path);
+    // After the release, because an observer with no IntersectionObserver reports synchronously.
+    if (retry) {
+      panel.pending.set(retry, path);
+      panel.observer.observe(retry);
+    }
   }
 }
 
@@ -566,6 +611,12 @@ function tendSlot(panel: ActiveLibraryPane, slot: HTMLElement, path: string): vo
     return;
   }
   panel.pending.set(slot, path);
+  if (panel.failed.get(path) === previewEpoch()) {
+    // Failed under these very inputs: asking again now would fail again, so wait for re-entry.
+    panel.observer.observeAgain(slot);
+    return;
+  }
+  panel.failed.delete(path);
   panel.observer.observe(slot);
 }
 
@@ -1525,6 +1576,7 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
   const scope = effectScope();
   panel = {
     cache: createPreviewCache(),
+    failed: new Map(),
     observer,
     paneId,
     pending: new WeakMap(),
@@ -1540,10 +1592,13 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       const stopPages = onCollectionPagesRead(() => bump());
       const stopEntries = onEntrySummariesRead(() => bump());
       const stopPageFacts = onPageSummariesRead(() => bump());
+      // A failed preview is asked again once its inputs move, and that takes a settle pass.
+      const stopPreviews = onPreviewsInvalidated(() => bump());
       return () => {
         stopPages();
         stopEntries();
         stopPageFacts();
+        stopPreviews();
       };
     })(),
     wrap: canvasWrap,

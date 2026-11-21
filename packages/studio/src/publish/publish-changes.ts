@@ -41,7 +41,12 @@ import { currentDeploy, nextDeployStep } from "./deploy-checklist";
 import { platformSupportsPublish } from "./pages-service";
 import { offerBranchForRefusedPush, reviewBranchName } from "./protected-branch";
 import { runDeploy } from "./publish-commands";
-import { platformHostsGit, platformOpensPullRequests, refreshGitStatus } from "./source-control";
+import {
+  platformHostsGit,
+  platformOpensPullRequests,
+  refreshGitStatus,
+  withGitVerb,
+} from "./source-control";
 import type { GitFileStatus } from "../types";
 import type { PublishDestination } from "./publish-ids";
 
@@ -404,80 +409,80 @@ export async function publishChanges(
     shell.git.error = blocker;
     return false;
   }
-  const message = shell.git.commitMessage.trim();
-  const plat = getPlatform();
-  shell.git.commitMessage = "";
-  shell.git.loading = true;
-  shell.git.error = null;
-  // Fold co-editing sessions into the backend's tree first so the commit never misses trailing
-  // Keystrokes (the mirror is debounced).
-  await flushAllCollab();
-  let committed = false;
-  // Whether the commit left for its destination. Only a deploy can say no without throwing.
-  let shipped = true;
-  try {
-    if (includeAll) {
-      const unstaged = filesToPublish(true)
-        .filter((file) => !file.staged)
-        .map((file) => file.path);
-      if (unstaged.length > 0) {
-        await plat.gitStage(unstaged);
+  return withGitVerb(async () => {
+    const message = shell.git.commitMessage.trim();
+    const plat = getPlatform();
+    shell.git.commitMessage = "";
+    // Fold co-editing sessions into the backend's tree first so the commit never misses trailing
+    // Keystrokes (the mirror is debounced).
+    await flushAllCollab();
+    let committed = false;
+    // Whether the commit left for its destination. Only a deploy can say no without throwing.
+    let shipped = true;
+    try {
+      if (includeAll) {
+        const unstaged = filesToPublish(true)
+          .filter((file) => !file.staged)
+          .map((file) => file.path);
+        if (unstaged.length > 0) {
+          await plat.gitStage(unstaged);
+        }
       }
-    }
-    if (destination === "review") {
-      await sendForReview(plat, message, () => {
+      if (destination === "review") {
+        await sendForReview(plat, message, () => {
+          committed = true;
+        });
+      } else {
+        await plat.gitCommit(message);
         committed = true;
-      });
-    } else {
-      await plat.gitCommit(message);
-      committed = true;
-      if (deployReady()) {
-        /* The deploy is an Activity with its own steps, log and failure report (§16.4), and it
-           pushes with an upstream itself, so it runs after the loading flag is down: a running
-           deploy is not source control being busy. */
+        if (deployReady()) {
+          /* The deploy is an Activity with its own steps, log and failure report (§16.4), and it
+             pushes with an upstream itself, so it runs after the loading flag is down: a running
+             deploy is not source control being busy. */
+          shell.git.loading = false;
+          /* `false` is a push that failed, a Cloudflare that did not answer, or a cancel; the
+             Activity has already said which. The commit landed either way, so the summary stays
+             cleared, but the change set did not reach the live site and the caller must not say it
+             did. */
+          shipped = await runDeploy({ summary: message });
+        } else if (!platformHostsGit() && firstRemote() !== "") {
+          await plat.gitPush();
+        }
+      }
+      await refreshGitStatus();
+      return shipped;
+    } catch (error) {
+      if (committed && destination === "live") {
+        /* The commit landed and its push was refused. When the refusal is the branch's rules, the
+           way on is a branch of its own and a pull request, which is offered rather than relayed. */
         shell.git.loading = false;
-        /* `false` is a push that failed, a Cloudflare that did not answer, or a cancel; the
-           Activity has already said which. The commit landed either way, so the summary stays
-           cleared, but the change set did not reach the live site and the caller must not say it
-           did. */
-        shipped = await runDeploy({ summary: message });
-      } else if (!platformHostsGit() && firstRemote() !== "") {
-        await plat.gitPush();
+        const moved = await offerBranchForRefusedPush(errorMessage(error), {
+          refresh: refreshGitStatus,
+          summary: message,
+        });
+        if (moved !== null) {
+          return moved;
+        }
       }
-    }
-    await refreshGitStatus();
-    return shipped;
-  } catch (error) {
-    if (committed && destination === "live") {
-      /* The commit landed and its push was refused. When the refusal is the branch's rules, the
-         way on is a branch of its own and a pull request, which is offered rather than relayed. */
+      const conflicts = committed ? null : remoteConflictsOf(error);
+      if (conflicts && platformCommitsBranches()) {
+        shell.git.loading = false;
+        if (await publishAsBranch(message, conflicts)) {
+          return true;
+        }
+        // Declined: the refusal still stands, and it is what the author must read.
+        shell.git.error ??= errorMessage(error);
+        return false;
+      }
+      shell.git.error = errorMessage(error);
       shell.git.loading = false;
-      const moved = await offerBranchForRefusedPush(errorMessage(error), {
-        refresh: refreshGitStatus,
-        summary: message,
-      });
-      if (moved !== null) {
-        return moved;
+      // A push that failed after the commit landed must not offer the same summary again.
+      if (!committed) {
+        restoreSummary(message);
       }
-    }
-    const conflicts = committed ? null : remoteConflictsOf(error);
-    if (conflicts && platformCommitsBranches()) {
-      shell.git.loading = false;
-      if (await publishAsBranch(message, conflicts)) {
-        return true;
-      }
-      // Declined: the refusal still stands, and it is what the author must read.
-      shell.git.error ??= errorMessage(error);
       return false;
     }
-    shell.git.error = errorMessage(error);
-    shell.git.loading = false;
-    // A push that failed after the commit landed must not offer the same summary again.
-    if (!committed) {
-      restoreSummary(message);
-    }
-    return false;
-  }
+  });
 }
 
 /** Up to three paths, then how many more: what a sentence can name of a list of files. */
@@ -524,43 +529,43 @@ export async function publishAsBranch(
     restoreSummary(message);
     return false;
   }
-  shell.git.loading = true;
-  shell.git.error = null;
-  let committed = false;
-  try {
-    const result = await commitBranch({ branch: name, message });
-    committed = true;
-    const open = plat.createPullRequest;
-    const base = currentBranch();
-    const pr = open && base ? await open({ base, head: result.branch, title: message }) : null;
-    if (pr) {
-      shell.publish.review.number = pr.number;
-      shell.publish.review.url = pr.url;
-    }
-    notify.success(
-      pr
-        ? `Published to ${result.branch}. Pull request #${pr.number} brings it into ${base}.`
-        : `Published to ${result.branch}.`,
-      { detail: pr?.url ?? "", key: "publish.branch", source: "Publish" },
-    );
-    /* The colliding edits have left this session, so it can fast-forward to the remote now. A
-       pull that still cannot (another collaborator's edit overlaps too) is not this publish's
-       failure: the status says the branch is behind, and Pull says why. */
+  return withGitVerb(async () => {
+    let committed = false;
     try {
-      await plat.gitPull();
-    } catch {
-      // Reported by the next Pull, where it can be acted on.
+      const result = await commitBranch({ branch: name, message });
+      committed = true;
+      const open = plat.createPullRequest;
+      const base = currentBranch();
+      const pr = open && base ? await open({ base, head: result.branch, title: message }) : null;
+      if (pr) {
+        shell.publish.review.number = pr.number;
+        shell.publish.review.url = pr.url;
+      }
+      notify.success(
+        pr
+          ? `Published to ${result.branch}. Pull request #${pr.number} brings it into ${base}.`
+          : `Published to ${result.branch}.`,
+        { detail: pr?.url ?? "", key: "publish.branch", source: "Publish" },
+      );
+      /* The colliding edits have left this session, so it can fast-forward to the remote now. A
+         pull that still cannot (another collaborator's edit overlaps too) is not this publish's
+         failure: the status says the branch is behind, and Pull says why. */
+      try {
+        await plat.gitPull();
+      } catch {
+        // Reported by the next Pull, where it can be acted on.
+      }
+      await refreshGitStatus();
+      return true;
+    } catch (error) {
+      shell.git.error = errorMessage(error);
+      shell.git.loading = false;
+      if (!committed) {
+        restoreSummary(message);
+      }
+      return false;
     }
-    await refreshGitStatus();
-    return true;
-  } catch (error) {
-    shell.git.error = errorMessage(error);
-    shell.git.loading = false;
-    if (!committed) {
-      restoreSummary(message);
-    }
-    return false;
-  }
+  });
 }
 
 /** What a pull request is opened with: its title, and the branches when the flow chose them. */

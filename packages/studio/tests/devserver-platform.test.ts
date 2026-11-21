@@ -645,7 +645,7 @@ describe("file operations", () => {
     }
   });
 
-  test("subscribeFileEvents reports a reconnect resync on every EventSource open after the first", () => {
+  test("subscribeFileEvents reports an open resync first, then a reconnect on every later open", () => {
     const original = eventSourceSlot.EventSource;
     eventSourceSlot.EventSource = FakeEventSource;
     try {
@@ -656,12 +656,13 @@ describe("file operations", () => {
       });
       const es = FakeEventSource.last;
       // EventSource reconnects on its own and fires `open` each time it does; the server replays
-      // Nothing it sent while the stream was down, so only the first open is gap-free.
+      // Nothing it sent while the stream was down. The first open is the stream joining after the
+      // First listings were made, which re-lists too, though more narrowly than a reconnect.
       es?.emit("open", "");
-      expect(reasons).toEqual([]);
+      expect(reasons).toEqual(["open"]);
       es?.emit("open", "");
       es?.emit("open", "");
-      expect(reasons).toEqual(["reconnect", "reconnect"]);
+      expect(reasons).toEqual(["open", "reconnect", "reconnect"]);
       stop();
     } finally {
       eventSourceSlot.EventSource = original;

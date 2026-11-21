@@ -17,8 +17,8 @@ describe("createFsWatcher", () => {
     const batches: FsEventPayload[][] = [];
     const handle = createFsWatcher(FIXTURES, (events) => batches.push(events), { debounce: 20 });
     try {
-      // Let chokidar settle before writing.
-      await sleep(150);
+      // The initial scan is done, so a write from here on is announced.
+      await handle.ready;
       writeFileSync(join(FIXTURES, "note.json"), `{"v":${Date.now()}}`);
 
       const start = Date.now();

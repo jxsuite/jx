@@ -37,20 +37,15 @@
 import { beginProjectOpening, isOpeningProject } from "../project-opening";
 import type { OpeningHandle } from "../project-opening";
 import { nothing } from "lit-html";
-import { learnProjectFileName } from "./project-file-name";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { localeLabel, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
 import { showAlertDialog, showPromptDialog } from "../ui/layers";
-import { projectState, requireProjectState, setProjectState } from "../store";
+import { projectState, requireProjectState } from "../store";
 import { canOpenProject, getPlatform } from "../platform";
-import { disarmPreviewOverlay } from "../preview/preview-overlay";
 import { notify } from "../services/notify";
-import { loadComponentRegistry } from "./components";
-import { ensureDependenciesInstalled } from "../packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "../packages/jxsuite-update";
-import { autoSyncProjectOnOpen } from "../packages/pull-package-sync";
 import { markLocalMutation } from "./fs-events";
-import { notedListing, resetAssetVersions } from "./asset-versions";
+import { notedListing } from "./asset-versions";
 import { ensureIgnoreLayers, isIgnoredEntry, resetIgnoreCache } from "./gitignore";
 import { SETTINGS } from "../services/settings/definitions";
 import { readStoredSetting, setSetting } from "../services/settings/kernel";
@@ -73,7 +68,6 @@ import {
   receivingPane,
   renameTab,
   closeAllTabs,
-  setWorkspaceProject,
   workspace,
 } from "../workspace/workspace";
 import { openCsvGridTab, openPagesGrid } from "../grid/grid-open";
@@ -97,8 +91,6 @@ import {
   formatForPath,
   loadFormats,
   noFormatError,
-  refreshExtensionUi,
-  refreshFormats,
 } from "../format/format-host";
 import { defaultNativeExt } from "../format/default-format";
 import { convertTargets, creationFormats, knownDocumentExtensions } from "../format/format-choices";
@@ -111,15 +103,10 @@ import {
 } from "./new-file-name";
 import type { FormatChoice, NewFileNameCheck } from "./new-file-name";
 import { collectionForDirectory } from "../content/collection-match";
-import {
-  markSessionRestored,
-  persistedSession,
-  persistedWorkspace,
-  resetProjectShell,
-} from "../shell";
+import { markSessionRestored, persistedSession, persistedWorkspace } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import { restoreSession } from "../workspace/session";
-import { cleanupSourceControl } from "../publish/source-control";
+import { enterProject, leaveProject, loadOpenedProject } from "./open-sequence";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
 import { listWindow, revealListRow, watchListWindow } from "../ui/virtual-window";
 import { dragStartsOnTwisty, trackTwistyPress } from "../utils/twisty-press";
@@ -247,44 +234,30 @@ export async function loadProject() {
     }
     const { meta, info } = result;
 
-    refreshFormats();
-    void loadFormats();
-    refreshExtensionUi(platform);
-    resetIgnoreCache();
-    resetAssetVersions();
-
-    setProjectState({
-      dirs: new Map(),
-      expanded: new Set(),
-      isSiteProject: info.isSiteProject,
-      name: info.isSiteProject ? info.projectConfig?.name || meta.name : meta.name,
-      projectConfig: (info.isSiteProject ? info.projectConfig : null) || null,
-      projectDirs: info.directories || [],
-      projectRoot: ".",
-      root: meta.root,
-      searchQuery: "",
-      selectedPath: null,
-    });
     // Only a site project counts as an open project for the workspace (a bare monorepo root keeps
     // The assistant in bootstrap mode).
-    if (info.isSiteProject) {
-      await learnProjectFileName(platform);
-      setWorkspaceProject(meta.root || ".", info.projectConfig || null);
-    }
+    await enterProject({
+      platform,
+      site: info.isSiteProject
+        ? { root: meta.root || ".", config: info.projectConfig || null }
+        : null,
+      state: {
+        dirs: new Map(),
+        expanded: new Set(),
+        isSiteProject: info.isSiteProject,
+        name: info.isSiteProject ? info.projectConfig?.name || meta.name : meta.name,
+        projectConfig: (info.isSiteProject ? info.projectConfig : null) || null,
+        projectDirs: info.directories || [],
+        projectRoot: ".",
+        root: meta.root,
+        searchQuery: "",
+        selectedPath: null,
+      },
+    });
 
     if (info.isSiteProject) {
       addRecentProject(requireProjectState().name, meta.root);
-      await autoSyncProjectOnOpen();
-      if (await ensureDependenciesInstalled()) {
-        // The registry above was fetched from a project with no `node_modules`, and `loadFormats`
-        // Memoises — so without this the picker, the convert targets and every parse in the session
-        // Are answered by the empty registry a fresh clone had.
-        refreshFormats();
-        await loadFormats();
-        refreshExtensionUi(platform);
-      }
-      await loadProjectDirectories();
-      await loadComponentRegistry();
+      await loadOpenedProject({ loadDirectories: loadProjectDirectories, platform });
       await openLastSessionOrHome();
       if (!info.projectConfig) {
         // A site whose project file does not read is opened with none, and shown as text
@@ -366,50 +339,39 @@ export async function openProject({
     /* Closed, not swapped for a placeholder. This used to leave one blank "Untitled" tab behind
        (`replaceAllTabs` with a `div`), which the restore or the home page then opened beside, and
        a project with neither showed only that tab. `openRecentProject` has always emptied the
-       workspace like this. */
+       workspace like this. Left first, so closing them is not written as the session of the
+       project being left (`leaveProject`). */
+    leaveProject({ resetProjectCaches });
     closeAllTabs();
 
-    /* A different project means a different preview origin, and the published map is keyed by
-       project-relative path — so carrying it across would let one project's `pages/index.json`
-       stand in as the answer for another's. */
-    disarmPreviewOverlay();
-    refreshFormats();
-    void loadFormats();
-    refreshExtensionUi(platform);
-    resetIgnoreCache();
-    resetAssetVersions();
-
-    setProjectState({
-      .../** @type {ProjectState} */ projectState,
-      dirs: new Map(),
-      expanded: new Set(),
-      isSiteProject: true,
-      name: config.name || handle.name,
-      projectConfig: config,
-      projectRoot: handle.root,
-      searchQuery: "",
-      selectedPath: null,
+    await enterProject({
+      left: true,
+      platform,
+      resetProjectCaches,
+      site: { root: handle.root, config },
+      state: {
+        .../** @type {ProjectState} */ projectState,
+        dirs: new Map(),
+        expanded: new Set(),
+        isSiteProject: true,
+        name: config.name || handle.name,
+        projectConfig: config,
+        projectRoot: handle.root,
+        searchQuery: "",
+        selectedPath: null,
+      },
     });
-    await learnProjectFileName(platform);
-    setWorkspaceProject(handle.root, config);
+    await loadOpenedProject({
+      loadDirectories: loadProjectDirectories,
+      onPhase: (phase) => {
+        // The Start pane was told "Sync with the remote" as the picker answered.
+        if (phase !== "Sync with the remote") {
+          opening?.step(phase);
+        }
+      },
+      platform,
+    });
 
-    await autoSyncProjectOnOpen();
-    opening?.step("Install dependencies");
-    if (await ensureDependenciesInstalled()) {
-      // See the note in `probeRootProject`: the registry was fetched before the install ran.
-      refreshFormats();
-      await loadFormats();
-      refreshExtensionUi(platform);
-    }
-    opening?.step("Read the project");
-    await loadProjectDirectories();
-    await loadComponentRegistry();
-
-    // Source control, the stylebook selection and the settings tab describe the project being
-    // Left behind. The poll timer goes with them; the Publish workspace re-arms it on its next mount.
-    cleanupSourceControl();
-    resetProjectShell();
-    resetProjectCaches?.();
     /* The Navigator's panel is the workspace frame's, applied as the project opened (§22.3): Design
        opens on the Site panel. Forcing Files here put a developer panel with no rail button on
        screen and re-opened a Navigator the frame had hidden. */

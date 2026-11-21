@@ -554,6 +554,8 @@ export interface StudioRPC {
       documentsPending: Record<string, never>;
       fileChanged: { path: string };
       onFileEvents: { events: FsEventPayload[] };
+      /** The watcher on the window's root is ready: re-list what is cached (`studio.md` §9.2). */
+      onFileResync: { reason: "open" };
     };
   }>;
 }
