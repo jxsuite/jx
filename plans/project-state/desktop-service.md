@@ -40,6 +40,8 @@ size: L
 
 **Integration contract.** `createProjectStateHost({ root, fs, watcher, git })` returns `{ subscribe, write, rename, snapshot, close }`; `plan:project-state/devserver-service` wraps it in the SSE binding and `plan:project-state/rename-cascade` implements `rename`.
 
+As built by `plan:project-state/desktop-service#PSD1.1` and `#PSD1.2`: `createProjectStateHost(options)` in `packages/server/src/project-state/host.ts` resolves once the watcher is armed, the index scanned and the git summary read, and advances to `ready` on its own unless `hold` is set. Every option but `root` is injectable: `fs` (a `node:fs/promises` subset), `watcher` (a factory; `chokidarProjectWatcher` by default), `git` (a `GitRunner`, or `false` for no monitor), `gitWatch`, `gitDebounceMs`, `extensions` (an `ExtensionLoader`, the editor's registry by default), `installer` (the package service's install by default), `installed`, `collections` (a `CollectionResolver`; the default resolves each type's `source` and `exclude` over the index and evaluates no `where`, so the wiring slice should pass the collection loader's list), `atomicSaveMs`, `stabilityMs`, `logCapacity`, `hold` and `onError`; the defaults live in `host-deps.ts`. The host answers `{ subscribe(request, sink), write, delete, createDirectory, rename, snapshot, install, release, restart, idle(quietMs), close }` plus `epoch`, `rev` and `readiness` getters. `subscribe` is synchronous and returns `{ response, close }`; the sink's `events` receives one event per call and its `end` fires on restart or close, which is what the desktop binding needs to send `projectEvents` frames. `rename` always rejects until the rename cascade lands. `idle` is the conformance driver's `settle` and a shutdown barrier, not a protocol member. The git monitor is `createGitMonitor` in `git-monitor.ts`, and the host also schedules it after every file event, since an edit moves the working state without touching `.git/`. The usage query still walks the tree (`packages/server/src/refactor/find-refs.ts`); moving it onto the graph is the wiring slice's.
+
 ## Tests
 
 The conformance suite through a Node driver (`packages/server/tests/project-state-host.test.ts`), the git monitor against a real repository, and `packages/desktop/tests/hub-handlers.test.ts` for the new request. Coverage in `packages/server` and `packages/desktop`.
@@ -56,7 +58,7 @@ The suite passes against the desktop host; `bun run plans:check`; `bun run docs:
 
 | Slice  | Scope                                                     | Claims | State |
 | ------ | --------------------------------------------------------- | ------ | ----- |
-| PSD1.1 | Host core: index, ids, hashes, ledger, log, preconditions | §10.1  | open  |
-| PSD1.2 | Readiness machine and git monitor                         | §10.1  | open  |
+| PSD1.1 | Host core: index, ids, hashes, ledger, log, preconditions | §10.1  | done  |
+| PSD1.2 | Readiness machine and git monitor                         | §10.1  | done  |
 | PSD1.3 | Desktop wiring and the `projectSubscribe` binding         | §10.1  | open  |
 | PSD1.4 | Rooms and overlays keyed by document                      | §11.3  | open  |
