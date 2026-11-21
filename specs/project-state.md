@@ -326,9 +326,9 @@ The host owns both by `DocId`. A room follows its document across a rename and i
 
 ## 12. Reference Extraction
 
-> **Status: Pending.** `walkDocRefs` lives in `packages/server/src/refactor/refs.ts` behind the `./refactor` export, whose index imports the filesystem and the watcher, so the cloud carries a vendored copy pinned at `@jxsuite/server` 2.2.2.
+> **Status: Implemented.** `@jxsuite/server/refactor/refs` exports `walkDocRefs`, `countTagUses` and `rewriteDocRefs` from `packages/server/src/refactor/refs.ts`, whose module graph (it and `paths.ts`, plus `@jxsuite/schema`'s guards and asset paths) has no filesystem, process or watcher import; `packages/server/tests/refs-export.test.ts` imports the entry under Bun, bundles it for the browser, and fails on any `node:`, builtin or `chokidar` import in its graph and on any `process` or `Bun` global in the bundled code. Node does not load the TypeScript sources directly (extensionless relative imports, and no type stripping under `node_modules`), so a Node host reaches the walk through a bundle, as the desktop backend already does (`desktop.md` §7.1).
 
-What counts as a reference in a Jx document has one definition: `walkDocRefs`, which takes a parsed document and a visitor and performs no I/O. It is published as a subpath export whose module graph contains no filesystem, process or watcher import, so a Durable Object, a browser and both Node and Bun can import it directly, and the dependency graph (§8) of every host is built from the same walk as the rename refactor and the usage query.
+What counts as a reference in a Jx document has one definition: `walkDocRefs`, which takes a parsed document and a visitor and performs no I/O. It is published as a subpath export whose module graph contains no filesystem, process or watcher import, so Bun imports it as source and every other host bundles it unchanged (a Durable Object's Worker, a browser, the desktop backend's Node bundle), and the dependency graph (§8) of every host is built from the same walk as the rename refactor and the usage query.
 
 ## 13. Persistence and the Native Core
 

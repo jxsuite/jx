@@ -34,6 +34,7 @@
     "./live-preview": "./src/live-preview.ts",
     "./site-preview": "./src/site-preview.ts",
     "./refactor": "./src/refactor/index.ts",
+    "./refactor/refs": "./src/refactor/refs.ts",
     "./resolve": "./src/resolve.ts",
     "./types": "./src/types.ts",
     "./jx-mounts": "./src/jx-mounts.ts",
