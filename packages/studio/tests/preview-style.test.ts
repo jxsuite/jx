@@ -102,7 +102,7 @@ describe("loadProjectPreviewSheets", () => {
     // And a preview's root adopts them ahead of the runtime's rules.
     const island = document.createElement("div");
     document.body.append(island);
-    mountPreview(island, document.createElement("p"));
+    mountPreview(island, { html: "<p></p>", sheet: null });
     expect(island.shadowRoot?.adoptedStyleSheets.slice(0, 2)).toEqual(sheets);
     restore();
   });

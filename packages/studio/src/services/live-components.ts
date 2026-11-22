@@ -32,7 +32,9 @@
  *   save is what redefines.
  *
  * Either way the Library's rendered preview of that file is evicted, so the next paint renders it
- * again rather than showing the card the old definition drew.
+ * again rather than showing the card the old definition drew, and the preview realm is told the
+ * tag's definition changed: a realm whose registry already holds the tag is replaced, because no
+ * registry can redefine one (`project-state.md` §11.2). The shell's own registry is never asked.
  *
  * While the host's project state subscription is live (`project-state.md` §11.1), the change on
  * disk arrives as the `docChanged` of a document Studio did not write, and a third door joins
@@ -84,6 +86,11 @@ export interface LiveComponentDeps {
   redefineOnCanvases: (doc: JxDocument, base: string) => number;
   /** Drop the Library's rendered preview of a path (`browse/library-preview.ts`). */
   evictPreview: (path: string) => void;
+  /**
+   * The definitions of `tags` changed: the preview realm is replaced if it holds one
+   * (`preview-realm/client.ts`'s `previewDefinitionsChanged`).
+   */
+  redefineInPreviews?: (tags: readonly string[]) => void;
   /** Read a project file's text (`platform.readFile`). */
   readFile: (path: string) => Promise<string>;
   /**
@@ -149,6 +156,7 @@ export function createLiveComponentLane(deps: LiveComponentDeps): LiveComponentL
       return null;
     }
     deps.evictPreview(path);
+    deps.redefineInPreviews?.([tag]);
     let base: string;
     try {
       base = canvasBaseFor(root, path);
@@ -205,6 +213,7 @@ export function createLiveComponentLane(deps: LiveComponentDeps): LiveComponentL
       for (const path of paths) {
         deps.evictPreview(path);
       }
+      deps.redefineInPreviews?.(tags);
       const definitions = new Set<string>();
       for (const tag of tags) {
         const path = deps.componentPath?.(tag);

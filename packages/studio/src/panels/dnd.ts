@@ -34,7 +34,9 @@ import { activeTab } from "../workspace/workspace";
 import { view } from "../view";
 import { buildComponentInstance, componentRegistry } from "../files/components";
 import { mutateImportComponent } from "../editor/insert-component";
-import { renderComponentPreview } from "./component-preview";
+import { cardSnapshot } from "../preview-realm/ask";
+import { previewRealmGeneration } from "../preview-realm/client";
+import { mountPreview } from "../browse/preview-root";
 import { defaultDef, unsafeTags } from "./shared";
 import { elementAtPoint } from "../utils/geometry";
 import { dragStartsOnTwisty, trackTwistyPress } from "../utils/twisty-press";
@@ -261,6 +263,49 @@ export function registerLayersDnD() {
   });
 }
 
+/**
+ * What a palette card's preview was last asked for: the registry entry, and the generation of the
+ * realm that drew the answer, or null while the answer is pending.
+ */
+interface PaletteAsk {
+  readonly entry: ComponentEntry;
+  generation: number | null;
+}
+
+const _paletteAsks = new WeakMap<HTMLElement, PaletteAsk>();
+
+/**
+ * Fill a palette card's preview from the preview realm (`project-state.md` §11.2): the component is
+ * drawn there, never defined in this window. A card is asked once per registry entry and realm
+ * generation, so a pass while its answer is pending asks nothing more, and a save (which replaces
+ * the entry) or a replaced realm (which may have drawn a stale definition) asks again; the card
+ * keeps what it shows until the new answer replaces it. A component the realm cannot draw is the
+ * box naming its tag. A realm that went away before it answered says nothing about the component,
+ * so the next pass asks again.
+ */
+function askPalettePreview(preview: HTMLElement, comp: ComponentEntry): void {
+  const asked = _paletteAsks.get(preview);
+  if (
+    asked?.entry === comp &&
+    (asked.generation === null || asked.generation === previewRealmGeneration())
+  ) {
+    return;
+  }
+  const ask: PaletteAsk = { entry: comp, generation: null };
+  _paletteAsks.set(preview, ask);
+  void cardSnapshot(comp).then((snapshot) => {
+    if (_paletteAsks.get(preview) !== ask) {
+      return;
+    }
+    if (snapshot) {
+      ask.generation = previewRealmGeneration();
+      mountPreview(preview, snapshot);
+    } else {
+      _paletteAsks.delete(preview);
+    }
+  });
+}
+
 /** Register DnD on component rows — called from renderLeftPanel when tab=components */
 export function registerComponentsDnD() {
   requestAnimationFrame(() => {
@@ -279,13 +324,9 @@ export function registerComponentsDnD() {
         continue;
       }
 
-      // Fill preview with live rendered component
-      const preview = row.querySelector(".element-card-preview");
-      if (preview && !preview.querySelector(tagName)) {
-        void renderComponentPreview(comp).then((el: HTMLElement) => {
-          preview.textContent = "";
-          preview.append(el);
-        });
+      const preview = row.querySelector<HTMLElement>(".element-card-preview");
+      if (preview) {
+        askPalettePreview(preview, comp);
       }
 
       const instanceDef = buildComponentInstance(comp);

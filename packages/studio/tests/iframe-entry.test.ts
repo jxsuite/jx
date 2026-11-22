@@ -2,9 +2,15 @@ import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { defineElement, documentStyleText, resetDocumentStyles } from "@jxsuite/runtime";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
+import type { FromRealm } from "../src/preview-realm/protocol";
 import type { CanvasEnvelope } from "../src/canvas/iframe-channel";
 import { flush } from "./harness";
-import { bootCanvasIframe, layoutHitFor, startCanvasIframe } from "../src/canvas/iframe-entry";
+import {
+  bootCanvasIframe,
+  bootFrame,
+  layoutHitFor,
+  startCanvasIframe,
+} from "../src/canvas/iframe-entry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type {
   CanvasMode,
@@ -509,6 +515,28 @@ describe("startCanvasIframe", () => {
     };
     teardown = bootCanvasIframe(win);
     expect(posted).toEqual([{ "jx:canvas": "tok", payload: READY }]);
+  });
+
+  test("bootFrame boots the canvas, or the preview realm when the URL asks for it", () => {
+    const posted: (CanvasEnvelope<IframeToParent> | CanvasEnvelope<FromRealm>)[] = [];
+    const frame = (search: string) => ({
+      addEventListener: () => {},
+      customElements,
+      document,
+      location: { search },
+      parent: {
+        postMessage: (m: CanvasEnvelope<IframeToParent> | CanvasEnvelope<FromRealm>) => {
+          posted.push(m);
+        },
+      },
+      removeEventListener: () => {},
+    });
+    teardown = bootFrame(frame("?token=canvas&parentOrigin=*"));
+    expect(posted).toEqual([{ "jx:canvas": "canvas", payload: READY }]);
+    teardown();
+    teardown = bootFrame(frame("?realm=preview&token=realm&parentOrigin=*"));
+    // The realm announces itself with its own message, not the canvas's.
+    expect(posted[1]).toEqual({ "jx:canvas": "realm", payload: { kind: "ready" } });
   });
 
   test("bootCanvasIframe warns and falls back to '*' when parentOrigin is absent", () => {

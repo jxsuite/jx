@@ -17,17 +17,18 @@ import type { ComponentEntry } from "../src/files/components";
 import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
 import type { BlockDragData } from "../src/panels/site-panel";
 import type { CommandArgValues } from "../src/commands/command-args";
+import type { PreviewSnapshot } from "../src/preview-realm/host";
 
 const openFileInTab = mock(async (_path: string) => {});
 void mock.module("../src/files/files", () => ({ openFileInTab }));
 
-/** The doubled render: a fresh element per call, so a re-render is a different node. */
-async function renderPreview(path: string): Promise<HTMLElement | undefined> {
-  const element = document.createElement("span");
-  element.dataset.preview = path;
-  return element;
+/** The doubled render: a fresh snapshot per call, so a re-render is a different one. */
+async function renderPreview(path: string): Promise<PreviewSnapshot | undefined> {
+  return { html: `<span data-preview="${path}"></span>`, sheet: null };
 }
 const previewFor = mock(renderPreview);
+/** The preview realm's door for a changed component set. */
+const previewComponentSetMoved = mock(() => {});
 void mock.module("../src/browse/library-preview", () => ({
   createPreviewCache: () => ({ clear: () => {} }),
   createPreviewObserver: (onVisible: (element: Element) => void) => ({
@@ -35,6 +36,7 @@ void mock.module("../src/browse/library-preview", () => ({
     observe: (element: Element) => onVisible(element),
     releaseDetached: () => 0,
   }),
+  previewComponentSetMoved,
   previewFor,
 }));
 
@@ -375,10 +377,10 @@ describe("Components", () => {
   });
 
   test("a render a newer request superseded is dropped when it arrives late", async () => {
-    let finishStale: (element: HTMLElement) => void = () => {};
+    let finishStale: (snapshot: PreviewSnapshot) => void = () => {};
     previewFor.mockImplementationOnce(
       () =>
-        new Promise<HTMLElement>((resolve) => {
+        new Promise<PreviewSnapshot>((resolve) => {
           finishStale = resolve;
         }),
     );
@@ -395,7 +397,7 @@ describe("Components", () => {
     const current = box.shadowRoot?.firstElementChild;
     expect(current).not.toBeNull();
     // The first render lands last, and the box keeps the newer one.
-    finishStale(document.createElement("i"));
+    finishStale({ html: "<i></i>", sheet: null });
     await flush(2);
     expect(box.shadowRoot?.firstElementChild === current).toBe(true);
   });
@@ -756,6 +758,8 @@ describe("staying current", () => {
       await flush(10);
       expect(scans).toBe(settled);
       invalidateComponentRegistry();
+      // The preview realm hears the component set moved, as the registry does.
+      expect(previewComponentSetMoved).toHaveBeenCalled();
       await flush(10);
       expect(scans).toBe(settled + 1);
       // A readiness change re-reads the index without a scan.

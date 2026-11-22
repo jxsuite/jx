@@ -16,7 +16,7 @@ let renders = (_count: number): boolean => true;
 void mock.module("../src/browse/component-examples", () => ({
   componentExampleProps: () => examples,
 }));
-void mock.module("../src/browse/library-preview", () => ({
+void mock.module("../src/preview-realm/ask", () => ({
   readDefinition: () => Promise.resolve(definition),
   rendersWith: (_d: JxDocument, _p: string, props: ReadonlyMap<string, JsonValue>) =>
     Promise.resolve(renders(props.size)),
@@ -75,7 +75,7 @@ describe("componentSpecimen", () => {
 });
 
 describe("loadStylebookSpecimens", () => {
-  test("asks once per registry and component, and a failed answer is drawn bare", async () => {
+  test("asks once per registry and component; a question with no answer is drawn bare and asked again", async () => {
     const registry: ComponentEntry[] = [CARD, { tagName: "x-broken" }];
     const ask = mock((component: ComponentEntry) =>
       component.tagName === "x-broken"
@@ -85,11 +85,17 @@ describe("loadStylebookSpecimens", () => {
     const first = await loadStylebookSpecimens(registry, ask);
     expect(first.get("x-card")).toEqual({ kind: "none" });
     expect(first.get("x-broken")).toEqual({ kind: "bare" });
+    // The answer is remembered; the question that found none (a realm replaced mid-trial) is not.
     await loadStylebookSpecimens(registry, ask);
-    expect(ask).toHaveBeenCalledTimes(2);
+    expect(ask).toHaveBeenCalledTimes(3);
+    expect(ask.mock.calls.map(([component]) => component.tagName)).toEqual([
+      "x-card",
+      "x-broken",
+      "x-broken",
+    ]);
     // A re-read registry is a new array, and is asked again.
     await loadStylebookSpecimens([CARD], ask);
-    expect(ask).toHaveBeenCalledTimes(3);
+    expect(ask).toHaveBeenCalledTimes(4);
   });
 
   test("a definition whose hash moves is asked again within the same registry", async () => {

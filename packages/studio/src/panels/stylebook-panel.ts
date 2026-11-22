@@ -316,6 +316,3 @@ export function selectStylebookTag(tag: string, media?: string | null, { panCanv
     panToStylebookTag(element);
   }
 }
-
-/** Re-exported for legacy consumers (the preview now lives in component-preview.ts). */
-export { renderComponentPreview } from "./component-preview";

@@ -38,6 +38,12 @@ import type {
   StudioPlatform,
 } from "../src/types";
 import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
+import { setPreviewRealmFactory } from "../src/preview-realm/client";
+import { inProcessRealm } from "./preview-realm-double";
+
+/* A frame cannot load `canvas.html` under happy-dom, so every suite's previews are drawn by the
+   realm's own code running in the test's window (`preview-realm-double.ts`). */
+setPreviewRealmFactory(inProcessRealm());
 
 // ─── Lit rendering ────────────────────────────────────────────────────────────
 

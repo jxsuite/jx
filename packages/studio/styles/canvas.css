@@ -210,3 +210,19 @@
   min-width: 0;
   min-height: 0;
 }
+
+/* ─── The preview realm ─────────────────────── */
+/* The frame every out-of-canvas preview is drawn in (`src/preview-realm/host.ts`, project-state.md
+   §11.2). It is machinery, not chrome: laid out at a page's width so a component draws as it would
+   on one, but placed off screen, invisible, and out of the pointer's and the keyboard's way. */
+.jx-preview-realm {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: -10000px;
+  inline-size: 1280px;
+  block-size: 800px;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+}

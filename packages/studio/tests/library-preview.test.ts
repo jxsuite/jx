@@ -1,40 +1,21 @@
 /**
- * Tests for src/browse/library-preview.ts — the LRU and the visibility gate.
+ * Tests for src/browse/library-preview.ts — the LRU, the visibility gate, and the requests a
+ * preview makes of the preview realm (`project-state.md` §11.2).
  *
  * The predecessor's preview map was unbounded and eager, so a 300-page project built 300 live
  * runtime subtrees on one paint and never released one. Both halves of that are asserted here: the
- * cap holds, and an evicted subtree leaves the DOM.
+ * cap holds, and an evicted snapshot leaves the cards that showed it. The previews themselves are
+ * drawn by the realm's own code running in this window (`preview-realm-double.ts`, installed by the
+ * harness).
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { identities } from "@jxsuite/test-support/inspect-dom";
 import { setFormats } from "../src/format/format-host";
 import type { StudioFormat } from "../src/format/format-host";
-import type { ComponentEntry } from "../src/files/components";
 import type { JsonValue } from "@jxsuite/schema/types";
-
-/** Swapped per test — the module export itself is frozen once mocked. */
-let componentPreview: () => Promise<HTMLElement> = () => {
-  const el = document.createElement("div");
-  el.className = "component-preview";
-  return Promise.resolve(el);
-};
-
-/** The props each instance preview was given, newest last. */
-const previewProps: ReadonlyMap<string, JsonValue>[] = [];
-
-void mock.module("../src/panels/component-preview.js", () => ({
-  defineComponent: () => Promise.resolve(true),
-  renderComponentInstance: (
-    _comp: ComponentEntry,
-    props: ReadonlyMap<string, JsonValue> = new Map(),
-  ) => {
-    previewProps.push(props);
-    return componentPreview();
-  },
-  // Not the Library's: the stylebook re-exports it, and the export must exist to be imported.
-  renderComponentPreview: () => componentPreview(),
-}));
+import type { PreviewSnapshot } from "../src/preview-realm/host";
+import type { InProcessRealm } from "./preview-realm-double";
 
 /** What the example sources answer, swapped per test (`component-examples.ts` has its own suite). */
 let exampleProps = new Map<string, JsonValue>();
@@ -51,30 +32,50 @@ const {
   invalidatePreviews,
   onPreviewsInvalidated,
   previewEpoch,
+  previewComponentSetMoved,
+  previewDefinitionsMoved,
   previewFor,
   renderDocPreview,
-  rendersWith,
 } = await import("../src/browse/library-preview");
+const { rendersWith } = await import("../src/preview-realm/ask");
+const { mountPreview, shownPreview } = await import("../src/browse/preview-root");
+const { setPreviewRealmFactory } = await import("../src/preview-realm/client");
+const { inProcessRealm } = await import("./preview-realm-double");
 const { componentRegistry } = await import("../src/files/components");
 const { setProjectState } = await import("../src/store");
 
-function element(id: string) {
+/** A snapshot whose markup names it. */
+function element(id: string): PreviewSnapshot {
+  return { html: `<div data-id="${id}"></div>`, sheet: null };
+}
+
+/** A card element, as a surface draws one for the observer to watch. */
+function cardEl(id: string): HTMLElement {
   const el = document.createElement("div");
   el.dataset.id = id;
   return el;
+}
+
+/** The markup a snapshot holds, parsed into a detached element to be read. */
+function drawn(snapshot: PreviewSnapshot | null | undefined): HTMLElement {
+  const holder = document.createElement("div");
+  holder.innerHTML = snapshot?.html ?? "";
+  return holder;
+}
+
+/** An island showing `snapshot`, in the document. */
+function shownIn(snapshot: PreviewSnapshot): HTMLElement {
+  const island = document.createElement("div");
+  document.body.append(island);
+  mountPreview(island, snapshot);
+  return island;
 }
 
 beforeEach(() => {
   installMockPlatform({}, { "pages/index.json": '{"tagName":"section","children":[]}' });
   resetStudioState({ projectConfig: null, projectDirs: [] });
   componentRegistry.length = 0;
-  previewProps.length = 0;
   exampleProps = new Map<string, JsonValue>();
-  componentPreview = () => {
-    const el = document.createElement("div");
-    el.className = "component-preview";
-    return Promise.resolve(el);
-  };
 });
 
 describe("createPreviewCache", () => {
@@ -97,16 +98,15 @@ describe("createPreviewCache", () => {
     expect(cache.keys()).toEqual(["a", "c"]);
   });
 
-  test("an evicted subtree leaves the DOM, or the cap would not bound anything", () => {
-    const host = document.createElement("div");
-    document.body.append(host);
+  test("an evicted snapshot leaves the cards that showed it, so they ask again", () => {
     const cache = createPreviewCache(1);
     const first = element("a");
-    host.append(first);
+    const island = shownIn(first);
     cache.set("a", first);
     cache.set("b", element("b"));
-    expect(first.isConnected).toBe(false);
-    host.remove();
+    expect(shownPreview(island)).toBeNull();
+    expect(island.shadowRoot?.childElementCount).toBe(0);
+    island.remove();
   });
 
   test("re-setting a key replaces rather than duplicating", () => {
@@ -114,20 +114,24 @@ describe("createPreviewCache", () => {
     cache.set("a", element("a1"));
     cache.set("a", element("a2"));
     expect(cache.size()).toBe(1);
-    expect(cache.get("a")?.dataset.id).toBe("a2");
+    expect(drawn(cache.get("a")).querySelector<HTMLElement>("[data-id]")?.dataset.id).toBe("a2");
   });
 
-  test("clear detaches everything it was holding", () => {
-    const host = document.createElement("div");
-    document.body.append(host);
+  test("clear takes everything it was holding out of the cards that showed it", () => {
     const cache = createPreviewCache();
-    const el = element("a");
-    host.append(el);
-    cache.set("a", el);
+    const snapshot = element("a");
+    const island = shownIn(snapshot);
+    // A card that went on to show something else keeps it.
+    const moved = shownIn(snapshot);
+    const other = element("other");
+    mountPreview(moved, other);
+    cache.set("a", snapshot);
     cache.clear();
     expect(cache.size()).toBe(0);
-    expect(el.isConnected).toBe(false);
-    host.remove();
+    expect(shownPreview(island)).toBeNull();
+    expect(shownPreview(moved)).toBe(other);
+    island.remove();
+    moved.remove();
   });
 
   test("a miss is undefined, not a thrown key error", () => {
@@ -181,10 +185,10 @@ describe("renderDocPreview", () => {
     }
   });
 
-  test("renders a JSON document to a detached element", async () => {
+  test("renders a JSON document in the realm, and answers its snapshot", async () => {
     const rendered = await renderDocPreview("pages/index.json");
     expect(rendered).not.toBeNull();
-    expect(rendered!.tagName.toLowerCase()).toBe("section");
+    expect(drawn(rendered).firstElementChild?.localName).toBe("section");
   });
 
   /* A card draws in the shell document, which already holds the URL, so bytes written in place need
@@ -201,10 +205,19 @@ describe("renderDocPreview", () => {
       },
     );
     resetAssetVersions();
+    /* SAFETY: the harness registers happy-dom's GlobalRegistrator, which copies the window's members
+       onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+    const { happyDOM } = globalThis as typeof globalThis & {
+      happyDOM?: { setURL: (u: string) => void };
+    };
+    happyDOM?.setURL("http://127.0.0.1:4000/__studio__/canvas.html");
     const key = noteLocalWrite("public/hero.png")!;
     try {
       const rendered = await renderDocPreview("pages/index.json");
-      expect(rendered!.querySelector("img")?.getAttribute("src")).toBe(`/hero.png?r=${key}`);
+      // Absolute against the realm's own address, so the shell loads what the realm named.
+      expect(drawn(rendered).querySelector("img")?.getAttribute("src")).toBe(
+        `http://127.0.0.1:4000/hero.png?r=${key}`,
+      );
     } finally {
       resetAssetVersions();
     }
@@ -241,7 +254,9 @@ describe("renderDocPreview", () => {
     );
     try {
       const rendered = await renderDocPreview("pages/index.json");
-      const srcs = [...rendered!.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+      const srcs = [...drawn(rendered).querySelectorAll("img")].map((img) =>
+        img.getAttribute("src"),
+      );
       expect(srcs).toEqual([
         "https://h.example/raw/public/hero.png?v=abc",
         "https://h.example/raw/public/plain.png",
@@ -253,7 +268,8 @@ describe("renderDocPreview", () => {
 
   /* A desktop server gates its dev proxy on the token the canvas URL carries, and a page's `$src`
      is relative to the page. Previews used the shell's URL for both, so every class on a previewed
-     page was refused (403) and resolved against `/__studio__/` besides. */
+     page was refused (403) and resolved against `/__studio__/` besides. The realm takes the token
+     off its own URL as it boots (`bootPreviewRealm`); this in-process realm is handed it. */
   test("a page's $src class resolves against the page, with the canvas's dev-proxy token", async () => {
     const { setResolveToken } = await import("@jxsuite/runtime");
     /* SAFETY: as above — happy-dom's GlobalRegistrator puts `happyDOM` on globalThis. */
@@ -271,6 +287,7 @@ describe("renderDocPreview", () => {
       },
     );
     resetStudioState({ projectConfig: null, projectDirs: [], projectRoot: "/abs/site" });
+    setResolveToken("tok");
     const requests: { url: string; init: RequestInit | undefined }[] = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = Object.assign(
@@ -321,14 +338,35 @@ describe("previewFor", () => {
     expect(cache.size()).toBe(1);
   });
 
-  test("a registered component previews through the component renderer", async () => {
+  test("a package's component the realm does not define draws a box naming its tag", async () => {
     componentRegistry.push({
       path: "components/button.json",
+      props: [{ default: "'primary'", name: "variant" }],
       source: "npm",
       tagName: "x-btn",
     });
     const rendered = await previewFor("components/button.json", createPreviewCache());
-    expect(rendered?.className).toBe("component-preview");
+    const box = drawn(rendered).querySelector(".jx-preview-fallback");
+    expect(box?.textContent).toBe("<x-btn>");
+  });
+
+  test("a package's component the realm defines is drawn with its attribute defaults", async () => {
+    customElements.define("x-pkg-defined", class extends HTMLElement {});
+    componentRegistry.push({
+      path: "node_modules/pkg/x.js",
+      props: [
+        { default: "'primary'", name: "variant" },
+        { default: "false", name: "off" },
+        { default: "''", name: "empty" },
+        { name: "plain" },
+      ],
+      source: "npm",
+      tagName: "x-pkg-defined",
+    });
+    const rendered = await previewFor("node_modules/pkg/x.js", createPreviewCache());
+    const instance = drawn(rendered).querySelector("x-pkg-defined");
+    expect(instance?.getAttribute("variant")).toBe("primary");
+    expect(instance?.getAttributeNames()).toEqual(["variant"]);
   });
 
   test("an unrenderable file caches nothing, so a later fix is picked up", async () => {
@@ -338,16 +376,22 @@ describe("previewFor", () => {
     expect(cache.size()).toBe(0);
   });
 
-  test("a renderer that throws is absorbed rather than breaking the paint", async () => {
+  test("a realm that cannot be made is absorbed rather than breaking the paint", async () => {
     componentRegistry.push({
       path: "components/bad.json",
       source: "npm",
       tagName: "x-bad",
     });
-    componentPreview = () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    setPreviewRealmFactory(() => {
       throw new Error("boom");
-    };
-    expect(await previewFor("components/bad.json", createPreviewCache())).toBeUndefined();
+    });
+    try {
+      expect(await previewFor("components/bad.json", createPreviewCache())).toBeUndefined();
+    } finally {
+      setPreviewRealmFactory(inProcessRealm());
+      warn.mockRestore();
+    }
   });
 
   test("a project component that cannot render bare gets no preview, not an uncaught error", async () => {
@@ -380,25 +424,21 @@ describe("previewFor", () => {
     componentRegistry.push(
       { path: "components/mu-card.json", source: "project", tagName: "mu-card" },
       { path: "components/fine.json", source: "project", tagName: "mu-fine" },
+      { path: "components/not-an-object.json", source: "project", tagName: "mu-array" },
     );
-    let instances = 0;
-    componentPreview = () => {
-      instances += 1;
-      return Promise.resolve(document.createElement("mu-fine"));
-    };
-    componentRegistry.push({
-      path: "components/not-an-object.json",
-      source: "project",
-      tagName: "mu-array",
-    });
-    const cache = createPreviewCache();
-    expect(await previewFor("components/not-an-object.json", cache)).toBeUndefined();
-    expect(await previewFor("components/mu-card.json", cache)).toBeUndefined();
-    // No instance was made for the card that cannot render, so nothing throws where none can catch.
-    expect(instances).toBe(0);
-    const fine = await previewFor("components/fine.json", cache);
-    expect(fine?.tagName).toBe("MU-FINE");
-    expect(instances).toBe(1);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const cache = createPreviewCache();
+      expect(await previewFor("components/not-an-object.json", cache)).toBeUndefined();
+      expect(await previewFor("components/mu-card.json", cache)).toBeUndefined();
+      // No instance was made for the card that cannot render: its tag was never even defined.
+      expect(customElements.get("mu-card")).toBeUndefined();
+      const fine = await previewFor("components/fine.json", cache);
+      // The definition names its own tag, which is the element the realm draws.
+      expect(drawn(fine).querySelector("mu-card p")?.textContent).toBe("20");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   /** A card whose render needs a real date, as the museum's does. */
@@ -425,8 +465,8 @@ describe("previewFor", () => {
       tagName: "mu-dated",
     });
     exampleProps = new Map<string, JsonValue>([["date", "2026-06-20"]]);
-    expect(await previewFor("components/dated.json", createPreviewCache())).toBeDefined();
-    expect([...(previewProps.at(-1) ?? [])]).toEqual([["date", "2026-06-20"]]);
+    const rendered = await previewFor("components/dated.json", createPreviewCache());
+    expect(drawn(rendered).querySelector("mu-dated p")?.textContent).toBe("20");
   });
 
   test("a project component whose file is gone has no preview", async () => {
@@ -479,7 +519,7 @@ describe("createPreviewObserver", () => {
     globalThis.IntersectionObserver = undefined;
     const seen: Element[] = [];
     const observer = createPreviewObserver((el) => seen.push(el));
-    const el = element("a");
+    const el = cardEl("a");
     observer.observe(el);
     // Nothing was ever watched on this path, so the sweep has nothing to find.
     expect(observer.releaseDetached()).toBe(0);
@@ -507,8 +547,8 @@ describe("createPreviewObserver", () => {
 
     const seen: Element[] = [];
     const observer = createPreviewObserver((el) => seen.push(el));
-    const visible = element("in");
-    const offscreen = element("out");
+    const visible = cardEl("in");
+    const offscreen = cardEl("out");
     observer.observe(visible);
     observer.observe(offscreen);
     fire([
@@ -535,7 +575,7 @@ describe("createPreviewObserver", () => {
     });
 
     const observer = createPreviewObserver(() => {});
-    const card = element("a");
+    const card = cardEl("a");
     observer.observe(card);
     observer.observe(card);
     observer.observe(card);
@@ -560,8 +600,8 @@ describe("createPreviewObserver", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const observer = createPreviewObserver(() => {});
-    const onscreen = element("in-window");
-    const scrolledPast = element("gone");
+    const onscreen = cardEl("in-window");
+    const scrolledPast = cardEl("gone");
     host.append(onscreen, scrolledPast);
     observer.observe(onscreen);
     observer.observe(scrolledPast);
@@ -595,7 +635,7 @@ describe("createPreviewObserver", () => {
     );
     const seen: Element[] = [];
     const observer = createPreviewObserver((el) => seen.push(el));
-    const card = element("failed");
+    const card = cardEl("failed");
     observer.observeAgain(card);
     // Idempotent, as `observe` is.
     observer.observeAgain(card);
@@ -618,7 +658,7 @@ describe("createPreviewObserver", () => {
     });
     const seen: Element[] = [];
     const observer = createPreviewObserver((el) => seen.push(el));
-    const card = element("released");
+    const card = cardEl("released");
     observer.observeAgain(card);
     expect(observer.releaseDetached()).toBe(1);
     observer.observe(card);
@@ -643,7 +683,7 @@ describe("createPreviewObserver", () => {
     );
     const seen: Element[] = [];
     const observer = createPreviewObserver((el) => seen.push(el));
-    const card = element("parked");
+    const card = cardEl("parked");
     observer.observeAgain(card);
     // Still on screen: the initial record is skipped, and the card is waiting to leave.
     fire([{ isIntersecting: true, target: card }]);
@@ -663,7 +703,7 @@ describe("createPreviewObserver", () => {
     globalThis.IntersectionObserver = undefined;
     const seen: Element[] = [];
     const observer = createPreviewObserver((el) => seen.push(el));
-    observer.observeAgain(element("a"));
+    observer.observeAgain(cardEl("a"));
     expect(seen.length).toBe(0);
     observer.destroy();
   });
@@ -703,42 +743,75 @@ describe("retrying a failed preview", () => {
     expect(told).toBe(1);
   });
 
-  test("a renderer that throws is reported once on the console, not once per paint", async () => {
+  test("a realm that went away is not reported as the file's failure", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
+    setPreviewRealmFactory(() => {
+      throw new Error("the preview realm was replaced");
+    });
     try {
-      componentRegistry.push({ path: "components/loud.json", source: "npm", tagName: "x-loud" });
-      componentPreview = () => {
-        throw new Error("definition fetch failed");
-      };
+      componentRegistry.push({ path: "components/quiet.json", source: "npm", tagName: "x-quiet" });
+      const cache = createPreviewCache();
+      expect(await previewFor("components/quiet.json", cache)).toBeUndefined();
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(lines.filter((line) => line.includes("components/quiet.json"))).toEqual([]);
+    } finally {
+      setPreviewRealmFactory(inProcessRealm());
+      warn.mockRestore();
+    }
+  });
+
+  test("a preview that throws on the way is reported and absorbed rather than breaking the paint", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const find = spyOn(componentRegistry, "find").mockImplementation(() => {
+      throw new Error("registry unreadable");
+    });
+    try {
+      expect(await previewFor("components/odd.json", createPreviewCache())).toBeUndefined();
+      expect(warn.mock.calls.map((call) => String(call[0]))).toContain(
+        "Jx Studio: no preview for components/odd.json: registry unreadable",
+      );
+    } finally {
+      find.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  test("a component that fails is reported once on the console, not once per paint", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    installMockPlatform({}, {});
+    try {
+      componentRegistry.push({
+        path: "components/loud.json",
+        source: "project",
+        tagName: "x-loud",
+      });
       const cache = createPreviewCache();
       const first = await previewFor("components/loud.json", cache);
       const second = await previewFor("components/loud.json", cache);
       expect([first, second]).toEqual([undefined, undefined]);
       const lines = warn.mock.calls.map((call) => String(call[0]));
       expect(lines.filter((line) => line.includes("components/loud.json"))).toEqual([
-        "Jx Studio: no preview for components/loud.json: definition fetch failed",
+        "Jx Studio: no preview for components/loud.json: its definition could not be read",
       ]);
     } finally {
+      setPreviewRealmFactory(inProcessRealm());
       warn.mockRestore();
     }
   });
 
   test("a failed preview is not cached, so the next ask renders it once it can", async () => {
-    componentRegistry.push({ path: "components/late.json", source: "npm", tagName: "x-late" });
-    let ready = false;
-    componentPreview = () => {
-      if (!ready) {
-        return Promise.reject(new Error("not yet defined"));
-      }
-      return Promise.resolve(document.createElement("x-late"));
-    };
+    componentRegistry.push({ path: "components/late.json", source: "project", tagName: "x-late" });
+    installMockPlatform({}, {});
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const cache = createPreviewCache();
       expect(await previewFor("components/late.json", cache)).toBeUndefined();
-      ready = true;
+      installMockPlatform(
+        {},
+        { "components/late.json": '{"tagName":"x-late","children":["Late"]}' },
+      );
       const rendered = await previewFor("components/late.json", cache);
-      expect(rendered?.tagName).toBe("X-LATE");
+      expect(drawn(rendered).querySelector("x-late")?.textContent).toBe("Late");
       expect(cache.has("components/late.json")).toBe(true);
     } finally {
       warn.mockRestore();
@@ -786,11 +859,49 @@ describe("retrying a failed preview", () => {
   });
 });
 
+describe("a changed definition reaches the preview realm", () => {
+  test("a realm holding a changed tag is replaced, and failed previews are asked again", async () => {
+    const made: InProcessRealm[] = [];
+    setPreviewRealmFactory(inProcessRealm({ made }));
+    let told = 0;
+    const stop = onPreviewsInvalidated(() => {
+      told += 1;
+    });
+    try {
+      installMockPlatform(
+        {},
+        { "components/moved.json": '{"tagName":"x-moved","children":["M"]}' },
+      );
+      componentRegistry.push({
+        path: "components/moved.json",
+        source: "project",
+        tagName: "x-moved",
+      });
+      expect(await previewFor("components/moved.json", createPreviewCache())).toBeDefined();
+      previewDefinitionsMoved(["x-other"]);
+      expect(told).toBe(0);
+      previewDefinitionsMoved(["x-moved"]);
+      expect(told).toBe(1);
+      expect(made[0]?.disposed).toBe(true);
+      // A realm that holds nothing yet is not replaced by a component set that moved.
+      previewComponentSetMoved();
+      expect(told).toBe(1);
+      expect(await previewFor("components/moved.json", createPreviewCache())).toBeDefined();
+      previewComponentSetMoved();
+      expect(told).toBe(2);
+      expect(made[1]?.disposed).toBe(true);
+    } finally {
+      stop();
+      setPreviewRealmFactory(inProcessRealm());
+    }
+  });
+});
+
 describe("evictPreview", () => {
   test("a cache whose panel was torn down and collected is skipped, and a live one still evicts", async () => {
     const live = createPreviewCache();
     const shown = element("live");
-    document.body.append(shown);
+    const island = shownIn(shown);
     live.set("components/gone.json", shown);
     // Panels that were torn down: nothing holds their caches any more.
     (() => {
@@ -807,6 +918,7 @@ describe("evictPreview", () => {
       evictPreview("components/gone.json");
     }).not.toThrow();
     expect(live.has("components/gone.json")).toBe(false);
-    expect(shown.isConnected).toBe(false);
+    expect(shownPreview(island)).toBeNull();
+    island.remove();
   });
 });

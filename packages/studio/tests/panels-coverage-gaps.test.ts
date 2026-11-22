@@ -53,13 +53,17 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item", () => ({
   attachInstruction: <T extends object>(data: T) => data,
   extractInstruction: (data: { __instr?: Instruction }) => data.__instr ?? null,
 }));
-void mock.module("../src/panels/component-preview", () => ({
-  renderComponentInstance: async (comp: ComponentEntry) => document.createElement(comp.tagName),
-  renderComponentPreview: async (comp: ComponentEntry) => {
-    const el = document.createElement(comp.tagName);
-    el.textContent = "preview";
-    return el;
-  },
+void mock.module("../src/preview-realm/ask", () => ({
+  componentPreview: async () => ({ kind: "failed", message: "doubled" }),
+  readDefinition: async () => null,
+  realmTarget: () => null,
+  rendersWith: async () => false,
+  reportPreviewFailure: () => {},
+  snapshotOf: () => null,
+  cardSnapshot: async (comp: ComponentEntry) => ({
+    html: `<${comp.tagName}>preview</${comp.tagName}>`,
+    sheet: null,
+  }),
 }));
 // The specimen answers read the files the preview mock above replaces; this suite draws none.
 void mock.module("../src/style/stylebook-specimens", () => ({
