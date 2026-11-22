@@ -24,16 +24,59 @@ import { projectPreviewSheets } from "./preview-style";
  * the empty images of DOCUMENT previews (the Content home's cards), which draw what the page wrote.
  * The realm's box for an element it cannot draw (`preview-realm/frame.ts`) names its tag in the dim
  * text the chrome uses. Everything else about the box (its size, its scale, its light surface) is
- * the surface document's, on the island itself.
+ * the surface document's, on the island itself, except its bound ({@link BOUND_RULES}).
  */
 const PREVIEW_RULES = `img:not([src]), img[src=""] { visibility: hidden; }
 .${PREVIEW_FALLBACK_CLASS} { padding: 12px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--fg-dim); }`;
 
-const _previewSheets = new WeakMap<Document, CSSStyleSheet>();
+/**
+ * **A preview is bounded by its island** (`studio.md` §9.1.2), and these are the rules that bound
+ * it, in the island's own shadow root, which holds nothing else but the one element the preview's
+ * root is attached to ({@link mountPreview}).
+ *
+ * The `:host` rule contains the island's layout, paint and style, so the island is the containing
+ * block of everything the preview positions, `position: fixed` included, and nothing the preview
+ * draws paints outside it. Without it a page's own fixed header (`position: fixed;
+ * inset-block-start: 0`, the commonest navigation there is) is placed against Studio's viewport:
+ * neither a shadow boundary nor `overflow: hidden` contains a fixed box, and the `zoom` the
+ * surfaces scale an island by does not make it a containing block either (only `transform`,
+ * `filter`, `contain` and their kin do), so a component card once drew its nav across the top of
+ * the window, over the Command Bar. It is `!important` because an outer rule on a shadow host beats
+ * `:host` unless the inner one is important (CSS Cascade 4 §6.1, "Context"), so no surface can
+ * switch it off; and it is declared here, in the root every preview is mounted through, because a
+ * bound one surface may forget is not a bound.
+ *
+ * **The bound is on an element no project rule can select.** The project's stylesheet reaches the
+ * preview with its `:root`, `html` and `body` re-pointed at `:host` (`browse/preview-style.ts`),
+ * and a document may carry a `<style>` of its own; were the preview's root the island's, a site's
+ * `body { position: fixed; inset: 0 }` would move the island itself, which containment cannot hold
+ * in place, and an authored `:host(:not(.x)) { contain: none !important }` would outrank the bound.
+ * So the preview's root is attached to an element inside this one, and `:host` there is that
+ * element, which the island contains whatever a project rule does to it. It fills the island as a
+ * page's body fills its viewport, so a site's background covers the card unless the surface
+ * declares its own on {@link PREVIEW_PART}.
+ */
+const BOUND_RULES = `:host { contain: layout paint style !important; }
+div { display: block; min-block-size: 100%; }`;
 
-/** The preview rules as a sheet of `doc`'s own (a constructed sheet is adoptable only there). */
-function previewSheetFor(doc: Document): CSSStyleSheet | null {
-  const known = _previewSheets.get(doc);
+/**
+ * The part the element the preview's root is attached to exposes. A surface that draws its previews
+ * on a surface of its own (the light document surface of the Site panel's and the palette's
+ * component cards) declares it on `::part(preview)`: that rule is the outermost one on the element,
+ * so it wins over what a project's root rules (re-pointed at its `:host`) declare there, as the
+ * island's own rule did when the preview's root was the island's. A surface that declares nothing
+ * there (the Content home's document cards) shows the page's own background, as it always did.
+ */
+export const PREVIEW_PART = "preview";
+
+const _sheets = new WeakMap<Document, { bound: CSSStyleSheet; preview: CSSStyleSheet }>();
+
+/**
+ * The preview rules and the bound as sheets of `doc`'s own (a constructed sheet is adoptable only
+ * there), made once per document and shared by every island; null where `doc` cannot make one.
+ */
+function sheetsFor(doc: Document): { bound: CSSStyleSheet; preview: CSSStyleSheet } | null {
+  const known = _sheets.get(doc);
   if (known) {
     return known;
   }
@@ -41,10 +84,13 @@ function previewSheetFor(doc: Document): CSSStyleSheet | null {
   if (!isFunction(Sheet)) {
     return null;
   }
-  const sheet = new Sheet();
-  sheet.replaceSync(PREVIEW_RULES);
-  _previewSheets.set(doc, sheet);
-  return sheet;
+  const bound = new Sheet();
+  bound.replaceSync(BOUND_RULES);
+  const preview = new Sheet();
+  preview.replaceSync(PREVIEW_RULES);
+  const sheets = { bound, preview };
+  _sheets.set(doc, sheets);
+  return sheets;
 }
 
 /** Elements that run, embed or redirect something: a preview is a picture, and needs none. */
@@ -104,13 +150,36 @@ export function makeInert(scope: DocumentFragment): void {
   }
 }
 
+/**
+ * The island's own root, holding the bound and the one element the preview's root is attached to:
+ * that element is `inert`, so a preview's links and buttons are neither focusable nor named in any
+ * surface that shows one, whether or not the surface marked its island.
+ */
+function attachPreviewRoot(slot: HTMLElement): ShadowRoot {
+  const doc = slot.ownerDocument;
+  const outer = slot.shadowRoot ?? slot.attachShadow({ mode: "open" });
+  const sheets = sheetsFor(doc);
+  outer.adoptedStyleSheets = sheets ? [sheets.bound] : [];
+  const host = doc.createElement("div");
+  host.setAttribute("part", PREVIEW_PART);
+  host.inert = true;
+  outer.replaceChildren(host);
+  return host.attachShadow({ mode: "open" });
+}
+
+/** The root a preview of `slot` is shown in, or null while none was mounted there. */
+export function previewRootOf(slot: Element): ShadowRoot | null {
+  return slot.shadowRoot?.firstElementChild?.shadowRoot ?? null;
+}
+
 /** The snapshot each root shows. */
 const _shown = new WeakMap<ShadowRoot, PreviewSnapshot>();
 /** The roots each snapshot was mounted in, held weakly: a card that went is not kept for this. */
 const _mounts = new WeakMap<PreviewSnapshot, Set<WeakRef<ShadowRoot>>>();
 
 /**
- * Show a preview in its island, inside a shadow root of the island's own.
+ * Show a preview in its island, inside a shadow root of its own, held in the island's
+ * ({@link BOUND_RULES} says why there are two).
  *
  * **A preview is a page's part, drawn in the preview realm and shown in Studio's window, and the
  * shadow root is what keeps it a guest here.** A component's own ids never join Studio's (two cards
@@ -133,12 +202,12 @@ const _mounts = new WeakMap<PreviewSnapshot, Set<WeakRef<ShadowRoot>>>();
  * @param snapshot The preview, from `previewFor` (`library-preview.ts`).
  */
 export function mountPreview(slot: HTMLElement, snapshot: PreviewSnapshot): void {
-  const root = slot.shadowRoot ?? slot.attachShadow({ mode: "open" });
-  const own = previewSheetFor(slot.ownerDocument);
+  const root = previewRootOf(slot) ?? attachPreviewRoot(slot);
+  const sheets = sheetsFor(slot.ownerDocument);
   root.adoptedStyleSheets = [
     ...projectPreviewSheets(),
     ...(snapshot.sheet ? [snapshot.sheet] : []),
-    ...(own ? [own] : []),
+    ...(sheets ? [sheets.preview] : []),
   ];
   const staging = slot.ownerDocument.implementation
     .createHTMLDocument("")
@@ -158,7 +227,7 @@ export function mountPreview(slot: HTMLElement, snapshot: PreviewSnapshot): void
 
 /** The preview an island is showing, or null while it shows none. */
 export function shownPreview(slot: Element): PreviewSnapshot | null {
-  const root = slot.shadowRoot;
+  const root = previewRootOf(slot);
   return root ? (_shown.get(root) ?? null) : null;
 }
 

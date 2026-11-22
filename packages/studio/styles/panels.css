@@ -134,6 +134,13 @@
   overflow: hidden;
   pointer-events: none;
 }
+/* A component preview's render is in a shadow root inside this box's own (`browse/preview-root.ts`),
+   and the site's own `body` rules reach the element that root is attached to as `:host`; this is the
+   outer rule there, so the card stays on the light surface whatever the site's page background is. */
+.element-card-preview::part(preview) {
+  background: white;
+  color: var(--canvas-fg-2);
+}
 .element-card-preview > * {
   max-width: 100%;
   color: var(--canvas-fg-2);

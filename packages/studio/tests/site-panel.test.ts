@@ -287,7 +287,7 @@ describe("Components", () => {
     expect(previewFor).toHaveBeenCalledTimes(1);
     const previews = part("card-preview");
     // The render is in the island's own shadow root, so its ids never join the chrome's.
-    expect(previews[0]?.shadowRoot?.querySelector("[data-preview]")).not.toBeNull();
+    expect(previewRootOf(previews[0]!)?.querySelector("[data-preview]")).not.toBeNull();
     expect(previews[0]?.querySelector("[data-preview]")).toBeNull();
     expect(previews[0]?.hasAttribute("inert")).toBe(true);
     expect(previews[1]?.shadowRoot ?? null).toBeNull();
@@ -352,13 +352,13 @@ describe("Components", () => {
     previewFor.mockImplementationOnce(async () => {});
     await paint();
     expect(previewFor).toHaveBeenCalledTimes(2);
-    expect(part("card-preview")[0]?.shadowRoot?.querySelector("[data-preview]")).not.toBeNull();
+    expect(previewRootOf(part("card-preview")[0]!)?.querySelector("[data-preview]")).not.toBeNull();
   });
 
   test("a saved definition re-renders its card's preview", async () => {
     await paint();
     const box = part("card-preview")[0]!;
-    const first = box.shadowRoot?.firstElementChild;
+    const first = previewRootOf(box)?.firstElementChild;
     expect(previewFor).toHaveBeenCalledTimes(1);
     // A save rebuilds the registry entry; the next paint finds the box showing the old one.
     noteComponentSaved("components/site-card.json", {
@@ -369,7 +369,7 @@ describe("Components", () => {
     await flush(6);
     expect(previewFor).toHaveBeenCalledTimes(2);
     expect(part("card-preview")[0] === box).toBe(true);
-    expect(box.shadowRoot?.firstElementChild === first).toBe(false);
+    expect(previewRootOf(box)?.firstElementChild === first).toBe(false);
     // Nothing changed since: the next paint asks for nothing.
     invalidateSiteIndex([]);
     await flush(6);
@@ -394,12 +394,12 @@ describe("Components", () => {
     invalidateSiteIndex([]);
     await flush(6);
     expect(previewFor).toHaveBeenCalledTimes(2);
-    const current = box.shadowRoot?.firstElementChild;
+    const current = previewRootOf(box)?.firstElementChild;
     expect(current).not.toBeNull();
     // The first render lands last, and the box keeps the newer one.
     finishStale({ html: "<i></i>", sheet: null });
     await flush(2);
-    expect(box.shadowRoot?.firstElementChild === current).toBe(true);
+    expect(previewRootOf(box)?.firstElementChild === current).toBe(true);
   });
 
   test("a card opens its definition, and drags an instance of the component", async () => {
@@ -798,3 +798,4 @@ describe("staying current", () => {
 });
 
 const { getPlatform } = await import("../src/platform");
+const { previewRootOf } = await import("../src/browse/preview-root");

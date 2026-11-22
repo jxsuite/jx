@@ -151,7 +151,7 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"doc-preview\"]": {
-      "$description": "The island. The document renders this box and nothing inside it; the adapter mounts a real runtime render of the file into a shadow root of the island's own when the card comes into view (`mountPreview` in `browse/library-preview.ts`, which keeps the document's ids out of Studio's), and the zoom is what makes a page-sized document readable as a thumbnail without rendering it at thumbnail size: the render is laid out in a box two and a half times as wide and drawn at 0.4. It is `inert`, so a page's own links and buttons are neither focusable nor named inside the card.",
+      "$description": "The island. The document renders this box and nothing inside it; the adapter mounts the preview realm's render of the file into a shadow root inside the island's own when the card comes into view (`mountPreview` in `browse/preview-root.ts`, which keeps the document's ids out of Studio's and bounds the render to the island, studio.md §9.1.2; the zoom and the `overflow` bound nothing, since a `position: fixed` element is placed against neither). It declares no surface on `::part(preview)`, so a page's own background shows, as it does on the page, and the zoom is what makes a page-sized document readable as a thumbnail without rendering it at thumbnail size: the render is laid out in a box two and a half times as wide and drawn at 0.4. It is `inert`, so a page's own links and buttons are neither focusable nor named inside the card.",
       "width": "100%",
       "height": "100%",
       "zoom": "0.4",
