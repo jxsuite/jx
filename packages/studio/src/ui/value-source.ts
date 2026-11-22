@@ -31,6 +31,7 @@
 import {
   arrayNamespaceSchema,
   attributesObjectSchema,
+  boolOrRefSchema,
   elementPropertyValueSchema,
   elementTagNameSchema,
   expressionEntrySchema,
@@ -320,6 +321,8 @@ export const SLOT_POSITION_SCHEMAS = {
    * is exactly what the pattern exists to reject.
    */
   elementTag: ELEMENT_TAG_SCHEMA,
+  /** A declared boolean element property (`hidden`) — `BoolOrRef`. */
+  boolProperty: boolOrRefSchema,
   /** A declared string-valued element property (`textContent`, `href`, …) — `StringOrRef`. */
   textProperty: stringOrRefSchema,
 } as const;
