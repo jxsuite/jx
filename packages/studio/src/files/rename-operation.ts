@@ -216,7 +216,8 @@ export async function renameThroughHost(from: string, to: string): Promise<Renam
   const rename = getPlatform().renameProjectState!;
   const dirty = dirtyTabs();
   const opId = `studio-${crypto.randomUUID()}`;
-  // Every step's write id is `<opId>:<n>`, so its events are this window's own (§2.4, §9.1).
+  // Every step's write id is `<opId>:<n>`, so its events are this window's own
+  // (project-state.md §2.4, project-state.md §9.1).
   contentStore.noteOperationId(opId);
   const result: RenameOperationResult = await rename({
     dirtyReferrers: dirty.map((tab) => ({
