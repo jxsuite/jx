@@ -17,8 +17,11 @@ code:
   - packages/server/src/refactor/refs.ts
   - packages/server/src/refactor/find-refs.ts
   - packages/server/src/refactor/paths.ts
+  - packages/protocol/src/refs.ts
+  - packages/protocol/src/ref-paths.ts
   - packages/server/src/project-state/rename.ts
   - packages/studio/src/files/rename-operation.ts
+  - packages/studio/src/files/client-rewrites.ts
 ---
 
 # Pages, layouts, and components
@@ -98,7 +101,7 @@ If Studio cannot count (a backend without project search), the confirmation says
 :::doc-note
 A CSV content collection is a data source Studio loads entries from rather than a document it round-trips, so it is never rewritten wholesale. A reference inside one is still repaired: Studio replaces that cell's text and leaves the rest of the file byte for byte as you wrote it, quoting and line endings included. Where a reference genuinely cannot be updated (a file that will not parse), the rename says so, reporting a **warning** that names the files instead of a plain "Renamed", so you know where to look. Dragging a file to a new folder in the Files panel does the same refactor, and reports the same way, as does converting one to another format.
 
-In the desktop app and on the development server, a rename or a move happens all at once: if any reference cannot be written (another program changed that file a moment ago, say), nothing is renamed and every file stays as it was, and Studio tells you why. A file that refers to the renamed one and is open with unsaved changes is not rewritten on disk. Studio updates the reference in your open copy instead, so you keep your changes and the new path together, and the tab stays unsaved until you save it. **Undo** takes that update back like any other edit. This holds for a page you are editing with others too: the update is an edit everyone in the session sees. If your open copy no longer mentions the old path, or you closed the tab before the rename finished, the rename's warning names that file, because its saved copy still points at the old path. A rename that changes only capital letters (`Hero.png` to `hero.png`) works on macOS and Windows as well.
+In the desktop app and on the development server, a rename or a move happens all at once: if any reference cannot be written (another program changed that file a moment ago, say), nothing is renamed and every file stays as it was, and Studio tells you why. A file that refers to the renamed one and is open with unsaved changes is not rewritten on disk. Studio updates the reference in your open copy instead, so you keep your changes and the new path together, and the tab stays unsaved until you save it. **Undo** takes that update back like any other edit. This holds for a page you are editing with others too: the update is an edit everyone in the session sees. If your open copy no longer mentions the old path, or you closed the tab before the rename finished, the rename's warning names that file, because its saved copy still points at the old path. A rename that changes only capital letters (`Hero.png` to `hero.png`) works on macOS and Windows as well. If the backend has not read some of your documents itself (one in a format only Studio has loaded, say), Studio finds and rewrites their references itself and sends them with the rename, so they move in the same step as everything else.
 :::
 
 ## Which one do I want?

@@ -15,6 +15,7 @@
  * @module
  */
 
+import type { ProjectStateClient } from "./project-state-frames.ts";
 import {
   checkContinuity,
   decodeCloudHostMessage,
@@ -177,6 +178,42 @@ export interface ProjectStateDriver {
   create: (files: FixtureFiles, options: ProjectStateHostOptions) => Promise<ProjectStateHost>;
   graph?: ProjectStateGraphHooks;
   rename?: ProjectStateRenameHooks;
+}
+
+/**
+ * Observe one subscription made through a binding's client (`ProjectStateClient`, §3.2), for a
+ * driver whose host is reached over a wire: a socket, a stream. The answer is the subscribe's,
+ * every later batch is appended to `events` in the order it arrived, and the client reporting the
+ * end sets `ended`. `close` ends it from the client's side through the client's own `close`, when
+ * it has one. A client holds one subscription at a time, so a driver hands each call a client of
+ * its own; and since frames on a wire arrive after the host emitted them, its `settle` waits for
+ * them.
+ */
+export async function observeSubscription(
+  client: Pick<ProjectStateClient, "subscribe"> & { close?: () => void },
+  request: SubscribeRequest,
+): Promise<ProjectStateSubscription> {
+  const events: ProjectEvent[] = [];
+  let ended = false;
+  const response = await client.subscribe(request, {
+    ended: () => {
+      ended = true;
+    },
+    events: (params) => {
+      events.push(...params.events);
+    },
+  });
+  return {
+    close: () => {
+      ended = true;
+      client.close?.();
+    },
+    get ended() {
+      return ended;
+    },
+    events,
+    response,
+  };
 }
 
 // ─── The fixture ──────────────────────────────────────────────────────────────────────────────

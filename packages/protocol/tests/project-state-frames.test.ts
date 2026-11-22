@@ -29,6 +29,7 @@ import {
   decodeSseMessage,
   decodeWireContents,
   deletePrecondition,
+  encodeCloudEnded,
   encodeCloudEvents,
   encodeCloudSubscribe,
   encodeCloudSubscribeAnswer,
@@ -555,6 +556,10 @@ describe("cloud binding", () => {
       TypeError,
     );
     expect(() => encodeCloudEvents("e1", [])).toThrow(RangeError);
+    expect(decodeCloudHostMessage(encodeCloudEnded("e1"))).toEqual({ epoch: "e1", kind: "ended" });
+    expect(() => decodeCloudHostMessage(JSON.stringify({ kind: "project-ended" }))).toThrow(
+      TypeError,
+    );
   });
 });
 

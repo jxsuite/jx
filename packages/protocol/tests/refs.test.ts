@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { rewriteDocRefs, rewriteTagName } from "../src/refactor/refs";
-import type { RemapCtx } from "../src/refactor/paths";
+import { rewriteDocRefs, rewriteTagName } from "../src/refs";
+import type { RemapCtx } from "../src/ref-paths";
 
 const ctx = (over: Partial<RemapCtx>): RemapCtx => ({
   docNewDir: "/p/pages",

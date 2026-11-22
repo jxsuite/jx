@@ -34,7 +34,7 @@ import type {
   RenameRefused,
 } from "@jxsuite/protocol/project-state";
 import { getPlatform } from "../platform";
-import type { RenameResult, StudioPlatform } from "../types";
+import type { ContentSectionEntry, RenameResult, StudioPlatform } from "../types";
 import type { Tab } from "../tabs/tab";
 import { mutateUpdateFrontmatter, mutateUpdateProperty, transactDoc } from "../tabs/transact";
 import type { JxNodeValue } from "../tabs/transact";
@@ -42,8 +42,14 @@ import type { JxPath } from "../state";
 import { workspace } from "../workspace/workspace";
 import { contentStore } from "../project-state/store";
 import { projectStateServed, whenProjectStateSettled } from "../project-state/subscription";
+import { projectState } from "../store";
+import { projectLocales } from "../canvas/asset-refs";
+import { contentMountFor } from "../canvas/asset-resolve";
+import { formatForPath, formatParse, formatSerialize, loadFormats } from "../format/format-host";
 // The bound a save waits for the host's first answer is the bound a rename waits too.
 import { SETTLE_TIMEOUT_MS } from "./based-writes";
+import { loadWithFormats, planClientRewrites } from "./client-rewrites";
+import type { ClientRewriteDeps, ClientRewritePlan } from "./client-rewrites";
 
 /** Keys whose strings are prose: a rename never rewrites them (the refactor walker's rule). */
 const PROSE_KEYS = new Set(["textContent", "innerHTML"]);
@@ -207,15 +213,47 @@ function moved(path: string, from: string, to: string): string {
 }
 
 /**
+ * What {@link planClientRewrites} reads through in the open project: the window's store, the
+ * platform's reads, the formats Studio has loaded, and the content mounts of the project's
+ * configuration.
+ */
+export function studioRewriteDeps(): ClientRewriteDeps {
+  const formats = loadWithFormats({ formatForPath, formatParse, formatSerialize, loadFormats });
+  return {
+    load: formats,
+    mounts(path) {
+      /* SAFETY: `content` is the parser extension's opaque project section, a map of section
+         entries; contentMountFor reads only each entry's optional `source`. */
+      const content = projectState?.projectConfig?.content as
+        | Record<string, ContentSectionEntry>
+        | undefined;
+      const mount = contentMountFor(path, content, projectLocales());
+      return mount === null ? [] : [mount];
+    },
+    read: (path) => getPlatform().readFile(path),
+    store: contentStore,
+  };
+}
+
+/**
  * Rename `from` to `to` through the host as one operation (§9), applying the host's rewrites to
  * every dirty referrer's buffer, and answer the report `renameFile` would have. Throws
  * {@link RenameRefusedError} when the host refused or rolled back: nothing changed on disk.
+ *
+ * When the store holds documents the host could not index (a partial graph, `project-state.md`
+ * §8.2), the operation carries Studio's own rewrites of them (§9.1), and a dirty one among them is
+ * rewritten in its buffer from the changes Studio computed, since the host leaves it alone.
  */
-export async function renameThroughHost(from: string, to: string): Promise<RenameResult> {
+export async function renameThroughHost(
+  from: string,
+  to: string,
+  deps: ClientRewriteDeps = studioRewriteDeps(),
+): Promise<RenameResult> {
   // SAFETY: every caller is behind `renamesThroughHost`, which requires the member.
   const rename = getPlatform().renameProjectState!;
   const dirty = dirtyTabs();
   const opId = `studio-${crypto.randomUUID()}`;
+  const client: ClientRewritePlan | null = await planClientRewrites(from, to, deps);
   // Every step's write id is `<opId>:<n>`, so its events are this window's own
   // (project-state.md §2.4, project-state.md §9.1).
   contentStore.noteOperationId(opId);
@@ -227,16 +265,30 @@ export async function renameThroughHost(from: string, to: string): Promise<Renam
     from,
     opId,
     policy: "rewrite-buffer",
+    ...(client !== null && {
+      rewrites: client.rewrites.map(({ baseHash, contents, path }) => ({
+        baseHash,
+        contents,
+        path,
+      })),
+    }),
     to,
   });
   if (!result.ok) {
     throw new RenameRefusedError(result);
   }
-  const errors = [...result.errors];
-  for (const rewrite of result.buffers) {
+  const errors = [...result.errors, ...(client?.errors ?? [])];
+  const computed = new Map(client?.rewrites.map((rewrite) => [rewrite.path, rewrite]));
+  for (const answered of result.buffers) {
+    let rewrite: BufferRewrite = answered;
     if (rewrite.changes.length === 0 && rewrite.tag === undefined) {
-      // Nothing for Studio to apply: the host had no change to make to this buffer.
-      continue;
+      const own = computed.get(rewrite.path);
+      if (own === undefined) {
+        // Nothing for Studio to apply: the host had no change to make to this buffer.
+        continue;
+      }
+      // Studio's own rewrite of a dirty document the host could not read (§9.2).
+      rewrite = { ...rewrite, changes: own.changes, ...(own.tag && { tag: own.tag }) };
     }
     /* By path, whatever revision the buffer is at now: the rewrite maps reference values, so it
        applies as well to edits the author made while the rename was in flight. */

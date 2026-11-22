@@ -19,8 +19,11 @@
     "./problem": "./src/problem.ts",
     "./problems": "./src/problems.ts",
     "./project-state": "./src/project-state.ts",
+    "./project-state-cloud": "./src/project-state-cloud.ts",
     "./project-state-conformance": "./src/project-state-conformance.ts",
     "./project-state-frames": "./src/project-state-frames.ts",
+    "./ref-paths": "./src/ref-paths.ts",
+    "./refs": "./src/refs.ts",
     "./routes": "./src/routes.ts",
     "./types": "./src/types.ts"
   },
