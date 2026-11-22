@@ -2,6 +2,7 @@ import { installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { answerSubscribe, createMemoryEventLog } from "@jxsuite/protocol/project-state";
 import type {
+  IndexedFile,
   ProjectEvent,
   RenameApplied,
   RenameOperation,
@@ -9,8 +10,14 @@ import type {
   SubscribeRequest,
 } from "@jxsuite/protocol/project-state";
 
-const { applyBufferRewrite, RenameRefusedError, renamesThroughHost, renameThroughHost } =
-  await import("../src/files/rename-operation");
+const {
+  applyBufferRewrite,
+  RenameRefusedError,
+  renamesThroughHost,
+  renameThroughHost,
+  studioRewriteDeps,
+} = await import("../src/files/rename-operation");
+const { setProjectState } = await import("../src/state");
 const { commitRename } = await import("../src/files/files");
 const { startProjectStateSync, stopProjectStateSync } =
   await import("../src/project-state/subscription");
@@ -39,7 +46,10 @@ const APPLIED: RenameApplied = {
 };
 
 /** Install a platform whose host serves the subscription and answers renames with `answer`. */
-async function serve(answer: (operation: RenameOperation) => RenameOperationResult) {
+async function serve(
+  answer: (operation: RenameOperation) => RenameOperationResult,
+  files: IndexedFile[] = [],
+) {
   const log = createMemoryEventLog({ epoch: "e1" });
   const sent: RenameOperation[] = [];
   const installed = installMockPlatform({
@@ -51,7 +61,7 @@ async function serve(answer: (operation: RenameOperation) => RenameOperationResu
       Promise.resolve(
         answerSubscribe(log, request, () => ({
           components: [],
-          files: [],
+          files,
           formats: "f",
           readiness: "ready",
         })),
@@ -222,6 +232,151 @@ describe("a rename as one operation", () => {
     await renameThroughHost("media/logo.png", "media/brand.png");
     expect(served.sent[0]!.dirtyReferrers.map((item) => item.path)).toEqual(["pages/about.json"]);
     expect(JSON.stringify(tab.doc.document.children)).toContain("../media/brand.png");
+  });
+
+  test("a partial graph's unindexed documents travel as Studio's own rewrites (§8.2, §9.1)", async () => {
+    const post = JSON.stringify({ children: [{ src: "../media/logo.png", tagName: "img" }] });
+    const about = JSON.stringify({ children: [{ src: "../media/logo.png", tagName: "img" }] });
+    const served = await serve(
+      (operation) => ({
+        ...APPLIED,
+        buffers: [
+          // The client's rewrite of a dirty document comes back with no changes (§9.2).
+          {
+            bufferRev: operation.dirtyReferrers[0]!.bufferRev,
+            changes: [],
+            path: "pages/about.json",
+          },
+        ],
+      }),
+      [
+        {
+          docId: "d1",
+          hash: "sha256-a",
+          indexed: false,
+          isDir: false,
+          kind: "content",
+          path: "content/post.md",
+        },
+        {
+          docId: "d2",
+          hash: "sha256-b",
+          indexed: false,
+          isDir: false,
+          kind: "page",
+          path: "pages/about.json",
+        },
+        {
+          docId: "d3",
+          hash: "sha256-c",
+          indexed: false,
+          isDir: false,
+          kind: "data",
+          path: "data/list.csv",
+        },
+      ],
+    );
+    const tab = dirtyReferrer();
+    const texts = new Map([
+      ["content/post.md", post],
+      ["data/list.csv", JSON.stringify({ src: "../media/logo.png" })],
+      ["pages/about.json", about],
+    ]);
+    const report = await renameThroughHost("media/logo.png", "media/brand.png", {
+      load: async (path, text) => ({
+        doc: JSON.parse(text),
+        serialize: path.endsWith(".csv") ? null : async (doc) => JSON.stringify(doc),
+      }),
+      mounts: () => [],
+      read: async (path) => texts.get(path) ?? "",
+      store: contentStore,
+    });
+    const rewrites = served.sent[0]!.rewrites ?? [];
+    expect(rewrites.map((rewrite) => [rewrite.path, rewrite.contents])).toEqual([
+      ["content/post.md", post.replace("logo", "brand")],
+      ["pages/about.json", about.replace("logo", "brand")],
+    ]);
+    // The host left the dirty document alone; Studio applies the rewrite it computed to the buffer.
+    expect(JSON.stringify(tab.doc.document.children)).toContain("../media/brand.png");
+    expect(tab.doc.dirty).toBe(true);
+    expect(report.errors).toEqual([
+      ...APPLIED.errors,
+      { error: "Its format cannot be written.", path: "data/list.csv" },
+    ]);
+  });
+
+  test("a component's client rewrite renames its tag in a dirty buffer too", async () => {
+    await serve(
+      (operation) => ({
+        ...APPLIED,
+        buffers: [
+          {
+            bufferRev: operation.dirtyReferrers[0]!.bufferRev,
+            changes: [],
+            path: "pages/about.json",
+          },
+        ],
+      }),
+      [
+        {
+          docId: "d1",
+          hash: "sha256-a",
+          indexed: true,
+          isDir: false,
+          kind: "component",
+          path: "components/my-card.json",
+        },
+        {
+          docId: "d2",
+          hash: "sha256-b",
+          indexed: false,
+          isDir: false,
+          kind: "page",
+          path: "pages/about.json",
+        },
+      ],
+    );
+    const tab = dirtyReferrer();
+    const texts = new Map([
+      ["components/my-card.json", JSON.stringify({ tagName: "my-card" })],
+      ["pages/about.json", JSON.stringify({ children: [{ tagName: "my-card" }] })],
+    ]);
+    await renameThroughHost("components/my-card.json", "components/my-badge.json", {
+      load: async (_path, text) => ({
+        doc: JSON.parse(text),
+        serialize: async (doc) => JSON.stringify(doc),
+      }),
+      mounts: () => [],
+      read: async (path) => texts.get(path) ?? "",
+      store: contentStore,
+    });
+    expect(JSON.stringify(tab.doc.document.children)).toContain("my-badge");
+  });
+
+  test("the window's rewrite dependencies read the platform and the project's content mounts", async () => {
+    /* The parser extension's opaque `content` section, which the core configuration types do not
+       name: read here only through `contentMountFor`. */
+    const CONTENT_CONFIG = JSON.parse('{"content":{"posts":{"source":"./content/posts"}}}');
+    installMockPlatform({}, { "content/post.md": "# Post" });
+    expect(await studioRewriteDeps().read("content/post.md")).toBe("# Post");
+    const deps = studioRewriteDeps();
+    expect(deps.mounts("content/posts/a.md")).toEqual([]);
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "p",
+      projectConfig: CONTENT_CONFIG,
+      projectRoot: "p",
+      root: "p",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    expect(deps.mounts("content/posts/a.md")).toEqual([
+      { dir: "content/posts", urlPrefix: "/content/posts" },
+    ]);
+    const loaded = await deps.load("pages/a.json", '{"tagName":"main"}');
+    expect(loaded?.doc).toEqual({ tagName: "main" });
   });
 
   test("its steps' events are this window's own", async () => {

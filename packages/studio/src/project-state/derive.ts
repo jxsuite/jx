@@ -17,7 +17,9 @@
  *   the `docChanged` that follows it carries only the host's origin.
  * - **What a document's rendering depends on** (`dependentsInvalidated`): the dependents' derived
  *   caches go, and a definition whose tag changed is redefined unless its current bytes already
- *   reached the canvas (Studio's own save, or the `docChanged` before it).
+ *   reached the canvas (Studio's own save, or the `docChanged` before it). An invalidation that is
+ *   not `complete` (a partial graph, `project-state.md` §8.2) reaches every document the store
+ *   holds as unindexed too.
  * - **The project** (`componentsChanged`, `formatsChanged`, `gitChanged`, `readiness`): the component
  *   registry is re-read, the format registry rebuilt, git status re-read, the Site panel
  *   re-indexed.
@@ -201,6 +203,16 @@ export function createStoreDerivations(
               if (path !== undefined) {
                 paths.push(path);
                 contents.add(path);
+              }
+            }
+            /* A partial graph's list is a lower bound (§8.2): every document the host could not
+               read may depend on the cause too, so each one the store holds as unindexed goes. */
+            if (!event.complete) {
+              for (const doc of store.documents()) {
+                if (!doc.isDir && !doc.indexed && !paths.includes(doc.path)) {
+                  paths.push(doc.path);
+                  contents.add(doc.path);
+                }
               }
             }
             targets.dependentsInvalidated?.(paths, event.tags, isApplied);

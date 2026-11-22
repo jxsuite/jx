@@ -208,6 +208,57 @@ describe("createStoreDerivations", () => {
     expect(applied("missing.json")).toBe(false);
   });
 
+  test("an incomplete invalidation reaches every document the store holds as unindexed", () => {
+    const store = createContentStore();
+    store.applySnapshot(
+      snapshotOf({
+        files: [
+          ...snapshotOf().files,
+          {
+            docId: "d6",
+            hash: A,
+            indexed: false,
+            isDir: false,
+            kind: "content",
+            path: "posts/a.md",
+          },
+          { docId: "d7", hash: A, indexed: false, isDir: false, kind: "page", path: "pages/b.md" },
+          { docId: "d8", indexed: false, isDir: true, kind: "other", path: "posts" },
+        ],
+      }),
+    );
+    const { calls, targets } = recorder();
+    const derive = createStoreDerivations(store, targets);
+    feed(store, derive, [
+      [
+        ev({
+          cause: { docId: "d1", kind: "component-instance" },
+          complete: false,
+          docIds: ["d3", "d7"],
+          tags: ["x-card"],
+          type: "dependentsInvalidated",
+        }),
+        false,
+      ],
+    ]);
+    expect(calls[0]).toBe("dependents pages/a.json,pages/b.md,posts/a.md x-card");
+    expect(calls[2]).toBe("derived pages/a.json,pages/b.md,posts/a.md false");
+    // A change no known document depends on names none, and still reaches the unindexed ones.
+    feed(store, derive, [
+      [
+        ev({
+          cause: { docId: "d1", kind: "media-referrer" },
+          complete: false,
+          docIds: [],
+          tags: [],
+          type: "dependentsInvalidated",
+        }),
+        false,
+      ],
+    ]);
+    expect(calls).toContain("dependents posts/a.md,pages/b.md ");
+  });
+
   test("a definition another writer changed is applied once, by its docChanged", () => {
     const store = createContentStore();
     store.applySnapshot(snapshotOf());

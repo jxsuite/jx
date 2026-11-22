@@ -154,6 +154,9 @@ export function resetWorkspaceWithTab(
 
 // ─── Platform mock ────────────────────────────────────────────────────────────
 
+/** The cloud fixture project, octocat/my-site@main. */
+export const CLOUD_PROJECT = { branch: "main", owner: "octocat", repo: "my-site" } as const;
+
 /** The session API root the cloud adapter addresses for the octocat/my-site@main fixture project. */
 export const CLOUD_SESSION_BASE = "/api/v1/p/octocat/my-site/main/studio";
 

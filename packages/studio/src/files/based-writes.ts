@@ -407,33 +407,87 @@ export const plainWriteRoute: PlainWriteRoute = {
   },
 };
 
-/** What a delete of `path` names as its base, from the host's account; `null` when it has none. */
-function deleteBase(path: string): DeleteBase | null {
+/**
+ * The hash of the bytes at `path` as the platform reads them now, `null` when they cannot be read.
+ * Raw bytes where the platform has them, since a binary file read as text is not its bytes.
+ */
+async function hashOnDisk(
+  platform: Pick<StudioPlatform, "readFile" | "readFileBytes">,
+  path: string,
+): Promise<ContentHash | null> {
+  try {
+    const bytes =
+      platform.readFileBytes === undefined
+        ? await platform.readFile(path)
+        : new Uint8Array(await platform.readFileBytes(path));
+    return await contentHash(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/** How many unhashed files a delete reads at once to name them. */
+const DELETE_BASE_READS = 8;
+
+/**
+ * What a delete of `path` names as its base, from the host's account; `null` when it has none.
+ *
+ * A host may list a file before it has hashed it (the cloud's, which hashes a committed file only
+ * when it first reads it, §3.1). Such a file is read here and named by the hash of what is there,
+ * so a directory holding one still names every file beneath it rather than falling back to a base
+ * that names none. `null` when one of them cannot be read.
+ */
+async function deleteBase(
+  platform: Pick<StudioPlatform, "readFile" | "readFileBytes">,
+  path: string,
+): Promise<DeleteBase | null> {
   const doc = contentStore.docAt(path);
   if (!doc) {
     return null;
   }
   if (!doc.isDir) {
-    return doc.hash === undefined ? null : { hash: doc.hash };
+    const hash = doc.hash ?? (await hashOnDisk(platform, path));
+    return hash === null ? null : { hash };
   }
   const files: Record<string, ContentHash> = {};
+  const unhashed: string[] = [];
   const prefix = `${path}/`;
   for (const entry of contentStore.documents()) {
     if (!entry.isDir && entry.path.startsWith(prefix)) {
       if (entry.hash === undefined) {
-        return null;
+        unhashed.push(entry.path);
+      } else {
+        files[entry.path.slice(prefix.length)] = entry.hash;
       }
-      files[entry.path.slice(prefix.length)] = entry.hash;
     }
+  }
+  const read = new Map<string, ContentHash | null>();
+  const queue = [...unhashed];
+  const reader = async (): Promise<void> => {
+    for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+      const hash = await hashOnDisk(platform, next);
+      read.set(next, hash);
+      if (hash === null) {
+        // One unreadable file decides the answer: read nothing more.
+        queue.length = 0;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(DELETE_BASE_READS, queue.length) }, reader));
+  for (const [below, hash] of read) {
+    if (hash === null) {
+      return null;
+    }
+    files[below.slice(prefix.length)] = hash;
   }
   return { files };
 }
 
 /**
  * Delete `path` and everything beneath it, naming what is there as the host last reported it (§5),
- * or as {@link plainWriteRoute} deletes it when the host has not answered a subscription or does not
- * know the path's bytes. Rejects, deleting nothing, when the path changed since: the caller's error
- * says so.
+ * or as read now for a file the host listed without a hash, or as {@link plainWriteRoute} deletes it
+ * when the host has not answered a subscription or a file beneath it cannot be read. Rejects,
+ * deleting nothing, when the path changed since: the caller's error says so.
  */
 export async function deletePath(path: string): Promise<void> {
   const platform = getPlatform();
@@ -443,7 +497,7 @@ export async function deletePath(path: string): Promise<void> {
   }
   // The host's latest account, including any event that arrived while the author confirmed.
   await contentStore.settled();
-  const base = deleteBase(path);
+  const base = await deleteBase(platform, path);
   if (base === null) {
     await platform.deleteFile(path);
     return;

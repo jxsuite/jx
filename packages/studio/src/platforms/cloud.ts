@@ -60,6 +60,11 @@ import type {
 } from "../types";
 import { problemDetail, problemSlug } from "@jxsuite/protocol";
 import type { ReadFilesRequest, ReadFilesResult, UploadResult } from "@jxsuite/protocol";
+import {
+  CLOUD_EVENTS_PATH,
+  createCloudProjectStateClient,
+} from "@jxsuite/protocol/project-state-cloud";
+import type { CloudProjectStateClient } from "@jxsuite/protocol/project-state-cloud";
 import { reportActionRequired } from "../account/action-required";
 import type { ActionRequiredReport } from "../account/action-required";
 import { offeredActions, retryHint } from "../platform-errors";
@@ -957,6 +962,45 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     }
   }
 
+  /**
+   * The project state service over the session's cloud binding (`project-state.md` §3.2, §10.3):
+   * the subscribe exchange on an `/events` socket of its own, and the writes, deletes and renames
+   * that name their base on the session's `/project-state/*` routes. The binding's client lives in
+   * `@jxsuite/protocol/project-state-cloud`, beside the host's half, so the two cannot drift; this
+   * adapter hands it the session's requests (through {@link api}, so a refusal is reported here as
+   * every other one is) and its socket.
+   *
+   * Its first subscribe asks the session's capability route, and a session that predates it (`404`)
+   * rejects the subscribe, which Studio reads as "not served" and keeps the resync reasons of
+   * {@link StudioPlatform.subscribeFileEvents} alone (`studio.md` §3.4). The members exist only for
+   * a bound session: the hub has no session to subscribe to.
+   */
+  const projectState: CloudProjectStateClient | null = project
+    ? createCloudProjectStateClient({
+        connect(handlers) {
+          const scheme = location.protocol === "https:" ? "wss" : "ws";
+          const ws = new WebSocket(`${scheme}://${location.host}${base}${CLOUD_EVENTS_PATH}`);
+          ws.addEventListener("open", handlers.open);
+          ws.addEventListener("message", (event: MessageEvent<unknown>) => {
+            // The session sends text frames only; anything else is no part of the exchange.
+            if (isString(event.data)) {
+              handlers.message(event.data);
+            }
+          });
+          ws.addEventListener("close", handlers.close);
+          return {
+            close: () => {
+              ws.close();
+            },
+            send: (text) => {
+              ws.send(text);
+            },
+          };
+        },
+        fetch: (route, init) => api(route, init),
+      })
+    : null;
+
   // The bound session's /raw tree; see `documentBaseUrl` below for why both members ride together.
   const repoAssets: Pick<StudioPlatform, "assetSpace" | "documentBaseUrl"> = {};
   if (base) {
@@ -965,6 +1009,12 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
   }
 
   const platform: StudioPlatform = {
+    ...(projectState && {
+      deleteProjectState: projectState.delete,
+      renameProjectState: projectState.rename,
+      subscribeProjectState: projectState.subscribe,
+      writeProjectState: projectState.write,
+    }),
     id: "cloud",
     projectRoot: root,
     /* Commits land on GitHub as they are made (`gitCommit`), a push is a sync check, and a branch

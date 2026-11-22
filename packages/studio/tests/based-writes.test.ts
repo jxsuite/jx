@@ -368,6 +368,47 @@ describe("deletes name what they remove (project-state.md §5)", () => {
     expect(served.state.calls.some(([name]) => name === "deleteFile")).toBe(false);
   });
 
+  test("files the host listed without a hash are read and named by what is there", async () => {
+    const served = await serve(
+      [
+        file("a.json", "d1"),
+        file("pages", "d2"),
+        file("pages/one.json", "d3", "sha256-one"),
+        file("pages/two.json", "d4"),
+        file("pages/three.json", "d5"),
+      ],
+      { "a.json": "{}", "pages/three.json": "3", "pages/two.json": "2" },
+    );
+    await deletePath("a.json");
+    await deletePath("pages");
+    expect(served.deletes.map((remove) => [remove.path, remove.base])).toEqual([
+      ["a.json", { hash: await contentHash("{}") }],
+      [
+        "pages",
+        {
+          files: {
+            "one.json": "sha256-one",
+            "three.json": await contentHash("3"),
+            "two.json": await contentHash("2"),
+          },
+        },
+      ],
+    ]);
+  });
+
+  test("a directory with a file that cannot be read falls back to the plain delete", async () => {
+    const served = await serve(
+      [file("pages", "d2"), file("pages/one.json", "d3"), file("pages/two.json", "d4")],
+      { "pages/one.json": "1" },
+    );
+    served.deleteAnswers.push({
+      conflict: { diskHash: null, docId: "d2", path: "pages" },
+      ok: false,
+    });
+    expect(await rejection(() => deletePath("pages"))).toBeInstanceOf(StaleWriteError);
+    expect(served.deletes.map((remove) => remove.base)).toEqual([{ files: {} }]);
+  });
+
   test("a delete refused because the file changed rejects; one already gone resolves", async () => {
     const served = await serve([file("a.json", "d1", "sha256-a")]);
     served.deleteAnswers.push({

@@ -868,14 +868,25 @@ export function encodeCloudEvents(epoch: string, events: readonly ProjectEvent[]
 }
 
 /**
+ * The message that tells a cloud client the host ended its subscription (§3.2, §4.8): `{ kind:
+ * "project-ended", epoch }`, naming the epoch that ended. The host closes nothing: the socket keeps
+ * its other traffic, and the client subscribes again on it or on a new one.
+ */
+export function encodeCloudEnded(epoch: string): string {
+  return JSON.stringify({ epoch, kind: "project-ended" });
+}
+
+/**
  * The client's reading of a host message on `/events`: the subscribe answer, a batch of later
- * events, or `null` for the socket's other traffic (`fs` batches, git notices).
+ * events, the end of the subscription, or `null` for the socket's other traffic (`fs` batches, git
+ * notices).
  */
 export function decodeCloudHostMessage(
   text: string,
 ):
   | { kind: "subscribe"; response: SubscribeResponse }
   | ({ kind: "events" } & ProjectEventsParams)
+  | { kind: "ended"; epoch: string }
   | null {
   const message = parseJson(text);
   if (!isRecord(message)) {
@@ -886,6 +897,12 @@ export function decodeCloudHostMessage(
   }
   if (message.kind === "project") {
     return { kind: "events", ...requireEvents(message.epoch, message.events) };
+  }
+  if (message.kind === "project-ended") {
+    if (!isString(message.epoch)) {
+      throw new TypeError("A project-ended message names the epoch that ended.");
+    }
+    return { epoch: message.epoch, kind: "ended" };
   }
   return null;
 }

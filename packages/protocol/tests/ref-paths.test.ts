@@ -8,8 +8,8 @@ import {
   remapTarget,
   rewriteRef,
   splitQueryHash,
-} from "../src/refactor/paths";
-import type { RefClass, RemapCtx } from "../src/refactor/paths";
+} from "../src/ref-paths";
+import type { RefClass, RemapCtx } from "../src/ref-paths";
 
 /** `classifyRef` held to its path form, which is the only form `rewriteRef` accepts. */
 function pathRef(value: string): Extract<RefClass, { kind: "path" }> {
