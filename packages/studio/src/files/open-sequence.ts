@@ -26,10 +26,13 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
 import { resetSavedScripts } from "../canvas/canvas-scripts";
 import { loadFormats, refreshExtensionUi, refreshFormats } from "../format/format-host";
 import { ensureDependenciesInstalled } from "../packages/ensure-deps";
+import { getPlatform } from "../platform";
 import { autoSyncProjectOnOpen } from "../packages/pull-package-sync";
 import { disarmPreviewOverlay } from "../preview/preview-overlay";
 import { cleanupSourceControl } from "../publish/source-control";
 import { resetProjectShell } from "../shell";
+import { resetContentStore } from "../project-state/store";
+import { stopProjectStateSync } from "../project-state/subscription";
 import { setProjectState } from "../store";
 import type { ProjectState, StudioPlatform } from "../types";
 import { setWorkspaceProject } from "../workspace/workspace";
@@ -74,10 +77,12 @@ export interface EnterProjectOptions {
 /**
  * Drop the format registry, the extensions payload and the extension UI fetched for the previous
  * root, and start fetching this root's. The previous root's registry (often empty on a fresh
- * desktop launch) must not answer for this project.
+ * desktop launch) must not answer for this project. The host's `formatsChanged` (`project-state.md`
+ * §4.4) runs it too, for the open project's own platform: the set of formats changed under the same
+ * root.
  */
 export function resetProjectRegistries(
-  platform: Pick<StudioPlatform, "fetchProjectSchemas">,
+  platform: Pick<StudioPlatform, "fetchProjectSchemas"> = getPlatform(),
 ): void {
   refreshFormats();
   void loadFormats();
@@ -86,7 +91,8 @@ export function resetProjectRegistries(
 
 /**
  * Forget the project being left: source control, the shell's per-project slots (including which
- * project's session this window may write), the panels' caches and the published preview map.
+ * project's session this window may write), the panels' caches, the content store
+ * (`project-state.md` §11.1) and the published preview map.
  *
  * A door that closes the previous project's tabs runs this FIRST. Closing tabs changes the
  * workspace's shape, and the shell persists the session on every shape change for the project it
@@ -100,6 +106,11 @@ export function leaveProject({
   cleanupSourceControl();
   resetProjectShell();
   resetProjectCaches?.();
+  /* The documents, bytes and noted writes of the project being left, and the subscription that kept
+     them: a late frame from it must not land in the next project's store, which the next
+     subscription (`startFsSync`) fills. */
+  stopProjectStateSync();
+  resetContentStore();
   disarmPreviewOverlay();
 }
 

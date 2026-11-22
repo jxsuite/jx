@@ -45,6 +45,7 @@ import { projectState, renderOnly } from "../store";
 import { invalidateUsages } from "../services/references";
 import { confirmFileDelete, renamePromptMessage } from "../files/file-ops";
 import { duplicateAsset } from "../files/media-upload";
+import { deletePath } from "../files/based-writes";
 import { renameRefusal } from "../files/new-file-name";
 import {
   commitRename,
@@ -945,7 +946,7 @@ async function deleteSelectedEntries(): Promise<void> {
   const failed: string[] = [];
   for (const path of paths) {
     try {
-      await getPlatform().deleteFile(path);
+      await deletePath(path);
     } catch {
       failed.push(path);
     }
@@ -973,7 +974,7 @@ async function deleteLibraryFile(file: LibraryFile) {
     return;
   }
   try {
-    await getPlatform().deleteFile(file.path);
+    await deletePath(file.path);
     invalidateUsages();
     invalidateLibrary();
     await loadLibrary();

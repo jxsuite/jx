@@ -10,6 +10,7 @@ import {
   setCollabEnabled,
 } from "../src/collab/collab-session";
 import { collabState, isCollabActive, isCollabPath } from "../src/collab/collab-state";
+import { tabBufferStatus } from "../src/project-state/buffer";
 import { createGridController } from "../src/grid/grid-controller";
 import type { GridEditBatch, GridSource } from "../src/grid/grid-source";
 import { reloadCleanTab } from "../src/files/files";
@@ -88,6 +89,23 @@ describe("session attach", () => {
     // A save by any collaborator clears the room for everyone.
     hub.setDirty(PATH, false);
     expect(tab.doc.dirty).toBe(false);
+  });
+
+  test("a refused save of the room conflicts the tab until the room saves or the session ends", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    await settleCollab();
+    hub.setDirty(PATH, true);
+    hub.conflict(PATH, { diskHash: "h-theirs", docId: "d1" });
+    expect(tabBufferStatus(tab)).toBe("conflicted");
+    // The room saved: the refusal no longer stands.
+    hub.setDirty(PATH, false);
+    expect(tabBufferStatus(tab)).toBe("clean");
+
+    hub.setDirty(PATH, true);
+    hub.conflict(PATH, { diskHash: "h-theirs", docId: "d1" });
+    setCollabEnabled(tab, false);
+    expect(collabState(tab).conflicted).toBe(false);
   });
 
   test("a second client adopts the already-seeded shared tree", async () => {

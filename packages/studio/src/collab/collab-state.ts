@@ -52,6 +52,12 @@ export interface TabCollabState {
    * expired token and a project that simply is not shared all produced the same silence.
    */
   attachError: string;
+  /**
+   * The room's save was refused because its file changed under it (`doc-conflict`,
+   * `project-state.md` §5): the room's buffer is conflicted (§6.1), and a co-edited tab reads this
+   * rather than a buffer state of its own. Cleared when the room saves or the session detaches.
+   */
+  conflicted: boolean;
 }
 
 const states = new WeakMap<Tab, TabCollabState>();
@@ -66,6 +72,7 @@ export function collabState(tab: Tab): TabCollabState {
     const initial: TabCollabState = {
       active: false,
       attachError: "",
+      conflicted: false,
       peers: [],
       readOnly: false,
       sourceCanonical: false,

@@ -28,7 +28,7 @@ import { getPlatform, hasPlatform } from "../platform";
 import { normalizeProjectPath } from "./media-paths";
 import { peekMediaMeta } from "./media-meta";
 import { forgetVersions, noteLocalWrite, versionOf } from "./asset-versions";
-import { markLocalMutation } from "./fs-events";
+import { markLocalWrite } from "./fs-events";
 import {
   cleanTags,
   readMediaRecord,
@@ -229,7 +229,7 @@ export async function saveMediaRecord(path: string, record: MediaRecord): Promis
   }
   /* Studio's own write, marked before it happens (§3.4), exactly as a Replace is: the watcher's echo
      is absorbed, and the path's content version is forgotten while the bytes are still the old. */
-  markLocalMutation(key);
+  markLocalWrite(key, bytes);
   try {
     const { path: written } = await getPlatform().uploadFile(key, bytes.buffer);
     forgetVersions([key, written]);

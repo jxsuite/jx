@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - project-state.md#9
-requires:
-  - project-state/client-store
+requires: []
 workspaces:
   - packages/server
   - packages/studio

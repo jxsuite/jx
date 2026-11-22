@@ -380,9 +380,10 @@ export async function applyConversion(
   const { errorMessage } = await import("@jxsuite/schema/parse");
   const { getPlatform } = await import("../platform");
   const platform = getPlatform();
-  const { markLocalMutation } = await import("../files/fs-events");
+  const { markLocalMutation, markLocalWrite } = await import("../files/fs-events");
   const { settleRename } = await import("../files/files");
-  markLocalMutation(path, plan.targetPath);
+  markLocalMutation(plan.targetPath);
+  markLocalWrite(path, plan.text);
   try {
     await platform.writeFile(path, plan.text);
   } catch (error) {
@@ -400,7 +401,7 @@ export async function applyConversion(
     /* Put the file back. The rename is what makes a conversion visible; without it the author is
        left with target-format bytes sitting at the source extension, which nothing can open. */
     try {
-      markLocalMutation(path);
+      markLocalWrite(path, original);
       await platform.writeFile(path, original);
     } catch {
       // Reported below either way, and the original text is still in the failure's own detail.
@@ -468,7 +469,10 @@ async function rebuildTab(from: string, to: string, text: string): Promise<void>
   if (frontmatter !== undefined) {
     options.frontmatter = frontmatter;
   }
-  openTab(options);
+  const tab = openTab(options);
+  // The bytes just written are the rebuilt tab's base (`project-state.md` §6.1).
+  const { noteBufferRead } = await import("../project-state/buffer");
+  void noteBufferRead(tab, text, to);
 }
 
 const CANNOT_CONVERT =

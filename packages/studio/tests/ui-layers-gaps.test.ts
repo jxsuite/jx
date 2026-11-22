@@ -75,6 +75,24 @@ describe("layers after init", () => {
       expect(layer("dialog").children).toHaveLength(0);
     });
 
+    test("a secondary label makes it three-way: the secondary button resolves 'secondary'", async () => {
+      const promise = showConfirmDialog("x.json Changed on Disk", "Which copy?", {
+        cancelLabel: "Compare",
+        confirmLabel: "Keep Mine",
+        secondaryLabel: "Take Disk Copy",
+      });
+      await flush();
+      const host = must(layer("dialog"), "jx-dialog", HTMLElement);
+      const text = (part: string) => host.querySelector(`[part="${part}"]`)?.textContent.trim();
+      expect([text("confirm"), text("secondary"), text("cancel")]).toEqual([
+        "Keep Mine",
+        "Take Disk Copy",
+        "Compare",
+      ]);
+      host.dispatchEvent(new Event("secondary"));
+      expect(await promise).toBe("secondary");
+    });
+
     test("names itself from its headline, and is the dialog rather than sitting inside one", async () => {
       /* The name used to be scraped off the body and stamped on a wrapper div. It is the element's
          own now: `jx-dialog` takes `headline` and labels its `[part="dialog"]` with it, so there is

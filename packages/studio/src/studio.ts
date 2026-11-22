@@ -135,7 +135,12 @@ import {
   reloadTabsIfChanged,
   setSessionWorkspaceShow,
 } from "./files/files";
-import { enterProject, leaveProject, loadOpenedProject } from "./files/open-sequence";
+import {
+  enterProject,
+  leaveProject,
+  loadOpenedProject,
+  resetProjectRegistries,
+} from "./files/open-sequence";
 import { noteSavedScript, scriptAddress } from "./canvas/canvas-scripts";
 import { startFsSync } from "./files/fs-events";
 import { invalidateParamValues } from "./page-params";
@@ -160,7 +165,12 @@ import { resetCollectionsPanel } from "./panels/collections-panel";
 import { resetStylesPanel } from "./panels/styles-panel";
 import { resetVariablesFocus } from "./style/variables-focus";
 import { invalidateMediaCache, isMediaScanPath } from "./ui/media-picker";
-import { invalidateSiteIndex, resetSitePanel } from "./panels/site-panel";
+import {
+  invalidateComponentRegistry,
+  invalidateSiteIndex,
+  noteReadiness,
+  resetSitePanel,
+} from "./panels/site-panel";
 import { setMediaChangedHandler } from "./files/media-upload";
 import { applyFileDrop } from "./editor/file-drop-action";
 import {
@@ -172,7 +182,9 @@ import {
 } from "./panels/ai-panel";
 import { seedPublishConnected } from "./publish/publish-panel";
 
-import { getPlatform, hasPlatform, registerPlatform } from "./platform";
+import { getPlatform, hasPlatform, registerPlatform, routePlainWrites } from "./platform";
+import { plainWriteRoute } from "./files/based-writes";
+import { noteBufferRead } from "./project-state/buffer";
 import { parseMediaEntries } from "./utils/canvas-media";
 import { PlatformUnavailableError, resolveDefaultPlatform } from "./platforms/default-platform";
 import { mountResizeEdges } from "./resize-edges";
@@ -183,7 +195,7 @@ import {
   registerSignalsCommands,
 } from "./panels/signals-panel";
 import { outlineCommands } from "./panels/outline-expansion";
-import { noteComponentSaved } from "./files/components";
+import { componentPathOf, noteComponentSaved } from "./files/components";
 import { maybePromptJxsuiteUpdate } from "./packages/jxsuite-update";
 
 import webdata from "../data/webdata.json";
@@ -1055,6 +1067,10 @@ configureCollabNotifier((message) => {
   notify.warn(message, { key: "collab.freeze", source: "Collaboration" });
 });
 
+/* Every write Studio makes names a base once the host serves the project state contract
+   (`project-state.md` §5), and goes straight to the adapter until then. */
+routePlainWrites(plainWriteRoute);
+
 let fsUnsub: (() => void) | null = null;
 /** (Re)subscribe the sidebar to backend filesystem events for the active project. */
 function ensureFsSync() {
@@ -1070,7 +1086,7 @@ function ensureFsSync() {
     invalidateDerivedCaches: (paths, structural = true) => {
       invalidatePageRouteCache();
       invalidateLayoutPickerCache();
-      invalidateSiteIndex(paths);
+      invalidateSiteIndex(paths, structural);
       /* The Content workspace's three: the scan its collections are filtered from, the pages that
          say where each collection is published, and the entry list the Collections panel draws.
          Each is dropped only by a batch that can make it wrong, so a save does not re-walk the
@@ -1101,11 +1117,19 @@ function ensureFsSync() {
          read before the change. Dropped only; the pane redraws on its own next render. */
       invalidateLayoutCacheFor(paths);
     },
-    onContentChange: (path) => {
-      reloadCleanTab(path);
-      // A component rewritten on disk reaches every canvas frame that defined it.
+    onContentChange: reloadCleanTab,
+    // A component rewritten on disk reaches every canvas frame that defined it.
+    onDocumentChange: (path) => {
       void liveComponents.changedOnDisk(path);
     },
+    /* While the host's subscription is live (`project-state.md` §11.1): a definition a component
+       depends on, the component set, the format set and the host's readiness each have an event. */
+    onDependentsInvalidated: (paths, tags, applied) => {
+      void liveComponents.dependentsInvalidated(paths, tags, applied);
+    },
+    onComponentsChanged: invalidateComponentRegistry,
+    onFormatsChanged: resetProjectRegistries,
+    onReadiness: noteReadiness,
     /* A reconnect re-reads the clean, non-collab tabs, and leaves every one whose content did not
        change untouched: most reconnects changed nothing, and a reload is a repaint per tab. */
     onResyncContent: reloadTabsIfChanged,
@@ -1268,7 +1292,7 @@ if (_projectParam) {
           }
 
           // Open in a tab
-          openTab({
+          const opened = openTab({
             id: fileRelPath,
             documentPath: fileRelPath,
             document: parsedDoc,
@@ -1280,6 +1304,8 @@ if (_projectParam) {
             source: fileFormat ? content : null,
             sourceFormat: fileFormat?.name ?? null,
           });
+          // The bytes just read are the buffer's base (`project-state.md` §6.1).
+          void noteBufferRead(opened, content, fileRelPath);
 
           if (parsedMode === "content" && activeTab.value) {
             activeTab.value.doc.mode = "content";
@@ -1385,7 +1411,14 @@ function renderLeftPanel() {
 
 /** Load what this window holds, then show what the operating system asks of it from here on. */
 async function loadProjectAndFollowDocuments() {
-  await loadProject();
+  try {
+    await loadProject();
+  } finally {
+    /* Again, once the project is entered: entering it leaves the previous one, which stops the
+       project state subscription the boot's own `ensureFsSync` started, so this door would otherwise
+       run the whole session without one. */
+    ensureFsSync();
+  }
   followOpenDocuments();
 }
 
@@ -1810,6 +1843,7 @@ const liveChrome = createLiveSurfaceSaver({
 const liveComponents = createLiveComponentLane({
   evictPreview,
   noteComponent: noteComponentSaved,
+  componentPath: componentPathOf,
   readFile: (path) => getPlatform().readFile(path),
   redefineOnCanvases: redefineElementOnCanvases,
   repaint: renderLeftPanel,

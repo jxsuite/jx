@@ -4,6 +4,7 @@ import { commitTabBuffers } from "../services/monaco-buffer";
 import { resetAiWrites } from "../services/ai-writes";
 import { ensureCollab, rekeyCollab } from "../collab/collab-session";
 import { createTab, disposeTab } from "../tabs/tab";
+import { noteBufferClosed } from "../project-state/buffer";
 import { projectState } from "../state";
 import {
   argsSchema,
@@ -1167,6 +1168,8 @@ export function closeTab(tabId: string) {
   const pane = paneOfTab(tabId);
   const wasActive = pane?.activeTabId === tabId;
   rememberClosedTab(tab);
+  // Its unsaved edits go with it, and so does any conflict they were reported in (§6.1).
+  noteBufferClosed(tab);
   disposeTab(tab);
   workspace.tabs.delete(tabId);
   // The id comes back when the same file reopens, and it must not come back with Save lit.
@@ -1219,6 +1222,7 @@ export function closeAllTabs() {
   workspace.mruOrder = [];
   resetTabCycle();
   for (const tab of tabs) {
+    noteBufferClosed(tab);
     disposeTab(tab);
   }
 }

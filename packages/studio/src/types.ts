@@ -55,6 +55,7 @@ import type {
   StarterInfo,
   UploadResult,
 } from "@jxsuite/protocol";
+import type { ProjectStateClient } from "@jxsuite/protocol/project-state-frames";
 
 export type {
   AiModelInfo,
@@ -468,6 +469,33 @@ export interface StudioPlatform {
     handler: (events: FsEvent[]) => void,
     options?: { onResync?: (reason: FsResyncReason) => void },
   ) => () => void;
+  /**
+   * Subscribe to the host's project state (`project-state.md` §3): send `request`, answer with the
+   * host's subscribe answer, and hand every later batch of events to `listener.events` until the
+   * next call replaces the subscription, reporting its end through `listener.ended`. Studio sends
+   * its cursor on every connect and subscribes again on a gap or an end.
+   *
+   * Optional, and beside `subscribeFileEvents` rather than instead of it: a platform whose host
+   * serves the subscription keeps its file events and resync reasons (`project-state.md` §3.3), and
+   * Studio uses the subscription to keep its content store (`project-state.md` §11.1) and to
+   * recognise its own writes by their bytes rather than by a time window (§9.2). A first call that
+   * rejects means the host does not serve it, and Studio behaves as if the member were absent.
+   */
+  subscribeProjectState?: ProjectStateClient["subscribe"];
+  /**
+   * Write a file naming the bytes it replaces (`project-state.md` §5): a stale `baseHash` answers
+   * `{ ok: false, conflict }` and leaves the disk untouched, rather than throwing. While its
+   * subscription is served, Studio saves a tab through it with the tab's base hash
+   * (`project-state.md` §6.1), and through `writeFile` otherwise. Optional, beside
+   * `subscribeProjectState`.
+   */
+  writeProjectState?: ProjectStateClient["write"];
+  /**
+   * Delete a file or directory naming what it removes (`project-state.md` §5): a stale base answers
+   * its conflict. While its subscription is served, Studio deletes through it, and through
+   * `deleteFile` otherwise. Optional, beside `subscribeProjectState`.
+   */
+  deleteProjectState?: ProjectStateClient["delete"];
   discoverComponents: (dir?: string) => Promise<ComponentMeta[]>;
   /* Resolves once the dependency is added (or removed) and rejects when it could not be. No caller
      reads an answer, and the desktop RPC carries none. */

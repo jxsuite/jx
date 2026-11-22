@@ -47,6 +47,7 @@ import type * as Y from "yjs";
 import { collabState, registerCollabPath, unregisterCollabPath } from "./collab-state";
 import type { PeerPresence } from "./collab-state";
 import { notify } from "../services/notify";
+import { noteRoomConflict } from "../project-state/buffer";
 
 type CollabModule = typeof CollabNS;
 
@@ -834,6 +835,8 @@ function detachSession(tab: Tab): void {
   state.status = "detached";
   state.attachError = "";
   state.peers = [];
+  // The room's refusal ends with the session: the tab holds a buffer of its own again.
+  noteRoomConflict(tab, false);
   if (!session) {
     return;
   }
@@ -928,8 +931,20 @@ function createSession(
   session.disposers.push(
     handle.onDirty((dirty) => {
       tab.doc.dirty = dirty;
+      // A save of the room landed, so a refusal before it no longer stands.
+      if (!dirty) {
+        noteRoomConflict(tab, false);
+      }
     }),
   );
+  /* The room's buffer state is the tab's (`project-state.md` §6.1): a refused save of the room
+     makes the tab conflicted for every participant until the room saves. */
+  const offConflict = handle.onConflict?.(() => {
+    noteRoomConflict(tab, true);
+  });
+  if (offConflict) {
+    session.disposers.push(offConflict);
+  }
 
   // Presence identity + write capability (drives reconciler election).
   handle.awareness.setLocalState({

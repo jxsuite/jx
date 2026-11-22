@@ -34,6 +34,16 @@
  * Either way the Library's rendered preview of that file is evicted, so the next paint renders it
  * again rather than showing the card the old definition drew.
  *
+ * While the host's project state subscription is live (`project-state.md` §11.1), the change on
+ * disk arrives as the `docChanged` of a document Studio did not write, and a third door joins
+ * them:
+ *
+ * - **A dependency changed** ({@link LiveComponentLane.dependentsInvalidated}): the host's
+ *   `dependentsInvalidated` names the documents whose rendering depends on a changed file and the
+ *   tags whose definitions changed with it. Each dependent's preview is evicted, and each tag's
+ *   definition is re-read and redefined as a change on disk is, unless its current bytes already
+ *   came through the save door or the change-on-disk door.
+ *
  * @docs studio/design/components
  */
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
@@ -83,12 +93,28 @@ export interface LiveComponentDeps {
   noteComponent: (path: string, doc: JxDocument) => boolean;
   /** Repaint what reads the registry and the previews (the left panel). */
   repaint: () => void;
+  /**
+   * The project file that defines a custom element, if the registry has one
+   * (`files/components.ts`'s `componentPathOf`).
+   */
+  componentPath?: (tag: string) => string | undefined;
 }
 
-/** The lane's two doors. Each resolves to what it did, or null when the file was not a component. */
+/** The lane's doors. Each resolves to what it did, or null when the file was not a component. */
 export interface LiveComponentLane {
   saved: (path: string | null, doc: JxDocument | null) => LiveComponentResult | null;
   changedOnDisk: (path: string) => Promise<LiveComponentResult | null>;
+  /**
+   * Documents whose rendering depends on a changed one, and the tags whose definitions changed: the
+   * dependents' previews are evicted and each tag's definition goes through {@link changedOnDisk},
+   * unless `applied` says its file's current bytes already reached the canvas (Studio saved them,
+   * or a change on disk already brought them).
+   */
+  dependentsInvalidated: (
+    paths: readonly string[],
+    tags: readonly string[],
+    applied: (path: string) => boolean,
+  ) => Promise<(LiveComponentResult | null)[]>;
 }
 
 /**
@@ -144,7 +170,7 @@ export function createLiveComponentLane(deps: LiveComponentDeps): LiveComponentL
     return false;
   }
 
-  return {
+  const lane: LiveComponentLane = {
     async changedOnDisk(path) {
       if (!deps.workspace.projectRoot || !isNativeDocumentPath(path) || openDirty(path)) {
         return null;
@@ -175,5 +201,19 @@ export function createLiveComponentLane(deps: LiveComponentDeps): LiveComponentL
       const applied = apply(path, doc);
       return applied ? { ...applied, registryChanged: false } : null;
     },
+    async dependentsInvalidated(paths, tags, applied) {
+      for (const path of paths) {
+        deps.evictPreview(path);
+      }
+      const definitions = new Set<string>();
+      for (const tag of tags) {
+        const path = deps.componentPath?.(tag);
+        if (path !== undefined && !applied(path)) {
+          definitions.add(path);
+        }
+      }
+      return Promise.all([...definitions].map(async (path) => lane.changedOnDisk(path)));
+    },
   };
+  return lane;
 }

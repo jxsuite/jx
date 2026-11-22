@@ -25,6 +25,15 @@
  *   ignores any path dirtied after its listing began. The next listing, begun after the forget,
  *   decides.
  *
+ * **Derived from the content store while a project state subscription is live**
+ * ({@link
+ * deriveVersionsFrom}, `project-state.md` §11.1). The host's content hash of a file is a
+ * version by definition: equal hashes are identical bytes, and the host reports a new one the
+ * moment the bytes change. So while the subscription is live, a path's version is the hash the
+ * store holds for it, a listing's version only where the store has none, and the store's own events
+ * are what move it. The one window a hash cannot vouch for is Studio's own write before its echo: a
+ * forget withholds the path's hash until the store reports the path again.
+ *
  * The canvas iframe receives {@link assetVersionsSnapshot} as one `assetVersions` message whenever
  * {@link assetVersionsEpoch} moves, rather than a copy on every render. The snapshot holds MEDIA
  * paths only, which keeps that message as small as the media set. Documents ARE loaded by URL from
@@ -91,6 +100,22 @@ export function isVersionedMediaPath(path: string): boolean {
   const dot = path.lastIndexOf(".");
   return dot > slash + 1 && MEDIA_EXTENSIONS.has(path.slice(dot).toLowerCase());
 }
+
+/** What a derived version is read from: the content store (`project-state/store.ts`). */
+export interface VersionSource {
+  /** The hash of the bytes at a normalized project path, when the host has reported one. */
+  hashAt: (path: string) => string | undefined;
+  /** Every document the source knows, for the canvas snapshot. */
+  documents: () => readonly { readonly path: string; readonly hash?: string }[];
+}
+
+/** The store versions are derived from while a subscription is live, `null` otherwise. */
+let source: VersionSource | null = null;
+/**
+ * Paths forgotten while derived whose new hash the store has not reported yet: Studio's own write
+ * between the forget and its echo, when the hash held still names the bytes being replaced.
+ */
+const withheld = new Set<string>();
 
 /** Every version a listing has vouched for, keyed by normalized project path. */
 const versions = new Map<string, string>();
@@ -257,6 +282,9 @@ export function forgetVersions(paths: readonly string[], prefixDirs: readonly st
     if (versions.delete(path) && isVersionedMediaPath(path)) {
       changed = true;
     }
+    if (withhold(path)) {
+      changed = true;
+    }
     if (remintRevision(path)) {
       changed = true;
     }
@@ -281,15 +309,81 @@ export function forgetVersions(paths: readonly string[], prefixDirs: readonly st
         }
       }
     }
+    for (const doc of source?.documents() ?? []) {
+      if (doc.path.startsWith(prefix) && withhold(doc.path)) {
+        changed = true;
+      }
+    }
   }
   if (changed) {
     mediaChanged();
   }
 }
 
-/** The version a listing vouched for `path`, or undefined when none is held. */
+/** Withhold a derived version until the store reports the path again; whether a media one went. */
+function withhold(path: string): boolean {
+  if (!source || withheld.has(path) || source.hashAt(path) === undefined) {
+    return false;
+  }
+  withheld.add(path);
+  return isVersionedMediaPath(path);
+}
+
+/**
+ * Derive versions from `next` (the content store, while its subscription is live), or stop deriving
+ * them (`null`, when it is not). Every media version may move either way, so the canvas is
+ * reposted.
+ */
+export function deriveVersionsFrom(next: VersionSource | null): void {
+  if (source === next) {
+    return;
+  }
+  source = next;
+  withheld.clear();
+  mediaChanged();
+}
+
+/**
+ * The store reported `paths` again (`StoreChange.paths`): each one's hash is current, whether it
+ * changed, moved or went, so a withheld one is released and a media one reposts the canvas. A
+ * repaint key Studio minted for a path is dropped once the store vouches for its new bytes, as a
+ * listing's version drops it.
+ */
+export function derivedVersionsChanged(paths: readonly string[]): void {
+  if (!source) {
+    return;
+  }
+  let changed = false;
+  for (const raw of paths) {
+    const path = normalizeProjectPath(raw);
+    withheld.delete(path);
+    if (source.hashAt(path) !== undefined) {
+      dropRevision(path);
+    }
+    if (isVersionedMediaPath(path)) {
+      changed = true;
+    }
+  }
+  if (changed) {
+    mediaChanged();
+  }
+}
+
+/** The version the store derives for `path`, if one is live and not withheld. */
+function derivedVersion(path: string): string | undefined {
+  return source && !withheld.has(path) ? source.hashAt(path) : undefined;
+}
+
+/**
+ * The version of `path`: the store's hash while derived ({@link deriveVersionsFrom}), else the one
+ * a listing vouched for, or undefined when neither is held.
+ */
 export function versionOf(path: string): string | undefined {
-  return versions.get(normalizeProjectPath(path));
+  const key = normalizeProjectPath(path);
+  if (withheld.has(key)) {
+    return undefined;
+  }
+  return derivedVersion(key) ?? versions.get(key);
 }
 
 /**
@@ -303,8 +397,15 @@ export function assetVersionsSnapshot(): Readonly<Record<string, string>> {
   const out: Record<string, string> = {};
   let any = false;
   for (const [path, version] of versions) {
-    if (isVersionedMediaPath(path)) {
+    if (isVersionedMediaPath(path) && !withheld.has(path)) {
       out[path] = version;
+      any = true;
+    }
+  }
+  for (const doc of source?.documents() ?? []) {
+    const version = derivedVersion(doc.path);
+    if (version !== undefined && isVersionedMediaPath(doc.path)) {
+      out[doc.path] = version;
       any = true;
     }
   }

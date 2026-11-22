@@ -40,7 +40,7 @@ import { collabSourceContext } from "../collab/collab-session";
 import { buildChangeMap } from "./diff-marks";
 import type { ChangeMap, ChangeMark } from "./diff-marks";
 import { clearDiffView, diffShowsCode, setDiffChangeMap, setDiffRenderable } from "./diff-view";
-import { canRenderComparison } from "../panels/git-diff-open";
+import { canRenderComparison, comparisonSideLabels } from "../panels/git-diff-open";
 import { renderDiffToolbar, setDiffRepaint, setDiffToolbarHost } from "./diff-toolbar";
 import { attachCursorStyles } from "../collab/monaco-cursors";
 import { monacoTheme, shell } from "../shell";
@@ -1627,7 +1627,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
        git calls them, because that is the question its reader is answering. */
     const sides = review
       ? reviewSideLabels(gitDiffState.fileStatus)
-      : { current: "Current", original: "Original" };
+      : comparisonSideLabels(gitDiffState.fileStatus);
     const origEntry = canvasPanelEntry("git-diff-original", sides.original, false, panelWidth);
     const currEntry = canvasPanelEntry("git-diff-current", sides.current, false, panelWidth);
 

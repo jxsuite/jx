@@ -6,7 +6,12 @@
 
 import * as Y from "yjs";
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
-import type { CollabHandle, CollabIdentity, CollabStatus } from "@jxsuite/collab/provider";
+import type {
+  CollabConflict,
+  CollabHandle,
+  CollabIdentity,
+  CollabStatus,
+} from "@jxsuite/collab/provider";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -40,6 +45,7 @@ interface Connection {
   statusCbs: Set<(status: CollabStatus) => void>;
   resetCbs: Set<() => void>;
   dirtyCbs: Set<(dirty: boolean) => void>;
+  conflictCbs: Set<(conflict: CollabConflict) => void>;
   dirty: boolean;
   destroyed: boolean;
 }
@@ -62,6 +68,8 @@ export interface MockCollabHub {
   setStatus: (path: string, status: CollabStatus) => void;
   /** Broadcast a room-level dirty state to every live handle on this path (simulates the server). */
   setDirty: (path: string, dirty: boolean) => void;
+  /** Refuse the room's save on this path: every live handle hears `doc-conflict`. */
+  conflict: (path: string, conflict: CollabConflict) => void;
   /** Paths flushed via handle.flush(), in order. */
   flushes: string[];
   /** Live handle count per path. */
@@ -116,6 +124,7 @@ export function createMockCollabHub(
     const conn: Connection = {
       awareness: new Awareness(new Y.Doc()),
       destroyed: false,
+      conflictCbs: new Set(),
       dirty: false,
       dirtyCbs: new Set(),
       doc: new Y.Doc(),
@@ -178,6 +187,10 @@ export function createMockCollabHub(
         return Promise.resolve();
       },
       identity: () => identity,
+      onConflict: (cb) => {
+        conn.conflictCbs.add(cb);
+        return () => conn.conflictCbs.delete(cb);
+      },
       onDirty: (cb) => {
         conn.dirtyCbs.add(cb);
         // Mirror the real provider: deliver the current state synchronously on subscribe.
@@ -212,6 +225,13 @@ export function createMockCollabHub(
       }
     },
     serverDoc,
+    conflict: (path, conflict) => {
+      for (const conn of connsFor(path)) {
+        for (const cb of conn.conflictCbs) {
+          cb(conflict);
+        }
+      }
+    },
     setDirty: (path, dirty) => {
       for (const conn of connsFor(path)) {
         conn.dirty = dirty;

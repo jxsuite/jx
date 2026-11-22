@@ -17,8 +17,13 @@
  * Nothing here reads the rest of the project, so a catalogue of N components costs N definition
  * reads and no usage queries.
  *
- * Answers are cached per component registry: the registry is replaced whenever the project's
- * components are re-read, so a changed definition is asked again.
+ * Answers are cached per component registry and, within it, per definition: by the tag and the hash
+ * of the definition's bytes as the content store knows them (`project-state.md` §11.1), the host's
+ * hash beside the newest write Studio made there whose echo has not arrived. A definition saved, or
+ * rewritten on disk, changes that key without replacing the registry, so its card is asked again on
+ * the next paint rather than keeping the sample the old bytes drew. Without a project state
+ * subscription there is no hash, and a definition is asked once per registry, which is replaced
+ * whenever the project's components are re-read.
  *
  * @docs studio/design/stylebook
  */
@@ -27,6 +32,8 @@ import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { componentExampleProps } from "../browse/component-examples";
 import { readDefinition, rendersWith } from "../browse/library-preview";
 import type { ComponentEntry } from "../files/components";
+import { contentStore } from "../project-state/store";
+import type { ContentStore } from "../project-state/store";
 import type { JsonValue } from "@jxsuite/schema/types";
 
 /** How one component card is drawn; see the module comment. */
@@ -38,7 +45,28 @@ export type StylebookSpecimen =
 /** The specimens of the components a catalogue draws, by tag name. */
 export type StylebookSpecimens = ReadonlyMap<string, StylebookSpecimen>;
 
-const cache = new WeakMap<readonly ComponentEntry[], Map<string, Promise<StylebookSpecimen>>>();
+/** One answer, and the definition key it was asked under. */
+interface CachedSpecimen {
+  readonly key: string;
+  readonly answer: Promise<StylebookSpecimen>;
+}
+
+const cache = new WeakMap<readonly ComponentEntry[], Map<string, CachedSpecimen>>();
+
+/** What the store reads a definition's key from: its hash and Studio's unechoed write. */
+export type DefinitionHashes = Pick<ContentStore, "hashAt" | "pendingWriteAt">;
+
+/**
+ * The key a component's answer is cached under: its tag and the hash of its definition's bytes, or
+ * the tag alone when the store knows no hash for them.
+ */
+export function definitionKey(component: ComponentEntry, hashes: DefinitionHashes): string {
+  const { path, tagName } = component;
+  if (path === undefined) {
+    return tagName;
+  }
+  return `${tagName}\n${hashes.hashAt(path) ?? ""}\n${hashes.pendingWriteAt(path) ?? ""}`;
+}
 
 /** One component's specimen. A component that is not a project JSON definition is drawn bare. */
 export async function componentSpecimen(component: ComponentEntry): Promise<StylebookSpecimen> {
@@ -58,12 +86,14 @@ export async function componentSpecimen(component: ComponentEntry): Promise<Styl
 }
 
 /**
- * The specimens of every component in `registry`, asked once per registry and component. A
- * component whose answer cannot be found is drawn bare, as it was before specimens existed.
+ * The specimens of every component in `registry`, asked once per registry, component and definition
+ * key ({@link definitionKey}). A component whose answer cannot be found is drawn bare, as it was
+ * before specimens existed.
  */
 export async function loadStylebookSpecimens(
   registry: readonly ComponentEntry[],
   ask: (component: ComponentEntry) => Promise<StylebookSpecimen> = componentSpecimen,
+  hashes: DefinitionHashes = contentStore,
 ): Promise<StylebookSpecimens> {
   let answers = cache.get(registry);
   if (!answers) {
@@ -73,13 +103,14 @@ export async function loadStylebookSpecimens(
   const known = answers;
   const entries = await Promise.all(
     registry.map(async (component): Promise<[string, StylebookSpecimen]> => {
-      const key = component.path ?? component.tagName;
-      let answer = known.get(key);
-      if (!answer) {
-        answer = ask(component).catch((): StylebookSpecimen => ({ kind: "bare" }));
-        known.set(key, answer);
+      const slot = component.path ?? component.tagName;
+      const key = definitionKey(component, hashes);
+      let cached = known.get(slot);
+      if (cached?.key !== key) {
+        cached = { answer: ask(component).catch((): StylebookSpecimen => ({ kind: "bare" })), key };
+        known.set(slot, cached);
       }
-      return [component.tagName, await answer];
+      return [component.tagName, await cached.answer];
     }),
   );
   return new Map(entries);

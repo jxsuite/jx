@@ -26,7 +26,7 @@ import { workspace } from "../../workspace/workspace";
 import { applyHoldFilter, holdSwitch, includingHeld } from "../../content/hold-state";
 import type { HoldBearer } from "../../content/hold-state";
 import { getGridController } from "../grid-controller";
-import { isRecentLocal, markLocalMutation } from "../../files/fs-events";
+import { isRecentLocal, markLocalMutation, markLocalWrite } from "../../files/fs-events";
 import {
   defaultContentFormat,
   documentExtensions,
@@ -472,7 +472,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
       mode: "roundtrip",
       source: entry.rawText,
     });
-    markLocalMutation(path);
+    markLocalWrite(path, text);
     await platform.writeFile(path, text);
     entries.set(path, { ...entry, frontmatter, rawText: text });
   };
@@ -584,7 +584,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
             { ...frontmatter, children: [] },
             { frontmatter: Object.keys(frontmatter).length > 0, mode: "roundtrip" },
           );
-          markLocalMutation(path);
+          markLocalWrite(path, text);
           await platform.writeFile(path, text);
           const parsed = await parseSourceForPath(path, text);
           entries.set(path, {

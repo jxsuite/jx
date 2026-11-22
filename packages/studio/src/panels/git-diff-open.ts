@@ -10,6 +10,20 @@
 import { formatForPath } from "../format/format-host";
 import { isViewableMedia } from "../media/media-open";
 
+/**
+ * The `fileStatus` of a comparison of the copy on disk with a tab's unsaved version, which a
+ * conflicted save opens (`project-state.md` §6.1): not a git status, so the Source Control re-reads
+ * of a comparison against `HEAD` leave it alone.
+ */
+export const DISK_COMPARISON_STATUS = "disk";
+
+/** What a plain comparison's two sides are called: against `HEAD`, or the disk against a buffer. */
+export function comparisonSideLabels(fileStatus: string): { current: string; original: string } {
+  return fileStatus === DISK_COMPARISON_STATUS
+    ? { current: "Your Unsaved Version", original: "On Disk" }
+    : { current: "Current", original: "Original" };
+}
+
 /** `.json` files that configure a project rather than being documents of it. */
 const NON_DOCUMENT_JSON = new Set([
   "bunfig.json",

@@ -67,8 +67,10 @@ const { emptyContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const {
   componentDragData,
+  invalidateComponentRegistry,
   mayDefineComponent,
   invalidateSiteIndex,
+  noteReadiness,
   mediaDragData,
   mediaMoreLabel,
   PREVIEW_ATTEMPT_LIMIT,
@@ -719,6 +721,55 @@ describe("staying current", () => {
     invalidateSiteIndex();
     await flush(10);
     expect(scans).toBe(settled + 2);
+  });
+
+  test("while the host's subscription is live, the component set comes from its events", async () => {
+    let scans = 0;
+    await project({
+      /* SAFETY: the same cast `project()` makes: the registry keeps this answer as
+         `ComponentEntry[]`, and the fixture card is one. */
+      discoverComponents: (async () => {
+        scans += 1;
+        return [CARD];
+      }) as StudioPlatform["discoverComponents"],
+    });
+    await paint();
+    const { answerSubscribe, createMemoryEventLog } =
+      await import("@jxsuite/protocol/project-state");
+    const { startProjectStateSync, stopProjectStateSync } =
+      await import("../src/project-state/subscription");
+    const log = createMemoryEventLog({ epoch: "e1" });
+    startProjectStateSync({
+      subscribeProjectState: async (request) =>
+        answerSubscribe(log, request, () => ({
+          components: [],
+          files: [],
+          formats: "f",
+          readiness: "ready",
+        })),
+    });
+    await flush(10);
+    try {
+      const settled = scans;
+      // A rewrite of a definition costs no scan: the host reports a change to the set itself.
+      invalidateSiteIndex(["components/new-card.json"], false);
+      await flush(10);
+      expect(scans).toBe(settled);
+      invalidateComponentRegistry();
+      await flush(10);
+      expect(scans).toBe(settled + 1);
+      // A readiness change re-reads the index without a scan.
+      noteReadiness();
+      await flush(10);
+      expect(scans).toBe(settled + 1);
+      /* A move keeps the host's set of tags and changes the path the registry reads the definition
+         from, so a batch that added, removed or moved a definition still re-scans. */
+      invalidateSiteIndex(["components/card.json", "components/ui/card.json"], true);
+      await flush(10);
+      expect(scans).toBe(settled + 2);
+    } finally {
+      stopProjectStateSync();
+    }
   });
 
   test("an invalidation re-reads the project, so a new page appears", async () => {
