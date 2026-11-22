@@ -33,7 +33,7 @@ import type { FsEventPayload } from "./refactor/fs-events.ts";
 export const RECONNECT_MS = 500;
 
 /** How often a comment frame is sent to keep an idle connection from being reaped. */
-const HEARTBEAT_MS = 15_000;
+export const HEARTBEAT_MS = 15_000;
 
 /** The `fs` event's data: one debounced batch of filesystem changes for the studio sidebar. */
 export interface FsEventBatch {

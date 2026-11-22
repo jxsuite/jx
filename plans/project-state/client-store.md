@@ -4,8 +4,7 @@ disposition: implement
 claims:
   - project-state.md#6
   - project-state.md#11.1
-requires:
-  - project-state/desktop-service
+requires: []
 workspaces:
   - packages/studio
   - packages/desktop

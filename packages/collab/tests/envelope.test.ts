@@ -46,6 +46,7 @@ describe("envelope roundtrip", () => {
       { path: "p.md", type: "flush-ack" },
       { dirty: true, path: "p.md", type: "doc-dirty" },
       { dirty: false, path: "p.md", type: "doc-dirty" },
+      { diskHash: null, docId: "d1", path: "p.md", type: "doc-conflict" },
       { code: "read-only", message: "Write access required", path: "p.md", type: "error" },
     ];
     for (const message of messages) {

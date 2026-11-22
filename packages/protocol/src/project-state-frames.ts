@@ -19,6 +19,8 @@ import { isContentHash, READINESS_ORDER } from "./project-state.ts";
 import type {
   ContentHash,
   DeleteBase,
+  DeleteRequest,
+  DeleteResult,
   DependencyKind,
   DocKind,
   ProjectEvent,
@@ -28,6 +30,8 @@ import type {
   WireContents,
   WorkingState,
   WriteConflict,
+  WriteRequest,
+  WriteResult,
 } from "./project-state.ts";
 
 // ─── Contents (§3.2) ───────────────────────────────────────────────────────────────────────────
@@ -65,6 +69,15 @@ export function encodeWireContents(contents: string | Uint8Array): WireContents 
 /** The contents a {@link WireContents} names: a string for text, bytes for base64. */
 export function decodeWireContents(wire: WireContents): string | Uint8Array {
   return isText(wire) ? wire : fromBase64(wire.data);
+}
+
+/**
+ * A write's contents as an HTTP binding sends them, the raw bytes being the body (§3.2): text as
+ * itself, which a request encodes as UTF-8, its hashed form (§2.1), and bytes copied into a view
+ * over a plain `ArrayBuffer`, which is what a request body accepts whatever backed them before.
+ */
+export function writeBody(contents: string | Uint8Array): string | Uint8Array<ArrayBuffer> {
+  return isText(contents) ? contents : new Uint8Array(contents);
 }
 
 /** Whether contents are text rather than bytes or a base64 envelope. */
@@ -383,6 +396,30 @@ export type Continuity =
   | { ok: true; rev: number }
   | { ok: false; expected: number; received: number };
 
+/**
+ * Where a client adapter hands a subscription's later frames (§3.2): its batched events, and its
+ * end, after which the client subscribes again with its cursor. Every binding reports the same two
+ * things, so a client store reads one shape whichever host it talks to.
+ */
+export interface ProjectStateListener {
+  events: (params: ProjectEventsParams) => void;
+  ended?: (epoch: string) => void;
+}
+
+/**
+ * The project state service as a client adapter exposes it, over whichever binding its host serves
+ * (§3.2, §5): one subscription at a time, replaced by the next `subscribe`, and the writes and
+ * deletes that name their base, a stale base answering its conflict rather than throwing.
+ */
+export interface ProjectStateClient {
+  subscribe: (
+    request: SubscribeRequest,
+    listener: ProjectStateListener,
+  ) => Promise<SubscribeResponse>;
+  write: (request: WriteRequest) => Promise<WriteResult>;
+  delete: (request: DeleteRequest) => Promise<DeleteResult>;
+}
+
 /** Check that `events` continue from `lastRev` (§3.2). An empty list continues trivially. */
 export function checkContinuity(lastRev: number, events: readonly ProjectEvent[]): Continuity {
   let rev = lastRev;
@@ -560,6 +597,20 @@ export function decodeDesktopEnded(text: string): { epoch: string } | null {
 
 /** The dev server's project stream, separate from the reload stream of `server.md` §3.1. */
 export const PROJECT_EVENTS_PATH = "/__studio/project/events";
+
+/**
+ * The query parameter the stream's URL names the client in (§3.1's `clientId`). A query parameter,
+ * unlike the cursor, can carry it: the client keeps one `clientId` for its lifetime, so the URL an
+ * `EventSource` reconnects to never has to change.
+ */
+export const PROJECT_CLIENT_PARAM = "clientId";
+
+/**
+ * The query parameter the stream's URL names its project in, as the client activated it. The dev
+ * server serves one active project to every tab, and no frame says which, so a stream naming
+ * another project than the one served is refused rather than answered with that project's state.
+ */
+export const PROJECT_ROOT_PARAM = "root";
 
 /** The `event:` name of the first frame on every connection. */
 export const SSE_SUBSCRIBE_EVENT = "subscribe";
@@ -799,6 +850,44 @@ export function parseWritePrecondition(
   }
   const baseHash = hashOfEntityTag(ifMatch);
   return baseHash === null ? { ok: false, reason: "malformed" } : { baseHash, ok: true };
+}
+
+/** The header a write or delete names its `writeId` in on an HTTP binding (§2.4, §5). */
+export const WRITE_ID_HEADER = "Jx-Write-Id";
+
+/** The header a write carries its buffer revision in, echoed in a refusal (§5, §6.1). */
+export const BUFFER_REV_HEADER = "Jx-Buffer-Rev";
+
+/** The headers that name a write's or a delete's issuer: its write id and its buffer revision. */
+export function writeIdentityHeaders(request: {
+  writeId: string;
+  bufferRev?: number;
+}): Record<string, string> {
+  return request.bufferRev === undefined
+    ? { [WRITE_ID_HEADER]: request.writeId }
+    : { [BUFFER_REV_HEADER]: String(request.bufferRev), [WRITE_ID_HEADER]: request.writeId };
+}
+
+/**
+ * The issuer a request's headers name, or `null` when it names no write id, or a buffer revision
+ * that is not a non-negative integer: a write whose events' origin could not be recognised is
+ * refused before the disk is read (§2.4).
+ */
+export function parseWriteIdentity(
+  headers: HeaderReader,
+): { writeId: string; bufferRev?: number } | null {
+  const writeId = headers.get(WRITE_ID_HEADER)?.trim() ?? "";
+  if (writeId === "") {
+    return null;
+  }
+  const bufferRev = headers.get(BUFFER_REV_HEADER);
+  if (bufferRev === null) {
+    return { writeId };
+  }
+  const value = Number(bufferRev.trim());
+  return /^\d+$/.test(bufferRev.trim()) && Number.isSafeInteger(value)
+    ? { bufferRev: value, writeId }
+    : null;
 }
 
 /** A delete's base as an HTTP request carries it. */

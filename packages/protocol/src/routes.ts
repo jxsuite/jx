@@ -54,6 +54,23 @@ export const STUDIO_ROUTES = {
   // ─── Session / project ────────────────────────────────────────────────────
   activate: route("POST", "/__studio/activate", "Bind the backend to a project root"),
   project: route("GET", "/__studio/project", "Root project metadata {name, root}"),
+  /**
+   * The project state stream (project-state.md §3.2, §10.2): the active project's host, served as
+   * Server-Sent Events, separate from the reload stream because that one deliberately replays
+   * nothing. The cursor travels as `Last-Event-ID`, so a browser's own reconnection resumes it.
+   */
+  projectEvents: route(
+    "GET",
+    "/__studio/project/events",
+    "The active project's state as Server-Sent Events: the first frame (`event: subscribe`) " +
+      "answers the subscribe that `Last-Event-ID: <epoch>:<rev>` names (none, or one the log no " +
+      "longer holds, is a snapshot), and each later `event: project` frame carries " +
+      "`{epoch, events}` with `id: <epoch>:<rev>`. `?clientId=` names the client. The stream " +
+      "closes when the host ends the subscription; activating another project starts a new " +
+      "epoch (specs/project-state.md §3.2)",
+    'The client keeps the "open", "reconnect" and "commit" resync reasons of studio.md §9.2, ' +
+      "re-listing what it caches over the reload stream's fs frames instead of replaying.",
+  ),
   projectInfo: route(
     "GET",
     "/__studio/project-info",
@@ -121,8 +138,21 @@ export const STUDIO_ROUTES = {
       "too large, 502 upstream. Allowed for read-only sessions; keeps fileRead's server-side effects",
     "Adapters fall back to one fileRead per path.",
   ),
-  fileWrite: route("PUT", "/__studio/file", "Write a file's text content"),
-  fileDelete: route("DELETE", "/__studio/file", "Delete a file"),
+  fileWrite: route(
+    "PUT",
+    "/__studio/file",
+    'Write a file\'s text content. With `If-Match: "<hash>"` (or `If-None-Match: *` for a ' +
+      "create) and `Jx-Write-Id`, the body is the bytes of a conditional write → {ok, rev, hash, " +
+      "path} and an ETag, or 412 precondition-failed {path, docId, diskHash} when the base is " +
+      "stale (specs/project-state.md §5); without them it is last-writer-wins",
+  ),
+  fileDelete: route(
+    "DELETE",
+    "/__studio/file",
+    "Delete a file. With `If-Match` (a file) or a `{files}` body (a directory) and " +
+      "`Jx-Write-Id`, a conditional delete → {ok, rev, path}, or 412 precondition-failed when " +
+      "the base is stale (specs/project-state.md §5)",
+  ),
   fileUpload: route(
     "POST",
     "/__studio/file/upload",

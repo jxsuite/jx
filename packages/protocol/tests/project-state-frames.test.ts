@@ -6,7 +6,9 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  BUFFER_REV_HEADER,
   PRECONDITION_FAILED_STATUS,
+  WRITE_ID_HEADER,
   PROJECT_ENDED_METHOD,
   PROJECT_EVENTS_METHOD,
   PROJECT_EVENTS_PATH,
@@ -41,8 +43,11 @@ import {
   parseDeletePrecondition,
   parseLastEventId,
   parseSseBlock,
+  parseWriteIdentity,
   parseWritePrecondition,
   preconditionFailedProblem,
+  writeBody,
+  writeIdentityHeaders,
   writePreconditionHeaders,
 } from "../src/project-state-frames";
 import type { JsonValue } from "@jxsuite/schema/types";
@@ -608,6 +613,31 @@ describe("HTTP preconditions (§5)", () => {
         ok: false,
         reason: "malformed",
       });
+    }
+  });
+
+  test("a write's body is its text, or a copy of its bytes", () => {
+    expect(writeBody("{}")).toBe("{}");
+    const bytes = new Uint8Array([1, 2, 3]);
+    const body = writeBody(bytes);
+    expect(body).toEqual(bytes);
+    expect(body).not.toBe(bytes);
+  });
+
+  test("a write names its issuer in headers, and one that names none is refused", () => {
+    expect(writeIdentityHeaders({ writeId: "w1" })).toEqual({ [WRITE_ID_HEADER]: "w1" });
+    const both = writeIdentityHeaders({ bufferRev: 7, writeId: "w2" });
+    expect(both).toEqual({ [BUFFER_REV_HEADER]: "7", [WRITE_ID_HEADER]: "w2" });
+    expect(parseWriteIdentity(headers(both))).toEqual({ bufferRev: 7, writeId: "w2" });
+    expect(parseWriteIdentity(headers({ "jx-write-id": " w3 " }))).toEqual({ writeId: "w3" });
+    for (const record of [
+      {},
+      { [WRITE_ID_HEADER]: "  " },
+      { [BUFFER_REV_HEADER]: "-1", [WRITE_ID_HEADER]: "w" },
+      { [BUFFER_REV_HEADER]: "1.5", [WRITE_ID_HEADER]: "w" },
+      { [BUFFER_REV_HEADER]: "99999999999999999999", [WRITE_ID_HEADER]: "w" },
+    ]) {
+      expect(parseWriteIdentity(headers(record))).toBeNull();
     }
   });
 

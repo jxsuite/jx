@@ -18,6 +18,7 @@ import { createWsCollabConnection } from "@jxsuite/collab/client";
 import { COLLAB_SUBPROTOCOL, negotiateCollab } from "@jxsuite/collab/negotiate";
 import type { WsCollabConnection } from "@jxsuite/collab/client";
 import { sourceText, updateSourceText } from "@jxsuite/collab";
+import { PROJECT_EVENTS_PATH } from "@jxsuite/protocol/project-state-frames";
 
 const FIXTURES = resolve(import.meta.dir, "_collab_fixtures");
 const PAGE = "pages/index.md";
@@ -277,15 +278,14 @@ describe("watcher-driven resets", () => {
 });
 
 /**
- * A rename moves a file out from under a live room, and the room is keyed by PATH.
- *
- * Left alone the room survives the move holding pre-rename content, and `stop()`'s
- * graceful-shutdown flush writes it back — RECREATING the file the rename deleted. `pendingPersist`
- * receives a path on the room's seed transaction, so a clean editor is no protection either. This
- * is the whole reason the rename route reports the move to the collab registry.
+ * A rename moves a file out from under a live room. Inside the project the dev server's host
+ * serves, the room is keyed by the document (`project-state.md` §11.3), so it follows the move: a
+ * peer opening the new path joins it, unsaved edits and all, and a save lands at the new path. Its
+ * save names the bytes it loaded as its base, so nothing it writes can recreate the file at the old
+ * path.
  */
 describe("renames reach the collaboration registry", () => {
-  test("a rename resets the old path's room, and shutdown does not resurrect the file", async () => {
+  test("a renamed document keeps its room, and shutdown does not resurrect the old path", async () => {
     const dir = resolve(import.meta.dir, "_collab_rename_fixtures");
     rmSync(dir, { force: true, recursive: true });
     mkdirSync(join(dir, "pages"), { recursive: true });
@@ -298,11 +298,31 @@ describe("renames reach the collaboration registry", () => {
       studio: true,
       watch: false,
     });
+    const base = `http://localhost:${renamed.port}`;
     const connection = createWsCollabConnection({
       openTimeoutMs: 5000,
       url: `ws://localhost:${renamed.port}/__studio/collab`,
     });
+    const peer = createWsCollabConnection({
+      openTimeoutMs: 5000,
+      url: `ws://localhost:${renamed.port}/__studio/collab`,
+    });
+    // The project stream says when the host has seen the move.
+    const stream = await fetch(`${base}${PROJECT_EVENTS_PATH}`);
+    const reader = stream.body!.getReader();
+    let seen = "";
+    const decoder = new TextDecoder();
+    const untilSeen = async (text: string): Promise<void> => {
+      while (!seen.includes(text)) {
+        const { done, value } = await reader.read();
+        if (done) {
+          throw new Error("the project stream closed");
+        }
+        seen += decoder.decode(value);
+      }
+    };
     try {
+      await untilSeen('"state":"ready"');
       const handle = await connection.openDoc("pages/movable.md");
       expect(handle).not.toBeNull();
       await handle!.whenSynced;
@@ -310,23 +330,30 @@ describe("renames reach the collaboration registry", () => {
       handle!.onReset(() => {
         resets += 1;
       });
+      updateSourceText(handle!.doc, "# Before\n\nunsaved\n", "test");
 
-      const res = await fetch(`http://localhost:${renamed.port}/__studio/file/rename`, {
+      const res = await fetch(`${base}/__studio/file/rename`, {
         body: JSON.stringify({ from: "pages/movable.md", to: "pages/moved.md" }),
         method: "POST",
       });
       expect(res.ok).toBe(true);
-      await until(() => resets === 1, 10_000);
+      await untilSeen('"type":"fileRenamed"');
 
-      // The flush on shutdown must find no room for the old path, so the moved file stays moved.
-      void renamed.stop(true);
-      await new Promise((resolveSleep) => {
-        setTimeout(resolveSleep, 100);
-      });
+      const moved = await peer.openDoc("pages/moved.md");
+      expect(moved).not.toBeNull();
+      await moved!.whenSynced;
+      expect(sourceText(moved!.doc).toString()).toBe("# Before\n\nunsaved\n");
+      await moved!.flush();
+      expect(readFileSync(join(dir, "pages/moved.md"), "utf8")).toBe("# Before\n\nunsaved\n");
+      expect(resets).toBe(0);
+
+      await renamed.stop(true);
       expect(existsSync(join(dir, "pages/moved.md"))).toBe(true);
       expect(existsSync(join(dir, "pages/movable.md"))).toBe(false);
     } finally {
+      await reader.cancel().catch(() => {});
       connection.destroy();
+      peer.destroy();
       void renamed.stop(true);
       rmSync(dir, { force: true, recursive: true });
     }

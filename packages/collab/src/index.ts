@@ -61,4 +61,10 @@ export {
 export type { CollabFrame, CollabPermission, ControlMessage } from "./envelope.ts";
 export { colorForKey, PRESENCE_PALETTE } from "./awareness-types.ts";
 export type { CollabAwarenessState, CollabUser } from "./awareness-types.ts";
-export type { CollabCapability, CollabHandle, CollabIdentity, CollabStatus } from "./provider.ts";
+export type {
+  CollabCapability,
+  CollabConflict,
+  CollabHandle,
+  CollabIdentity,
+  CollabStatus,
+} from "./provider.ts";

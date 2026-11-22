@@ -4,8 +4,6 @@ disposition: defer
 claims:
   - project-state.md#13.2
 requires:
-  - project-state/desktop-service
-  - project-state/devserver-service
   - project-state/cloud-conformance
 size: S
 ---
@@ -14,7 +12,7 @@ size: S
 
 ## Context
 
-`specs/project-state.md` §13.2 is `Pending`: the host logic is TypeScript only (`packages/protocol/src/project-state.ts` today, `packages/server/src/project-state/` once `plan:project-state/desktop-service` lands), and no measurement of indexing, hashing or graph updates on a large project exists.
+`specs/project-state.md` §13.2 is `Pending`: the host logic is TypeScript only (`packages/protocol/src/project-state.ts` and `packages/server/src/project-state/`, which the desktop session and the dev server both run, §10.1, §10.2), and no measurement of indexing, hashing or graph updates on a large project exists.
 
 ## Outcome
 
