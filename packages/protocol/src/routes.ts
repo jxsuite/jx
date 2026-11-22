@@ -71,6 +71,22 @@ export const STUDIO_ROUTES = {
     'The client keeps the "open", "reconnect" and "commit" resync reasons of studio.md §9.2, ' +
       "re-listing what it caches over the reload stream's fs frames instead of replaying.",
   ),
+  /**
+   * A rename as one operation (project-state.md §9, §10.2): the host plans the move and every
+   * reference rewrite, applies them from an outbox that rolls back on failure, and answers what it
+   * did or why it refused.
+   */
+  projectRename: route(
+    "POST",
+    "/__studio/project/rename",
+    "A rename as one operation: the body is a RenameOperation {opId, from, to, policy, " +
+      "dirtyReferrers, rewrites?} with project-relative paths (each rewrite's contents a " +
+      "WireContents) → RenameOperationResult: {ok: true, rev, files, references, errors, buffers, " +
+      "…} once every step is applied, or {ok: false, reason, message, paths} with every file as it " +
+      "was (specs/project-state.md §9)",
+    "Studio renames through fileRename, whose move and rewrites are separate writes with no " +
+      "rollback, and a dirty referrer is rewritten on disk under its buffer.",
+  ),
   projectInfo: route(
     "GET",
     "/__studio/project-info",

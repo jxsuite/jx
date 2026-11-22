@@ -12,10 +12,15 @@ import {
   encodeSseEvents,
   encodeSseSubscribe,
   PROJECT_EVENTS_PATH,
+  PROJECT_RENAME_PATH,
   preconditionFailedProblem,
 } from "@jxsuite/protocol/project-state-frames";
 import type { ProjectEventsParams } from "@jxsuite/protocol/project-state-frames";
-import type { ProjectEvent, SubscribeResponse } from "@jxsuite/protocol/project-state";
+import type {
+  ProjectEvent,
+  RenameOperationResult,
+  SubscribeResponse,
+} from "@jxsuite/protocol/project-state";
 import { createDevServerPlatform } from "../src/platforms/devserver";
 
 const H = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" as const;
@@ -316,5 +321,57 @@ describe("projectState.write and delete (§5)", () => {
     expect(
       await platform.projectState.delete({ base: { hash: H }, path: "pages", writeId: "d" }),
     ).toEqual({ conflict, ok: false });
+  });
+});
+
+describe("projectState.rename (§9)", () => {
+  test("posts the operation with project-relative paths and answers the host's result", async () => {
+    const refused: RenameOperationResult = {
+      message: "no",
+      ok: false,
+      opId: "op",
+      paths: [],
+      reason: "failed",
+    };
+    answer = (call) =>
+      call.url.pathname === "/__studio/activate"
+        ? Response.json({ ok: true, root: "site" })
+        : Response.json(refused);
+    const platform = createDevServerPlatform();
+    platform.projectRoot = "site";
+    expect(platform.renameProjectState).toBe(platform.projectState.rename);
+    const operation = {
+      dirtyReferrers: [],
+      from: "media/a.png",
+      opId: "op",
+      policy: "refuse" as const,
+      rewrites: [{ baseHash: H, contents: new Uint8Array([0, 1]), path: "c.md" }],
+      to: "media/b.png",
+    };
+    expect(await platform.projectState.rename(operation)).toEqual(refused);
+    const call = calls.at(-1)!;
+    expect(call.url.pathname).toBe(PROJECT_RENAME_PATH);
+    // The paths are relative to the project the client activated, and the request says which.
+    expect(call.url.searchParams.get("root")).toBe("site");
+    expect(call.init.method).toBe("POST");
+    expect(JSON.parse(String(call.init.body))).toEqual({
+      ...operation,
+      rewrites: [{ baseHash: H, contents: { data: "AAE=", encoding: "base64" }, path: "c.md" }],
+    });
+    answer = () => new Response(null, { status: 404 });
+    await expect(platform.projectState.rename(operation)).rejects.toThrow("(404)");
+  });
+
+  test("names no project when none was activated", async () => {
+    answer = () => Response.json({ ok: false });
+    const platform = createDevServerPlatform();
+    await platform.projectState.rename({
+      dirtyReferrers: [],
+      from: "a.png",
+      opId: "op",
+      policy: "refuse",
+      to: "b.png",
+    });
+    expect(calls.at(-1)!.url.search).toBe("");
   });
 });

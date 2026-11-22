@@ -127,7 +127,7 @@ Further windows come from the _File_ menu's **New Window**, from the **This Wind
 
 ## If a window can't reach the app
 
-Everything a window does with your files (opening and creating projects, reading, saving) goes through the app's background process. If a window starts without that connection, it shows **Jx Studio couldn't connect to its backend** in place of the editor, together with the error it ran into. Nothing on disk is touched, so closing the window loses nothing.
+Everything a window does with your files (opening and creating projects, reading, saving, renaming) goes through the app's background process. A rename there happens all at once: the file moves and every reference to it is rewritten, or, if any step fails, every file is left as it was. If a window starts without that connection, it shows **Jx Studio couldn't connect to its backend** in place of the editor, together with the error it ran into. Nothing on disk is touched, so closing the window loses nothing.
 
 Click **Reload** first. If the message comes back, quit and reopen Jx Studio, then reinstall it from the [install page](/docs/start/install). When you report it, click **Copy details** and include what it copies, along with your operating system and its version.
 

@@ -9,9 +9,8 @@
  *
  * A host that does not serve §8 (the dependency graph) or §9 (the rename cascade) runs a negative
  * case for each instead: it emits no `dependentsInvalidated` or `operationApplied`. A driver that
- * declares {@link ProjectStateDriver.graph} runs §10.4's §8 cases in place of the first. The §9
- * cases are not written yet, so a driver that declares {@link ProjectStateDriver.rename} gets a
- * failing case naming the missing section rather than fewer checks.
+ * declares {@link ProjectStateDriver.graph} runs §10.4's §8 cases in place of the first, and one
+ * that declares {@link ProjectStateDriver.rename} runs the §9 cases in place of the second.
  *
  * @module
  */
@@ -158,10 +157,14 @@ export interface ProjectStateGraphHooks {
   complete: boolean;
 }
 
-/** The hook a host that serves the rename cascade (§9) supplies; its cases join with §9. */
+/** The hook a host that serves the rename cascade (§9) supplies, which runs the §9 cases. */
 export interface ProjectStateRenameHooks {
+  /** Send `operation` to the host through its binding and answer whether it was applied. */
   rename: (host: ProjectStateHost, operation: RenameOperation) => Promise<{ ok: boolean }>;
-  /** Make the operation's `step`-th step fail, so the suite can watch it roll back. */
+  /**
+   * Make the next operation's step `step` fail, counted from 0 in the order the host applies its
+   * steps, so the suite can watch the completed ones roll back.
+   */
   failStep: (host: ProjectStateHost, step: number) => void;
 }
 
@@ -339,6 +342,7 @@ const FILE_EVENTS = new Set<ProjectEventType>([
 // ─── Helpers ──────────────────────────────────────────────────────────────────────────────────
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 const bytesOf = (contents: string | Uint8Array): Uint8Array =>
   contents instanceof Uint8Array ? contents : encoder.encode(contents);
@@ -1255,19 +1259,6 @@ function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): voi
         });
       }
 
-      /*
-       * A hook replaces the negative case above with the cases of its section. Until §9's cases
-       * are written, declaring its hook registers one that fails, so a hook can never switch a
-       * check off without switching another on.
-       */
-      if (driver.rename !== undefined) {
-        hostCase("the §9 cases a declared hook asks for exist", async () => {
-          expect(false, "the suite has no §9 cases yet, so a driver may not declare its hook").toBe(
-            true,
-          );
-        });
-      }
-
       hostCase("a degraded watcher is reported, and recovery starts a new epoch", async (host) => {
         if (host.watcher === undefined) {
           // A host with no watcher (the cloud, §10.3) cannot degrade; nothing to check.
@@ -1401,6 +1392,155 @@ function registerCases(driver: ProjectStateDriver, api: ConformanceTestApi): voi
             expectStream(sub);
           },
         );
+      });
+    }
+
+    // ─── §9 Rename cascade ─────────────────────────────────────────────────────────────────
+    const { rename } = driver;
+    if (rename !== undefined) {
+      /** The media file the §9 cases rename, its one referrer, and where it goes. */
+      const FROM = "media/logo.png";
+      const TO = "media/brand.png";
+      const REFERRER = "pages/about.json";
+
+      /**
+       * The rename the §9 cases send. A host whose graph is partial (§8.2) needs the client's
+       * rewrites; the fixture's unindexed documents name no media, so an empty list is true.
+       */
+      const renameOf = (overrides: Partial<RenameOperation> = {}): RenameOperation => {
+        const operation: RenameOperation = {
+          dirtyReferrers: [],
+          from: FROM,
+          opId: `op-${nextWriteId()}`,
+          policy: "rewrite-buffer",
+          to: TO,
+          ...overrides,
+        };
+        if (driver.graph?.complete === false && operation.rewrites === undefined) {
+          operation.rewrites = [];
+        }
+        return operation;
+      };
+
+      /** Every in-scope fixture file and the destination, as their bytes or `null`. */
+      const diskOf = async (host: ProjectStateHost): Promise<Record<string, Uint8Array | null>> => {
+        const out: Record<string, Uint8Array | null> = {};
+        for (const path of [...IN_SCOPE, TO]) {
+          out[path] = await host.read(path);
+        }
+        return out;
+      };
+
+      /** The referrer's text, as one string to search. */
+      const referrerText = async (host: ProjectStateHost): Promise<string> =>
+        decoder.decode((await host.read(REFERRER)) ?? new Uint8Array());
+
+      describe("§9 rename cascade", () => {
+        hostCase("a rename moves the file, rewrites its referrers, then says so", async (host) => {
+          const logo = fileIn(await currentSnapshot(host), FROM);
+          const sub = await watch(host);
+          const operation = renameOf();
+          const result = await rename.rename(host, operation);
+          await host.settle();
+          expect(result.ok, "the rename is applied").toBe(true);
+          expect(await host.read(FROM), "nothing is left at the old path").toBe(null);
+          expect(await host.read(TO), "the bytes are at the new path").toEqual(LOGO);
+          const text = await referrerText(host);
+          expect(text.includes("../media/brand.png"), "the referrer names the new path").toBe(true);
+          expect(text.includes("logo.png"), "and not the old one").toBe(false);
+          // The move keeps the document's identity (§2.2), and says so with one fileRenamed (§4.2).
+          const renamed = ofType(sub.events, "fileRenamed");
+          expect(renamed.length, "one fileRenamed").toBe(1);
+          const [moved] = renamed;
+          expect(
+            { docId: moved?.docId, from: moved?.from, to: moved?.to },
+            "naming the document, where it was and where it is",
+          ).toEqual({ docId: logo.docId, from: FROM, to: TO });
+          expect(
+            fileIn(await currentSnapshot(host), TO).docId,
+            "the moved document keeps its id",
+          ).toBe(logo.docId);
+          const applied = ofType(sub.events, "operationApplied");
+          expect(applied.length, "one operationApplied").toBe(1);
+          const [done] = applied;
+          expect(done?.opId, "naming the operation").toBe(operation.opId);
+          const files = done?.files ?? [];
+          expect(files.includes(REFERRER), "listing the referrer it wrote").toBe(true);
+          expect(files[0], "and the file it moved, first, by its destination").toBe(TO);
+          const own = fileEvents(sub.events).filter((event) => event.origin !== "external");
+          expect(own.length > 0, "its file events carry its writes").toBe(true);
+          expect(
+            own.every((event) => event.rev < (done?.rev ?? -1)),
+            "and precede operationApplied",
+          ).toBe(true);
+          expectStream(sub);
+        });
+
+        /* The fixture's rename has two steps in any host's plan, the move and the referrer's
+           rewrite, so a failure at each leaves a different amount to undo. */
+        for (const step of [0, 1]) {
+          hostCase(
+            `a rename either completes or leaves every file as it was (a failure at step ${step + 1})`,
+            async (host) => {
+              const before = await diskOf(host);
+              const sub = await watch(host);
+              rename.failStep(host, step);
+              const result = await rename.rename(host, renameOf());
+              await host.settle();
+              expect(result.ok, "the failed rename is reported").toBe(false);
+              expect(await diskOf(host), "every file as it was").toEqual(before);
+              expect(ofType(sub.events, "operationApplied"), "no operationApplied").toEqual([]);
+              expectStream(sub);
+            },
+          );
+        }
+
+        hostCase("a dirty referrer under refuse stops the rename before any step", async (host) => {
+          const before = await diskOf(host);
+          const sub = await watch(host);
+          const result = await rename.rename(
+            host,
+            renameOf({ dirtyReferrers: [{ bufferRev: 3, path: REFERRER }], policy: "refuse" }),
+          );
+          await host.settle();
+          expect(result.ok, "the rename is refused").toBe(false);
+          expect(await diskOf(host), "nothing changed").toEqual(before);
+          expect(fileEvents(sub.events), "no file event").toEqual([]);
+          expectStream(sub);
+        });
+
+        hostCase("a dirty referrer under rewrite-buffer is left on disk", async (host) => {
+          const before = await host.read(REFERRER);
+          const result = await rename.rename(
+            host,
+            renameOf({ dirtyReferrers: [{ bufferRev: 3, path: REFERRER }] }),
+          );
+          await host.settle();
+          expect(result.ok, "the rename is applied").toBe(true);
+          expect(await host.read(TO), "the file moved").toEqual(LOGO);
+          expect(await host.read(REFERRER), "the dirty referrer is untouched").toEqual(before);
+        });
+
+        hostCase("a dirty referrer's own client rewrite is not written", async (host) => {
+          const before = await host.read(REFERRER);
+          const baseHash = await contentHash(before ?? new Uint8Array());
+          const result = await rename.rename(
+            host,
+            renameOf({
+              dirtyReferrers: [{ bufferRev: 3, path: REFERRER }],
+              rewrites: [
+                {
+                  baseHash,
+                  contents: "{}\n",
+                  path: REFERRER,
+                },
+              ],
+            }),
+          );
+          await host.settle();
+          expect(result.ok, "the rename is applied").toBe(true);
+          expect(await host.read(REFERRER), "the dirty referrer is untouched").toEqual(before);
+        });
       });
     }
 

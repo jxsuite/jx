@@ -4,12 +4,16 @@ import type { FsEventPayload, ReferencesResult, RenameReport } from "@jxsuite/se
 import type {
   ContentHash,
   DeleteRequest,
+  RenameOperationResult,
   SubscribeRequest,
   SubscribeResponse,
   WireContents,
   WriteRequest,
 } from "@jxsuite/protocol/project-state";
-import type { ProjectEventsParams } from "@jxsuite/protocol/project-state-frames";
+import type {
+  ProjectEventsParams,
+  WireRenameOperation,
+} from "@jxsuite/protocol/project-state-frames";
 import type { StarterMeta } from "@jxsuite/starters";
 import type { FormatActionRequest } from "@jxsuite/studio/types";
 import type { FormatEntry } from "@jxsuite/schema/format-registry";
@@ -352,6 +356,11 @@ export interface StudioRPC {
       projectDelete: {
         params: DeleteRequest;
         response: { rev: number };
+      };
+      /** A rename as one operation (§9); a refusal is an answer, not an error. */
+      projectRename: {
+        params: WireRenameOperation;
+        response: RenameOperationResult;
       };
       // Formats
       listFormats: {

@@ -124,6 +124,11 @@ export interface ContentStore {
   forgetOwnWrite: (path: string, contents: OwnWriteContents) => Promise<void>;
   /** Note the id of a write Studio issues through the contract (`project-state.md` §5). */
   noteWriteId: (writeId: string) => void;
+  /**
+   * Note the id of an operation Studio sends (`project-state.md` §9.1), whose steps write as
+   * `<opId>:<n>` and whose rollback as `<opId>:rollback:<n>`: every one of them is Studio's own.
+   */
+  noteOperationId: (opId: string) => void;
   /** Resolves once every {@link noteOwnWrite} begun so far has noted its hash. */
   settled: () => Promise<void>;
   /**
@@ -174,6 +179,13 @@ export function createContentStore(): ContentStore {
   /** Hashes of Studio's own writes whose echo has not arrived, by path, oldest first. */
   const notes = new Map<string, ContentHash[]>();
   const writeIds = new Set<string>();
+  /** Operations Studio sent; a write id `<opId>:…` is one of their steps. */
+  const operationIds = new Set<string>();
+  /** Whether `origin` names a write Studio issued, itself or as a step of its operation. */
+  const ownOrigin = (origin: ProjectEvent["origin"]): boolean =>
+    isOwnOrigin(origin, writeIds) ||
+    (origin !== "external" &&
+      [...operationIds].some((opId) => origin.writeId.startsWith(`${opId}:`)));
   const noting = new Set<Promise<void>>();
   const listeners = new Set<(change: StoreChange) => void>();
   let components: readonly string[] = [];
@@ -490,11 +502,14 @@ export function createContentStore(): ContentStore {
     noteWriteId(writeId) {
       writeIds.add(writeId);
     },
+    noteOperationId(opId) {
+      operationIds.add(opId);
+    },
     async settled() {
       await Promise.allSettled(noting);
     },
     isOwnEvent(event) {
-      const byId = isOwnOrigin(event.origin, writeIds);
+      const byId = ownOrigin(event.origin);
       if (event.type === "fileRemoved") {
         notes.delete(event.path);
         return byId;
@@ -526,6 +541,7 @@ export function createContentStore(): ContentStore {
       unbound.clear();
       notes.clear();
       writeIds.clear();
+      operationIds.clear();
       components = [];
       formats = null;
       readiness = null;

@@ -1,5 +1,13 @@
 import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildProjectExtensionRegistry, createNodeFormatIO } from "@jxsuite/compiler/format-host";
@@ -234,6 +242,28 @@ describe("applyRename", () => {
     expect(failure?.error).toContain("No serializer");
     // The unserializable file is left untouched on disk.
     expect(read("content/card.toy")).toBe(JSON.stringify({ $ref: "../old.json" }));
+  });
+});
+
+describe("applyRename's write half", () => {
+  test("names a referrer it could not write, and leaves it as it was", async () => {
+    write("old.json", "{}");
+    write("pages/locked.json", JSON.stringify({ $ref: "../old.json" }));
+    chmodSync(join(root, "pages/locked.json"), 0o444);
+    try {
+      renameSync(join(root, "old.json"), join(root, "new.json"));
+      const report = await applyRename({
+        absFrom: join(root, "old.json"),
+        absTo: join(root, "new.json"),
+        registry: new FormatRegistry([]),
+        root,
+      });
+      expect(report.errors.map((entry) => entry.path)).toEqual(["pages/locked.json"]);
+      expect(report.references.filesChanged).toBe(0);
+      expect(read("pages/locked.json")).toContain("../old.json");
+    } finally {
+      chmodSync(join(root, "pages/locked.json"), 0o644);
+    }
   });
 });
 

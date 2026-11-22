@@ -53,6 +53,7 @@ import type {
   ProjectSnapshot,
   ReadinessState,
   RenameOperation,
+  RenameOperationResult,
   SubscribeRequest,
   SubscribeResponse,
   WriteOrigin,
@@ -67,6 +68,8 @@ import { PROJECT_FILE_NAMES, parseProjectFile } from "@jxsuite/schema/project-fi
 import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import { createWatchIgnore } from "../watch-policy.ts";
 import { createGitMonitor } from "./git-monitor.ts";
+import { invalidateReferenceCache } from "../refactor/find-refs.ts";
+import { runRenameCascade } from "./rename.ts";
 import type { GitMonitor, GitMonitorOptions, GitWatchFactory } from "./git-monitor.ts";
 import { createDependencyGraph, extractRefs, invalidationEvents, NO_REFS } from "./graph.ts";
 import type {
@@ -223,6 +226,12 @@ export interface ProjectStateHostOptions {
   hold?: boolean;
   /** Told of every failure the host survives: a watch error, a failed git run, a bad extension. */
   onError?: (error: Error) => void;
+  /**
+   * Called before each step of a rename cascade runs (§9.1), counted from 0 in the order the host
+   * applies them, with the path the step changes; a throw fails that step and rolls back the ones
+   * before it. The conformance suite injects its failures here (§10.4).
+   */
+  onRenameStep?: (step: number, path: string) => void | Promise<void>;
 }
 
 /** Where a subscription's events go. */
@@ -266,8 +275,12 @@ export interface ProjectStateHost {
   delete: (request: DeleteRequest) => Promise<DeleteResult>;
   /** Create a directory; its `fileAdded` carries `writeId` (§5). */
   createDirectory: (path: string, writeId: string) => Promise<{ rev: number }>;
-  /** The rename cascade (§9), which this host does not implement yet: it always rejects. */
-  rename: (operation: RenameOperation) => Promise<never>;
+  /**
+   * The rename cascade (§9): plan the move and every reference rewrite, then apply them from an
+   * outbox that rolls back on failure, answering what was done or why nothing was. Rejects only for
+   * a path that is not project-relative or leads outside the project.
+   */
+  rename: (operation: RenameOperation) => Promise<RenameOperationResult>;
   /** The whole state at the current revision (§3.1). */
   snapshot: () => ProjectSnapshot;
   /** The document id at `path` now, `null` when nothing indexed is there (§2.2). */
@@ -1655,68 +1668,274 @@ export async function createProjectStateHost(
     await fs.rename(temp, target);
   };
 
-  const write = (request: WriteRequest): Promise<WriteResult> =>
-    exclusive(async () => {
-      const path = await contained(request.path);
-      const stats = await statOrNull(path);
-      if (stats?.isDirectory() === true) {
-        throw new TypeError(`"${path}" is a directory`);
-      }
-      // A file that exists but cannot be read rejects here: it is never taken for an absent one.
-      const diskHash = stats === null ? null : await hashOf(path);
-      const entry = index.get(path);
-      const docId = entry !== undefined && !entry.isDir ? entry.docId : null;
-      const refused = checkWritePrecondition(request, { docId, hash: diskHash });
-      if (refused !== null && !refused.ok) {
-        emit(conflictEvent(request, refused.conflict));
-        return refused;
-      }
-      const bytes = toBytes(request.contents);
-      const hash = await contentHash(bytes);
-      if (hash === diskHash) {
-        return { hash, ok: true, rev: log.rev };
-      }
-      /* Through a link that stays inside the root (`contained`), the link's target is written and
+  /** A conditional write (§5), run by a caller that holds the queue. */
+  const writeNow = async (request: WriteRequest): Promise<WriteResult> => {
+    const path = await contained(request.path);
+    const stats = await statOrNull(path);
+    if (stats?.isDirectory() === true) {
+      throw new TypeError(`"${path}" is a directory`);
+    }
+    // A file that exists but cannot be read rejects here: it is never taken for an absent one.
+    const diskHash = stats === null ? null : await hashOf(path);
+    const entry = index.get(path);
+    const docId = entry !== undefined && !entry.isDir ? entry.docId : null;
+    const refused = checkWritePrecondition(request, { docId, hash: diskHash });
+    if (refused !== null && !refused.ok) {
+      emit(conflictEvent(request, refused.conflict));
+      return refused;
+    }
+    const bytes = toBytes(request.contents);
+    const hash = await contentHash(bytes);
+    if (hash === diskHash) {
+      return { hash, ok: true, rev: log.rev };
+    }
+    /* Through a link that stays inside the root (`contained`), the link's target is written and
          the link kept, and an existing file keeps its permissions. */
-      const target = stats === null ? toAbs(path) : await fs.realpath(toAbs(path));
-      await fs.mkdir(dirname(target), { recursive: true });
-      // Through a temporary file and a re-hash of the target, so the window is one rename (§5).
-      const temp = join(dirname(target), `.${basename(target)}.jx-write-${randomUUID()}`);
-      try {
-        await fs.writeFile(temp, bytes);
-        if (stats !== null) {
-          // The permission bits alone: the mode's higher bits are the file's type.
-          await fs.chmod(temp, stats.mode % 4096);
-        }
-        const nowHash = await hashOf(path);
-        if (nowHash !== diskHash) {
-          await fs.rm(temp, { force: true });
-          const conflict = { diskHash: nowHash, docId, path };
-          emit(conflictEvent(request, conflict));
-          return { conflict, ok: false };
-        }
-        await renameOver(temp, target);
-      } catch (error) {
-        // Nothing was written: the temporary file goes, and nothing waits for an echo.
-        await fs.rm(temp, { force: true });
-        throw error;
+    const target = stats === null ? toAbs(path) : await fs.realpath(toAbs(path));
+    await fs.mkdir(dirname(target), { recursive: true });
+    // Through a temporary file and a re-hash of the target, so the window is one rename (§5).
+    const temp = join(dirname(target), `.${basename(target)}.jx-write-${randomUUID()}`);
+    try {
+      await fs.writeFile(temp, bytes);
+      if (stats !== null) {
+        // The permission bits alone: the mode's higher bits are the file's type.
+        await fs.chmod(temp, stats.mode % 4096);
       }
-      /* Noted once the rename has landed and before any observation is compared, since those are
+      const nowHash = await hashOf(path);
+      if (nowHash !== diskHash) {
+        await fs.rm(temp, { force: true });
+        const conflict = { diskHash: nowHash, docId, path };
+        emit(conflictEvent(request, conflict));
+        return { conflict, ok: false };
+      }
+      await renameOver(temp, target);
+    } catch (error) {
+      // Nothing was written: the temporary file goes, and nothing waits for an echo.
+      await fs.rm(temp, { force: true });
+      throw error;
+    }
+    /* Noted once the rename has landed and before any observation is compared, since those are
          processed in the queue this write holds (§2.4). An out-of-scope path is noted only when it
          is a dependency input, the one kind whose observations are still attributed (§7). */
-      const origin = writeOrigin(request.writeId, hash);
-      if (!inScope(path)) {
-        if (FINGERPRINT_PATHS.has(path)) {
-          ledger.note(path, hash, request.writeId);
-        }
-        await checkFingerprint(path, origin);
-        return { hash, ok: true, rev: log.rev };
+    const origin = writeOrigin(request.writeId, hash);
+    if (!inScope(path)) {
+      if (FINGERPRINT_PATHS.has(path)) {
+        ledger.note(path, hash, request.writeId);
       }
-      ledger.note(path, hash, request.writeId);
-      // No size or time is recorded, so the first observation of the path reads it (§2.4, §5).
-      const event = await applyFile(path, bytes, hash, null, origin);
-      await afterChange(path, origin);
-      return { hash, ok: true, rev: event.rev };
+      await checkFingerprint(path, origin);
+      return { hash, ok: true, rev: log.rev };
+    }
+    ledger.note(path, hash, request.writeId);
+    // No size or time is recorded, so the first observation of the path reads it (§2.4, §5).
+    const event = await applyFile(path, bytes, hash, null, origin);
+    await afterChange(path, origin);
+    return { hash, ok: true, rev: event.rev };
+  };
+
+  const write = (request: WriteRequest): Promise<WriteResult> => exclusive(() => writeNow(request));
+
+  /**
+   * Move `from`, a file or a directory, to `to` as the write `writeId`, run by a caller that holds
+   * the queue (§9.1): the disk first, then in one synchronous segment the index re-keyed with every
+   * document keeping its id, one `fileRenamed`, a `docChanged` for each file the move reclassified,
+   * and the invalidations of both paths (§4.2, §8). Each moved file is noted in the echo ledger at
+   * its new path, so the watcher's report of the move is recognised as this write. Answers the
+   * directories it created for `to`, outermost first, for an undo to remove.
+   */
+  const moveNow = async (from: string, to: string, writeId: string): Promise<string[]> => {
+    if (await takenBy(from, to)) {
+      throw new Error(`"${to}" already exists`);
+    }
+    const created: string[] = [];
+    for (const dir of parents(to)) {
+      if ((await statOrNull(dir)) === null) {
+        created.push(dir);
+      }
+    }
+    await fs.mkdir(dirname(toAbs(to)), { recursive: true });
+    await fs.rename(toAbs(from), toAbs(to));
+    const moved = [...index].filter(([key]) => key === from || key.startsWith(`${from}/`));
+    const nextOf = (key: string): string => to + key.slice(from.length);
+    const described = new Map<string, Described>();
+    for (const [key, entry] of moved) {
+      if (!entry.isDir) {
+        const next = nextOf(key);
+        const stats = await statOrNull(next);
+        let loaded: Awaited<ReturnType<typeof load>> = null;
+        try {
+          loaded = stats === null ? null : await load(next, stats.size);
+        } catch (error) {
+          report(toError(error));
+        }
+        described.set(key, await describe(next, loaded?.bytes ?? null));
+      }
+    }
+    const movedFiles = new Set(moved.flatMap(([key, entry]) => (entry.isDir ? [] : [key])));
+    const collections = graphBuilt
+      ? await collectionsFor(
+          [
+            ...indexedFiles().filter((file) => !movedFiles.has(file)),
+            ...[...movedFiles].map((file) => nextOf(file)),
+          ],
+          config,
+        )
+      : null;
+    // ── one synchronous segment from here ──
+    const top = index.get(from)!;
+    for (const [key, entry] of moved) {
+      cancelHold(key, entry);
+      index.delete(key);
+    }
+    forgetBeneath(from);
+    const origin = writeOrigin(writeId, top.isDir ? null : (top.hash ?? null));
+    ensureDirs(parents(to).at(-1) ?? "", origin);
+    for (const [key, entry] of moved) {
+      const next = nextOf(key);
+      index.set(next, entry);
+      Object.assign(entry, { mtimeMs: undefined, size: undefined });
+      if (!entry.isDir && entry.hash !== undefined) {
+        ledger.note(next, entry.hash, writeId);
+      }
+    }
+    emit({ docId: top.docId, from, isDir: top.isDir, origin, to, type: "fileRenamed" });
+    if (graphBuilt && collections !== null) {
+      applyEntryTypes(collections);
+    }
+    for (const [key, entry] of moved) {
+      const fresh = described.get(key);
+      if (fresh === undefined) {
+        continue;
+      }
+      const next = nextOf(key);
+      const reclassified = fresh.kind !== entry.kind;
+      if (reclassified) {
+        Object.assign(entry, {
+          defines: fresh.refs?.defines ?? null,
+          indexed: fresh.refs !== null,
+          kind: fresh.kind,
+          refs: fresh.refs,
+        });
+        emit({
+          docId: entry.docId,
+          hash: entry.hash!,
+          indexed: entry.indexed,
+          kind: entry.kind,
+          origin,
+          path: next,
+          type: "docChanged",
+        });
+      }
+      if (graphBuilt && collections !== null) {
+        emitInvalidations(
+          entry.docId,
+          reclassified
+            ? graph.update(entry.docId, next, fresh.refs)
+            : graph.relabel(entry.docId, next),
+          origin,
+        );
+      }
+    }
+    updateComponents(origin);
+    git?.schedule();
+    return created;
+  };
+
+  /**
+   * Whether something other than `from` is at `to` on disk. On a case-insensitive filesystem (the
+   * desktop's macOS and Windows), `from` in another case stats as `from` itself, and a rename to it
+   * changes only its case (`studio.md` §9.1.1).
+   */
+  const takenBy = async (from: string, to: string): Promise<boolean> => {
+    const there = await statOrNull(to);
+    if (there === null) {
+      return false;
+    }
+    if (from.toLowerCase() !== to.toLowerCase()) {
+      return true;
+    }
+    const self = await statOrNull(from);
+    return self === null || self.ino !== there.ino || self.dev !== there.dev;
+  };
+
+  /** Remove each of `dirs` still empty, innermost first, as the write `writeId` (§9.1). */
+  const removeDirs = async (dirs: readonly string[], writeId: string): Promise<void> => {
+    for (const dir of dirs.toReversed()) {
+      const inside = await fs.readdir(toAbs(dir));
+      if (inside.length > 0) {
+        return;
+      }
+      await fs.rm(toAbs(dir), { recursive: true });
+      await removePath(dir, writeOrigin(writeId, null));
+    }
+  };
+
+  /** The rename cascade (§9), with this host's index, graph and writes lent for one operation. */
+  const rename = (operation: RenameOperation): Promise<RenameOperationResult> =>
+    exclusive(async () => {
+      const from = await contained(operation.from);
+      const to = await contained(operation.to);
+      for (const path of [from, to]) {
+        if (!inScope(path)) {
+          throw new TypeError(`"${path}" is outside the index scope`);
+        }
+      }
+      // Plan with the project's parsers: load them first if the host has not yet (§7, §9.1).
+      if (formats === null) {
+        await prepare();
+      }
+      try {
+        return await runRenameCascade(
+          {
+            applied: (opId, files) =>
+              emit({ files, opId, origin: writeOrigin(opId, null), type: "operationApplied" }).rev,
+            entries: () =>
+              [...index].map(([path, entry]) => ({
+                indexed: entry.indexed,
+                isDir: entry.isDir,
+                path,
+              })),
+            exists: (path) => takenBy(from, path),
+            /* Held, the host will load the parsers once released, so the graph is partial until
+               then. Otherwise its dependencies are not installed, and no format is registered: a
+               file in none is not a document (§2.2). */
+            formats: () => formats ?? (held ? null : NO_FORMATS),
+            move: moveNow,
+            read: readOrNull,
+            removeDirs,
+            referrersOf: (paths) => {
+              if (!graphBuilt || degraded) {
+                return null;
+              }
+              const byId = new Map([...index].map(([path, entry]) => [entry.docId, path]));
+              const out = new Set<string>();
+              for (const path of paths) {
+                const entry = index.get(path);
+                const dependents =
+                  entry === undefined ? graph.dependentsAt(path) : graph.dependentsOf(entry.docId);
+                for (const ids of dependents.values()) {
+                  for (const id of ids) {
+                    const at = byId.get(id);
+                    if (at !== undefined) {
+                      out.add(at);
+                    }
+                  }
+                }
+              }
+              return [...out];
+            },
+            root,
+            write: writeNow,
+            ...(options.onRenameStep !== undefined && { beforeStep: options.onRenameStep }),
+          },
+          { ...operation, from, to },
+          (path) => !pairable(path),
+        );
+      } finally {
+        /* The usage query's cache (`findReferences`) is otherwise dropped by a watcher that reports
+           the move after this answer, and never under a path it ignores; the caller's next
+           question is who uses the new name (§12). */
+        invalidateReferenceCache(root);
+      }
     });
 
   const remove = (request: DeleteRequest): Promise<DeleteResult> =>
@@ -1857,8 +2076,7 @@ export async function createProjectStateHost(
         held = false;
         await prepare();
       }),
-    rename: () =>
-      Promise.reject(new Error("This host does not perform the rename cascade (§9) yet")),
+    rename,
     restart: () =>
       exclusive(async () => {
         await stop();

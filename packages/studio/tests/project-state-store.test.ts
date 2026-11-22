@@ -363,6 +363,24 @@ describe("content store", () => {
     expect(store.isOwnEvent(ev({ state: "ready", type: "readiness" }))).toBe(false);
   });
 
+  test("every step of an operation Studio sent is its own, until a reset", () => {
+    const store = createContentStore();
+    store.noteOperationId("op");
+    const removal = (writeId: string) =>
+      ev(
+        { docId: "d1", isDir: false, path: "a.json", type: "fileRemoved" },
+        { writeHash: null, writeId },
+      );
+    expect(store.isOwnEvent(removal("op:0"))).toBe(true);
+    expect(store.isOwnEvent(removal("op:rollback:1"))).toBe(true);
+    expect(store.isOwnEvent(removal("opx:0"))).toBe(false);
+    expect(
+      store.isOwnEvent(ev({ docId: "d1", isDir: false, path: "a.json", type: "fileRemoved" })),
+    ).toBe(false);
+    store.reset();
+    expect(store.isOwnEvent(removal("op:0"))).toBe(false);
+  });
+
   test("a write attributed by its id consumes its note, so a later return to its bytes is not", async () => {
     const store = createContentStore();
     store.applySnapshot(await snapshot([["a.json", "d1", "0"]]));

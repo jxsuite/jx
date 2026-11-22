@@ -11,7 +11,7 @@ import {
   STUDIO_ROUTES,
 } from "../src/index";
 import type { ReadFilesResult } from "../src/index";
-import { PROJECT_EVENTS_PATH } from "../src/project-state-frames";
+import { PROJECT_EVENTS_PATH, PROJECT_RENAME_PATH } from "../src/project-state-frames";
 
 const entries = Object.entries(STUDIO_ROUTES);
 
@@ -79,6 +79,11 @@ describe("STUDIO_ROUTES", () => {
     expect(STUDIO_ROUTES.projectEvents.summary).toContain("Last-Event-ID");
     expect(STUDIO_ROUTES.fileWrite.summary).toContain("If-Match");
     expect(STUDIO_ROUTES.fileDelete.summary).toContain("Jx-Write-Id");
+    expect(STUDIO_ROUTES.projectRename).toMatchObject({
+      method: "POST",
+      optional: true,
+      path: PROJECT_RENAME_PATH,
+    });
   });
 
   test("the formats route documents the additive extensions payload", () => {

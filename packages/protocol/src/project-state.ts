@@ -515,6 +515,13 @@ export function conflictEvent(
 
 // ─── Rename cascade (§9) ───────────────────────────────────────────────────────────────────────
 
+/**
+ * A `url(...)` inside a CSS string, capturing its optional quote and its target: where a reference
+ * in a style sits, so a rename's change (a {@link BufferRewrite}'s included) names the target alone.
+ * Global, for `replaceAll`.
+ */
+export const CSS_URL_PATTERN = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+
 /** What a rename does to a referrer the client holds unsaved (§9.2). */
 export type DirtyReferrerPolicy = "refuse" | "rewrite-buffer";
 
@@ -531,6 +538,97 @@ export interface RenameOperation {
    * it replaces, and the host applies them as steps of the same outbox.
    */
   rewrites?: { path: string; baseHash: ContentHash; contents: string | Uint8Array }[];
+}
+
+/**
+ * What a client applies to a dirty referrer's buffer under `rewrite-buffer` (§9.2): the host left
+ * the file on disk untouched, and these are the edits it made to the disk copy instead.
+ */
+export interface BufferRewrite {
+  /** The referrer as the operation's `dirtyReferrers` named it, before the rename. */
+  path: string;
+  /** The buffer revision the operation named for it. */
+  bufferRev: number;
+  /** Each reference value the rewrite replaced, as authored, with what replaces it. */
+  changes: { from: string; to: string }[];
+  /** The component tag the rename renamed, when it renamed one used in this referrer. */
+  tag?: { from: string; to: string };
+}
+
+/** A rename the host applied (§9.1). Paths are project-relative and name files after the rename. */
+export interface RenameApplied {
+  ok: true;
+  opId: string;
+  /** The revision of the operation's `operationApplied` event. */
+  rev: number;
+  /** Every path the operation wrote, renamed or removed, as `operationApplied` lists them. */
+  files: string[];
+  from: string;
+  to: string;
+  isDir: boolean;
+  /**
+   * The referrers rewritten on disk, and how many references in each. A client's rewrite (§9.1) is
+   * listed with a count of 0, since the host did not count its references.
+   */
+  references: {
+    filesChanged: number;
+    refsUpdated: number;
+    files: { path: string; count: number }[];
+  };
+  /** Documents the host found and could not rewrite: one that does not parse, or cannot be written. */
+  errors: { path: string; error: string }[];
+  /** The component tag renamed with a component's file, and where. */
+  tag?: { from: string; to: string; filesChanged: number; refsUpdated: number };
+  /** Why a component's tag was left as it was. */
+  tagSkipped?: string;
+  /**
+   * The dirty referrers left on disk for the client's buffers (§9.2). One the client sent a rewrite
+   * for carries no changes: the client computed that rewrite, and applies it itself.
+   */
+  buffers: BufferRewrite[];
+}
+
+/**
+ * Why a rename did not happen. Every refusal leaves the project exactly as it was, unless an undo
+ * of the rollback itself failed, which the refusal names in {@link RenameRefused.unrestored}.
+ *
+ * - `dirty-referrers`: policy `refuse` and a referrer is dirty; `paths` names those referrers.
+ * - `rewrites-required`: the host's graph is partial and the operation carried no `rewrites`; `paths`
+ *   names the documents it cannot parse.
+ * - `conflict`: a file changed between planning and applying, or the destination is taken; `paths`
+ *   names it. Any completed step was rolled back.
+ * - `failed`: a step failed for another reason, and the completed steps were rolled back.
+ */
+export type RenameRefusalReason = "dirty-referrers" | "rewrites-required" | "conflict" | "failed";
+
+/** A rename the host did not apply (§9.1, §9.2). */
+export interface RenameRefused {
+  ok: false;
+  opId: string;
+  reason: RenameRefusalReason;
+  /** A sentence for the author; clients must not parse it. */
+  message: string;
+  /** The paths the reason concerns, project-relative. */
+  paths: string[];
+  /**
+   * Present only when the rollback was incomplete: the paths of the steps whose undo failed, each
+   * left as the step made it. The move's step is named by its destination, so a list holding the
+   * operation's `to` means the file or directory is still there.
+   */
+  unrestored?: string[];
+}
+
+/** A host's answer to a {@link RenameOperation}. */
+export type RenameOperationResult = RenameApplied | RenameRefused;
+
+/** The write id of a rename's `step`-th step (from 0), which its events carry as origin (§9.1). */
+export function renameStepWriteId(opId: string, step: number): string {
+  return `${opId}:${step}`;
+}
+
+/** The write id of the rollback of a rename's `step`-th step (§9.1). */
+export function renameRollbackWriteId(opId: string, step: number): string {
+  return `${opId}:rollback:${step}`;
 }
 
 // ─── The unsaved buffer (§6.1) ─────────────────────────────────────────────────────────────────

@@ -23,6 +23,8 @@ import {
   DEPENDENCY_KIND_ORDER,
   READINESS_ORDER,
   readinessAtLeast,
+  renameRollbackWriteId,
+  renameStepWriteId,
 } from "../src/project-state";
 import { decodeCloudHostMessage, encodeCloudEvents } from "../src/project-state-frames";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
@@ -41,6 +43,8 @@ import type {
   ProjectEventLog,
   ProjectSnapshot,
   ReadinessState,
+  RenameOperation,
+  RenameOperationResult,
   WorkingState,
 } from "../src/project-state";
 import type {
@@ -89,7 +93,13 @@ export type ReferenceBug =
   /** Put every other document under every kind, dependent or not (§8). */
   | "graph-over-invalidate"
   /** Classify a document in a format an extension may register before `extensions-resolved` (§2.2). */
-  | "classifies-early";
+  | "classifies-early"
+  /** Leave a failed rename's completed steps in place (§9.1). */
+  | "rename-no-rollback"
+  /** Rewrite a dirty referrer on disk, whatever the operation's policy says (§9.2). */
+  | "rename-ignores-dirty"
+  /** Mint the moved document a new id rather than keep its own (§2.2, §9.1). */
+  | "rename-new-id";
 
 export interface ReferenceHostOptions extends ProjectStateHostOptions {
   /** The pairing bound for an atomic-rename save (§2.4). */
@@ -109,6 +119,8 @@ export interface ReferenceHostOptions extends ProjectStateHostOptions {
    * cannot extract every document's references does.
    */
   partialGraph?: boolean;
+  /** Perform the rename cascade (§9), over the `src`, `href` and `$src` references it reads. */
+  rename?: boolean;
   bugs?: readonly ReferenceBug[];
 }
 
@@ -282,8 +294,54 @@ function fileRefs(node: JsonValue | undefined, out: [string, string][] = []): [s
   return out;
 }
 
+/** The relative reference from a document in `dir` to `target`, both project-relative. */
+function relativeRef(dir: string, target: string): string {
+  const from = dir.split("/").filter(Boolean);
+  const to = target.split("/");
+  let common = 0;
+  while (common < from.length && common < to.length - 1 && from[common] === to[common]) {
+    common += 1;
+  }
+  return [...from.slice(common).map(() => ".."), ...to.slice(common)].join("/");
+}
+
+/**
+ * Rewrite every `src`, `href` and `$src` in `node` that names `from` from `dir`, in place, and
+ * answer each change.
+ */
+function rewriteRefs(
+  node: JsonValue | undefined,
+  dir: string,
+  from: string,
+  to: string,
+  out: { from: string; to: string }[] = [],
+): { from: string; to: string }[] {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      rewriteRefs(item, dir, from, to, out);
+    }
+  } else if (isJsonObject(node)) {
+    for (const [key, value] of Object.entries(node)) {
+      if (isString(value) && (key === "src" || key === "href" || key === "$src")) {
+        if (resolvePath(dir, value) === from) {
+          const next = relativeRef(dir, to);
+          node[key] = next;
+          out.push({ from: value, to: next });
+        }
+      } else {
+        rewriteRefs(value, dir, from, to, out);
+      }
+    }
+  }
+  return out;
+}
+
 /** A running reference host. */
 export interface ReferenceHost extends ProjectStateHost {
+  /** Perform a rename cascade (§9), when created with `rename`. */
+  rename: (operation: RenameOperation) => Promise<RenameOperationResult>;
+  /** Make the next rename's step `step` (from 0) fail. */
+  failStep: (step: number) => void;
   /** Advance the virtual clock (the pairing bound is measured on it). */
   advance: (ms: number) => void;
   /** Number of subscribers still open, for tests. */
@@ -1012,6 +1070,164 @@ export async function createReferenceHost(
     await start(false);
   };
 
+  /** The step the next rename fails at, set by the driver's `failStep`. */
+  let failAt: number | null = null;
+
+  /** Move one file through the contract, keeping its id (§9.1). */
+  const moveFile = async (from: string, to: string, writeId: string): Promise<void> => {
+    const bytes = disk.get(from)!;
+    const hash = await contentHash(bytes);
+    note(to, hash, writeId);
+    disk.delete(from);
+    observe(from, null);
+    writeDisk(to, bytes);
+    const entry = index.get(from)!;
+    index.delete(from);
+    if (bugs.has("rename-new-id")) {
+      entry.docId = crypto.randomUUID();
+    }
+    index.set(to, entry);
+    const origin = { writeHash: hash, writeId };
+    emit({ docId: entry.docId, from, isDir: false, origin, to, type: "fileRenamed" });
+    invalidate(entry.docId, [from, to], tagsOf(entry.bytes), origin);
+  };
+
+  /** Write `bytes` over `path` through the contract, when `path` still holds `base` (§5). */
+  const writeStep = async (
+    path: string,
+    bytes: Uint8Array,
+    base: ContentHash,
+    writeId: string,
+  ): Promise<boolean> => {
+    const current = disk.get(path);
+    if (current === undefined || (await contentHash(current)) !== base) {
+      return false;
+    }
+    const hash = await contentHash(bytes);
+    note(path, hash, writeId);
+    writeDisk(path, bytes);
+    await applyFile(path, bytes, hash, { writeHash: hash, writeId });
+    return true;
+  };
+
+  /** The rename cascade (§9): plan, refuse, then apply from an outbox that undoes on failure. */
+  const renameOperation = async (operation: RenameOperation): Promise<RenameOperationResult> => {
+    const { from, opId, to } = operation;
+    const refuse = (
+      reason: Extract<RenameOperationResult, { ok: false }>["reason"],
+      paths: string[],
+    ): RenameOperationResult => ({ message: `Refused: ${reason}`, ok: false, opId, paths, reason });
+    if (!disk.has(from) || disk.has(to)) {
+      return refuse("conflict", [disk.has(to) ? to : from]);
+    }
+    if (options.partialGraph === true && operation.rewrites === undefined) {
+      return refuse("rewrites-required", []);
+    }
+    const dirty = new Map(operation.dirtyReferrers.map((item) => [item.path, item.bufferRev]));
+    const ignoreDirty = bugs.has("rename-ignores-dirty");
+    const writes: { path: string; before: ContentHash; bytes: Uint8Array; count: number }[] = [];
+    const buffers: Extract<RenameOperationResult, { ok: true }>["buffers"] = [];
+    for (const path of [...index.keys()].toSorted()) {
+      const doc = path.endsWith(".json") && path !== from ? parseJson(disk.get(path)) : null;
+      if (doc === null) {
+        continue;
+      }
+      const changes = rewriteRefs(doc, parents(path).at(-1) ?? "", from, to);
+      if (changes.length === 0) {
+        continue;
+      }
+      const bufferRev = dirty.get(path);
+      if (bufferRev !== undefined && !ignoreDirty) {
+        if (operation.policy === "refuse") {
+          return refuse("dirty-referrers", [path]);
+        }
+        buffers.push({ bufferRev, changes, path });
+        continue;
+      }
+      const before = await contentHash(disk.get(path)!);
+      writes.push({
+        before,
+        bytes: toBytes(`${JSON.stringify(doc, null, 2)}\n`),
+        count: changes.length,
+        path,
+      });
+    }
+    for (const rewrite of operation.rewrites ?? []) {
+      const bufferRev = dirty.get(rewrite.path);
+      if (bufferRev !== undefined && !ignoreDirty) {
+        if (operation.policy === "refuse") {
+          return refuse("dirty-referrers", [rewrite.path]);
+        }
+        buffers.push({ bufferRev, changes: [], path: rewrite.path });
+        continue;
+      }
+      writes.push({
+        before: rewrite.baseHash,
+        bytes: toBytes(rewrite.contents),
+        count: 0,
+        path: rewrite.path,
+      });
+    }
+    const failing = failAt;
+    failAt = null;
+    // The outbox: each step recorded before it runs, undone in reverse when a later one fails.
+    const done: (() => Promise<void>)[] = [];
+    const steps: (() => Promise<boolean>)[] = [
+      async () => {
+        await moveFile(from, to, renameStepWriteId(opId, 0));
+        done.push(() => moveFile(to, from, renameRollbackWriteId(opId, 0)));
+        return true;
+      },
+      ...writes.map((write, at) => async () => {
+        const step = at + 1;
+        const before = disk.get(write.path)!;
+        if (
+          !(await writeStep(write.path, write.bytes, write.before, renameStepWriteId(opId, step)))
+        ) {
+          return false;
+        }
+        const after = await contentHash(write.bytes);
+        done.push(async () => {
+          await writeStep(write.path, before, after, renameRollbackWriteId(opId, step));
+        });
+        return true;
+      }),
+    ];
+    for (const [at, step] of steps.entries()) {
+      if (at === failing || !(await step())) {
+        if (!bugs.has("rename-no-rollback")) {
+          for (const undo of done.toReversed()) {
+            await undo();
+          }
+        }
+        return refuse(at === failing ? "failed" : "conflict", []);
+      }
+    }
+    const written = [to, ...writes.map((write) => write.path)];
+    const event = emit({
+      files: written,
+      opId,
+      origin: { writeHash: null, writeId: opId },
+      type: "operationApplied",
+    });
+    return {
+      buffers,
+      errors: [],
+      files: written,
+      from,
+      isDir: false,
+      ok: true,
+      opId,
+      references: {
+        files: writes.map((write) => ({ count: write.count, path: write.path })),
+        filesChanged: writes.length,
+        refsUpdated: writes.reduce((sum, write) => sum + write.count, 0),
+      },
+      rev: event.rev,
+      to,
+    };
+  };
+
   const host: ReferenceHost = {
     advance(ms) {
       clock += ms;
@@ -1081,6 +1297,15 @@ export async function createReferenceHost(
         await afterChange(path, event.origin);
         return { ok: true as const, rev: event.rev };
       }),
+    failStep(step) {
+      failAt = step;
+    },
+    rename: (operation) => {
+      if (options.rename !== true) {
+        return Promise.reject(new Error("This reference host does not perform the rename cascade"));
+      }
+      return exclusive(() => renameOperation(operation));
+    },
     external: {
       atomicSave: async (path, contents, timing) => {
         await exclusive(() => {
@@ -1208,10 +1433,21 @@ export function referenceDriver(
   name: string,
   options: Omit<ReferenceHostOptions, keyof ProjectStateHostOptions> = {},
 ): ProjectStateDriver {
+  const hosts = new WeakMap<ProjectStateHost, ReferenceHost>();
   const driver: ProjectStateDriver = {
-    create: (files, hostOptions) => createReferenceHost(files, { ...options, ...hostOptions }),
+    create: async (files, hostOptions) => {
+      const host = await createReferenceHost(files, { ...options, ...hostOptions });
+      hosts.set(host, host);
+      return host;
+    },
     name,
   };
+  if (options.rename === true) {
+    driver.rename = {
+      failStep: (host, step) => hosts.get(host)?.failStep(step),
+      rename: (host, operation) => hosts.get(host)!.rename(operation),
+    };
+  }
   if (options.persistentLog === true) {
     driver.persistentLog = true;
   }

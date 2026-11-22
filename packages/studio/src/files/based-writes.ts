@@ -73,7 +73,7 @@ const nameOf = (path: string): string => path.split("/").pop() ?? path;
  * was without one: long enough for any host that answers, short enough that one that never does
  * cannot hold a save forever.
  */
-const SETTLE_TIMEOUT_MS = 5000;
+export const SETTLE_TIMEOUT_MS = 5000;
 
 /** A write or delete the host refused because the path holds other bytes than Studio last saw. */
 export class StaleWriteError extends Error {

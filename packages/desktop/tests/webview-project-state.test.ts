@@ -76,6 +76,15 @@ const server = Bun.serve({
         ws.send(encodeDesktopEnded("e1"));
         return;
       }
+      if (msg.method === "projectRename") {
+        ws.send(
+          JSON.stringify({
+            id: msg.id,
+            result: { message: "no", ok: false, opId: "op", paths: [], reason: "failed" },
+          }),
+        );
+        return;
+      }
       if (msg.method === "projectWrite" || msg.method === "projectDelete") {
         if (path === "pages/a.json") {
           const problem = preconditionFailedProblem(CONFLICT);
@@ -204,6 +213,31 @@ describe("projectState", () => {
       contents: "{}",
       path: "pages/text.json",
       writeId: "w2",
+    });
+  });
+
+  test("a rename sends the operation on the wire and answers the host's result", async () => {
+    const result = await platform.renameProjectState({
+      dirtyReferrers: [],
+      from: "media/a.png",
+      opId: "op",
+      policy: "rewrite-buffer",
+      rewrites: [{ baseHash: HASH, contents: new Uint8Array([0, 1]), path: "c.md" }],
+      to: "media/b.png",
+    });
+    expect(result).toEqual({ message: "no", ok: false, opId: "op", paths: [], reason: "failed" });
+    expect(received.at(-1)).toEqual({
+      method: "projectRename",
+      params: {
+        dirtyReferrers: [],
+        from: "media/a.png",
+        opId: "op",
+        policy: "rewrite-buffer",
+        rewrites: [
+          { baseHash: HASH, contents: { data: "AAE=", encoding: "base64" }, path: "c.md" },
+        ],
+        to: "media/b.png",
+      },
     });
   });
 

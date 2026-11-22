@@ -45,10 +45,12 @@ import {
   conflictFromProblem,
   decodeSseMessage,
   deletePrecondition,
+  encodeRenameOperation,
   formatEventId,
   parseSseBlock,
   PROJECT_CLIENT_PARAM,
   PROJECT_EVENTS_PATH,
+  PROJECT_RENAME_PATH,
   PROJECT_ROOT_PARAM,
   writeBody,
   writeIdentityHeaders,
@@ -62,6 +64,8 @@ import type {
   ContentHash,
   DeleteRequest,
   DeleteResult,
+  RenameOperation,
+  RenameOperationResult,
   SubscribeRequest,
   SubscribeResponse,
   WriteConflict,
@@ -438,6 +442,29 @@ export function createDevServerPlatform() {
       const done = await readJson<ProjectWriteReply>(res);
       return { ok: true, rev: done.rev };
     },
+    /**
+     * A rename as one operation (`project-state.md` §9), with project-relative paths, as the host
+     * names them; a refusal is an answer. A server that predates the route answers 404, and so does
+     * one that serves no project state, and the rename rejects.
+     */
+    async rename(operation: RenameOperation): Promise<RenameOperationResult> {
+      await _activation;
+      // The paths are project-relative, so the request names the project they are relative to.
+      const query = new URLSearchParams();
+      if (_projectRoot) {
+        query.set(PROJECT_ROOT_PARAM, _projectRoot);
+      }
+      const search = query.size > 0 ? `?${query.toString()}` : "";
+      const res = await fetch(`${PROJECT_RENAME_PATH}${search}`, {
+        body: JSON.stringify(encodeRenameOperation(operation)),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to rename: ${operation.from} → ${operation.to} (${res.status})`);
+      }
+      return readJson<RenameOperationResult>(res);
+    },
   } satisfies ProjectStateClient;
 
   return {
@@ -794,6 +821,8 @@ export function createDevServerPlatform() {
     writeProjectState: projectState.write,
     /** The delete half, with which Studio deletes what it last saw. */
     deleteProjectState: projectState.delete,
+    /** The rename half, with which Studio renames as one operation (§9). */
+    renameProjectState: projectState.rename,
 
     /** @param {string} _path */
     async createDirectory(_path: string) {

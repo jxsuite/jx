@@ -27,6 +27,7 @@
  * @docs studio/projects/pages-layouts-components
  */
 
+import { CSS_URL_PATTERN } from "@jxsuite/protocol/project-state";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { classifyRef, looksLikeFileRef, rewriteRef } from "./paths.ts";
@@ -66,9 +67,6 @@ export type RefVisitor = (
   refType: string,
   rootRelativeBare: boolean,
 ) => string | null;
-
-/** Matches `url(...)` targets inside a CSS string value, capturing the optional quote. */
-const URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
 /**
  * Keys whose string values are PROSE, and are therefore never offered to the shape fallback.
@@ -148,7 +146,7 @@ function visitIndexed(arr: JsonValue[], index: number, refType: string, visit: R
 
 /** Offer every `url(...)` target inside a CSS string to the visitor. */
 function visitUrls(value: string, visit: RefVisitor): string {
-  return value.replaceAll(URL_RE, (match, quote: string, inner: string) => {
+  return value.replaceAll(CSS_URL_PATTERN, (match, quote: string, inner: string) => {
     const out = visit(inner.trim(), "url", false);
     return out === null ? match : `url(${quote}${out}${quote})`;
   });

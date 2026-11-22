@@ -85,7 +85,20 @@ export function documentGlob(registry: FormatRegistry): string {
  * when no parser claims the extension.
  */
 export async function loadDoc(fp: string, registry: FormatRegistry): Promise<LoadedDoc> {
-  const raw = await readFile(fp, "utf8");
+  return parseDoc(fp, await readFile(fp, "utf8"), registry);
+}
+
+/**
+ * Parse a document's text as the file at `fp` would be read, returning the doc and whichever
+ * write-back paths the format declares: {@link loadDoc} without the read, for a caller that already
+ * holds the bytes it will name as a write's base (the project state host's rename, §9). Throws when
+ * no parser claims the extension.
+ */
+export async function parseDoc(
+  fp: string,
+  raw: string,
+  registry: FormatRegistry | null,
+): Promise<LoadedDoc> {
   if (isJsonPath(fp)) {
     return {
       // SAFETY: JSON.parse without a reviver only ever yields a JSON value; its `any` says no more.
@@ -119,7 +132,7 @@ export async function loadDoc(fp: string, registry: FormatRegistry): Promise<Loa
     };
   }
   const ext = extname(fp);
-  const parseEntry = registry.byExtension(ext, "parse");
+  const parseEntry = registry?.byExtension(ext, "parse");
   if (!parseEntry) {
     throw new Error(`No parser for "${ext}"`);
   }
@@ -128,8 +141,8 @@ export async function loadDoc(fp: string, registry: FormatRegistry): Promise<Loa
      over it in refs.ts re-checks each node with Array.isArray / isJsonObject / isString before
      reading it, so such a leaf is skipped rather than misread. */
   const doc = (await parseEntry.call("parse", raw)) as JsonValue;
-  const serializeEntry = registry.byExtension(ext, "serialize");
-  const rewriteEntry = registry.byExtension(ext, "rewrite");
+  const serializeEntry = registry?.byExtension(ext, "serialize");
+  const rewriteEntry = registry?.byExtension(ext, "rewrite");
   return {
     doc,
     rewrite: rewriteEntry

@@ -25,6 +25,7 @@ import {
   conflictFromProblem,
   decodeDesktopEnded,
   decodeDesktopPush,
+  encodeRenameOperation,
   encodeWireContents,
   PROJECT_ENDED_METHOD,
   PROJECT_EVENTS_METHOD,
@@ -36,6 +37,8 @@ import type {
 import type {
   DeleteRequest,
   DeleteResult,
+  RenameOperation,
+  RenameOperationResult,
   SubscribeRequest,
   SubscribeResponse,
   WriteRequest,
@@ -720,6 +723,10 @@ export function createDesktopPlatform() {
           return conflictOf(error instanceof Error ? error : new Error(String(error)));
         }
       },
+      /** A rename as one operation (§9); a refusal answers its reason. */
+      rename(operation: RenameOperation): Promise<RenameOperationResult> {
+        return request("projectRename", encodeRenameOperation(operation));
+      },
     } satisfies ProjectStateClient,
 
     /**
@@ -741,6 +748,11 @@ export function createDesktopPlatform() {
     /** The delete half of {@link projectState}: Studio deletes what it last saw with it. */
     deleteProjectState(remove: DeleteRequest): Promise<DeleteResult> {
       return platform.projectState.delete(remove);
+    },
+
+    /** The rename half of {@link projectState}: Studio renames as one operation with it (§9). */
+    renameProjectState(operation: RenameOperation): Promise<RenameOperationResult> {
+      return platform.projectState.rename(operation);
     },
 
     /**

@@ -208,6 +208,7 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
     },
     previewSite: wire(session.previewSite),
     projectDelete: wire(session.projectDelete),
+    projectRename: wire(session.projectRename),
     projectSubscribe: wireConnected(session.projectSubscribe),
     projectWrite: wire(session.projectWrite),
     readFile: wire(session.handleReadFile),

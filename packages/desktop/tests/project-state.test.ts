@@ -13,6 +13,8 @@ import type {
   DeleteRequest,
   DeleteResult,
   ProjectEvent,
+  RenameOperation,
+  RenameOperationResult,
   SubscribeRequest,
   SubscribeResponse,
   WriteRequest,
@@ -442,6 +444,35 @@ describe("conditional writes and deletes", () => {
     // SAFETY: as above.
     await expect(svc.delete(unnamedDelete as DeleteRequest)).rejects.toThrow("needs a writeId");
     expect([host.writes, host.deletes]).toEqual([[], []]);
+  });
+});
+
+describe("a rename as one operation (§9)", () => {
+  test("decodes the wire operation for the host and answers its result", async () => {
+    const { host, svc } = service();
+    const seen: RenameOperation[] = [];
+    const refused: RenameOperationResult = {
+      message: "no",
+      ok: false,
+      opId: "op",
+      paths: ["pages/a.json"],
+      reason: "dirty-referrers",
+    };
+    host.rename = (operation) => {
+      seen.push(operation);
+      return Promise.resolve(refused);
+    };
+    const result = await svc.rename({
+      dirtyReferrers: [{ bufferRev: 2, path: "pages/a.json" }],
+      from: "media/a.png",
+      opId: "op",
+      policy: "refuse",
+      rewrites: [{ baseHash: HASH, contents: { data: "AAE=", encoding: "base64" }, path: "x.md" }],
+      to: "media/b.png",
+    });
+    expect(result).toEqual(refused);
+    expect(seen[0]?.rewrites?.[0]?.contents).toEqual(new Uint8Array([0, 1]));
+    await expect(svc.rename({ opId: "" })).rejects.toThrow(TypeError);
   });
 });
 

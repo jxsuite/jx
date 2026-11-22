@@ -13,6 +13,10 @@ import {
   PROJECT_EVENTS_METHOD,
   PROJECT_EVENTS_PATH,
   PROJECT_SUBSCRIBE_METHOD,
+  PROJECT_RENAME_METHOD,
+  PROJECT_RENAME_PATH,
+  decodeRenameOperation,
+  encodeRenameOperation,
   checkContinuity,
   conflictFromProblem,
   createSubscriptionCursor,
@@ -51,7 +55,8 @@ import {
   writePreconditionHeaders,
 } from "../src/project-state-frames";
 import type { JsonValue } from "@jxsuite/schema/types";
-import type { ProjectEvent, SubscribeResponse } from "../src/project-state";
+import type { ProjectEvent, RenameOperation, SubscribeResponse } from "../src/project-state";
+import { renameRollbackWriteId, renameStepWriteId } from "../src/project-state";
 import type { HeaderReader } from "../src/project-state-frames";
 import { PROBLEM_TYPES } from "../src/problems";
 
@@ -659,5 +664,50 @@ describe("HTTP preconditions (§5)", () => {
     expect(conflictFromProblem(wire({ ...problem, docId: 1 }))).toBeNull();
     expect(conflictFromProblem(wire({ ...problem, diskHash: "x" }))).toBeNull();
     expect(conflictFromProblem(null)).toBeNull();
+  });
+});
+
+describe("rename operations (§9)", () => {
+  const operation: RenameOperation = {
+    dirtyReferrers: [{ bufferRev: 4, path: "pages/about.json" }],
+    from: "media/logo.png",
+    opId: "op-1",
+    policy: "rewrite-buffer",
+    rewrites: [
+      { baseHash: H1, contents: "text", path: "content/a.md" },
+      { baseHash: H2, contents: new Uint8Array([0xff, 0]), path: "content/b.bin" },
+    ],
+    to: "media/brand.png",
+  };
+
+  test("round-trips through a JSON frame, bytes as base64", () => {
+    const encoded = wire(encodeRenameOperation(operation));
+    expect(decodeRenameOperation(encoded)).toEqual(operation);
+    const { rewrites: _, ...bare } = operation;
+    expect(encodeRenameOperation(bare)).toEqual(bare);
+    expect(decodeRenameOperation(wire(bare))).toEqual(bare);
+  });
+
+  test("refuses a malformed operation", () => {
+    const good = encodeRenameOperation(operation);
+    for (const bad of [
+      null,
+      { ...good, opId: "" },
+      { ...good, policy: "overwrite" },
+      { ...good, dirtyReferrers: "none" },
+      { ...good, dirtyReferrers: [{ path: "a" }] },
+      { ...good, rewrites: "none" },
+      { ...good, rewrites: [{ baseHash: "x", contents: "", path: "a" }] },
+      { ...good, rewrites: [{ baseHash: H1, contents: { data: 1 }, path: "a" }] },
+    ]) {
+      expect(() => decodeRenameOperation(wire(bad))).toThrow(TypeError);
+    }
+  });
+
+  test("names the binding's method and route, and each step's write ids", () => {
+    expect(PROJECT_RENAME_METHOD).toBe("projectRename");
+    expect(PROJECT_RENAME_PATH).toBe("/__studio/project/rename");
+    expect(renameStepWriteId("op", 2)).toBe("op:2");
+    expect(renameRollbackWriteId("op", 2)).toBe("op:rollback:2");
   });
 });

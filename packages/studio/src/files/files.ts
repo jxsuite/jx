@@ -47,6 +47,7 @@ import { maybePromptJxsuiteUpdate } from "../packages/jxsuite-update";
 import { markLocalMutation, markLocalWrite } from "./fs-events";
 import { noteBufferRead } from "../project-state/buffer";
 import { deletePath } from "./based-writes";
+import { RenameRefusedError, renamesThroughHost, renameThroughHost } from "./rename-operation";
 import { notedListing } from "./asset-versions";
 import { ensureIgnoreLayers, isIgnoredEntry, resetIgnoreCache } from "./gitignore";
 import { SETTINGS } from "../services/settings/definitions";
@@ -2208,7 +2209,10 @@ export async function settleRename(from: string, to: string, report: RenameResul
  * surface asked for the name (the Files panel, the Media workspace).
  *
  * The tab is re-keyed rather than reopened, so whatever it holds (unsaved edits, a pending image
- * crop) stays with the file. Throws what the backend threw; what to say about it is the caller's.
+ * crop) stays with the file. While the host serves the project state, the rename is one operation
+ * it completes or rolls back, and an open referrer with unsaved edits has the rewrite applied to
+ * its buffer rather than to its file (`rename-operation.ts`). Throws what the backend threw; what
+ * to say about it is the caller's.
  *
  * @param from - The path before the rename.
  * @param to - The path after it.
@@ -2216,8 +2220,27 @@ export async function settleRename(from: string, to: string, report: RenameResul
  */
 export async function commitRename(from: string, to: string): Promise<RenameResult> {
   markLocalMutation(from, to);
-  const report = await getPlatform().renameFile(from, to);
-  // A copy of the keys, since a re-key edits the map being walked. `from` may be a folder.
+  let report: RenameResult;
+  try {
+    // One operation the host completes or rolls back, when it serves one (`project-state.md` §9).
+    report = (await renamesThroughHost())
+      ? await renameThroughHost(from, to)
+      : await getPlatform().renameFile(from, to);
+  } catch (error) {
+    // A rollback that could not move the entry back left it at `to`: its tabs follow it there.
+    if (error instanceof RenameRefusedError && error.refusal.unrestored?.includes(to) === true) {
+      rekeyTabs(from, to);
+    }
+    throw error;
+  }
+  rekeyTabs(from, to);
+  await settleRename(from, to, report);
+  return report;
+}
+
+/** Re-key the open tab of `from`, and of everything inside it when it is a folder, to `to`. */
+function rekeyTabs(from: string, to: string): void {
+  // A copy of the keys, since a re-key edits the map being walked.
   const openIds = [...workspace.tabs.keys()];
   for (const id of openIds) {
     if (id === from || id.startsWith(`${from}/`)) {
@@ -2225,8 +2248,6 @@ export async function commitRename(from: string, to: string): Promise<RenameResu
       renameTab(id, moved, moved);
     }
   }
-  await settleRename(from, to, report);
-  return report;
 }
 
 /**

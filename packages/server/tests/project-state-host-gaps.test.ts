@@ -123,7 +123,7 @@ async function start(
 const types = (events: readonly ProjectEvent[]): string[] => events.map((event) => event.type);
 
 describe("the host's requests", () => {
-  test("refuses a path that is not project-relative, a write over a directory and a rename", async () => {
+  test("refuses a path that is not project-relative, a write over a directory and a stray rename", async () => {
     const root = await project({ "pages/index.json": json({ tagName: "main" }) });
     const { host } = await start(root, { watcher: fakeWatcher().factory });
     for (const path of ["", "../x.json", "a//b.json", "./a.json", String.raw`a\b.json`]) {
@@ -137,9 +137,16 @@ describe("the host's requests", () => {
     );
     expect(overDir.message).toContain("directory");
     const renamed = await rejection(
-      host.rename({ dirtyReferrers: [], from: "a", opId: "o", policy: "refuse", to: "b" }),
+      host.rename({ dirtyReferrers: [], from: "../a", opId: "o", policy: "refuse", to: "b" }),
     );
-    expect(renamed.message).toContain("rename cascade");
+    expect(renamed).toBeInstanceOf(TypeError);
+    const outside = await rejection(
+      host.rename({ dirtyReferrers: [], from: "pages", opId: "o", policy: "refuse", to: "dist/x" }),
+    );
+    expect(outside.message).toContain("outside the index scope");
+    expect(
+      await host.rename({ dirtyReferrers: [], from: "a", opId: "o", policy: "refuse", to: "b" }),
+    ).toMatchObject({ ok: false, paths: ["a"], reason: "conflict" });
     expect(host.epoch.length > 0).toBe(true);
     expect(host.rev > 0).toBe(true);
     expect(host.readiness).toBe("ready");

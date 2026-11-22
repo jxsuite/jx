@@ -4,15 +4,16 @@
  * binding, and the live preview overlay keyed by document and client (§11.3).
  *
  * The host (`createProjectStateHost`, `@jxsuite/server/project-state/host`) starts on the first
- * request that needs it, a subscription or a conditional write, so a window whose Studio never
- * subscribes pays for none of it. It keeps its own watcher beside the session's: the session's
- * still feeds `onFileEvents` and `onFileResync`, which Studio reads until every host serves the
- * subscription (§3.3).
+ * request that needs it, a subscription, a conditional write or a rename (§9), so a window whose
+ * Studio never subscribes pays for none of it. It keeps its own watcher beside the session's: the
+ * session's still feeds `onFileEvents` and `onFileResync`, which Studio reads until every host
+ * serves the subscription (§3.3).
  *
  * @docs studio/desktop
  */
 
 import {
+  decodeRenameOperation,
   decodeWireContents,
   encodeDesktopEnded,
   encodeDesktopEvents,
@@ -24,6 +25,7 @@ import type {
   DeleteRequest,
   DocId,
   ProjectEvent,
+  RenameOperationResult,
   SubscribeResponse,
   WireContents,
 } from "@jxsuite/protocol/project-state";
@@ -340,6 +342,16 @@ export function createProjectStateService(options: ProjectStateServiceOptions) {
     return { rev: result.rev };
   }
 
+  /**
+   * A rename as one operation (§9): a `WireRenameOperation` on the wire, answered with the host's
+   * `RenameOperationResult`, a refusal included. A malformed operation rejects.
+   */
+  async function rename(params: JsonValue | undefined): Promise<RenameOperationResult> {
+    const operation = decodeRenameOperation(params);
+    const running = await start();
+    return running.rename(operation);
+  }
+
   return {
     root,
     /** The running host, if one has started. */
@@ -350,6 +362,7 @@ export function createProjectStateService(options: ProjectStateServiceOptions) {
     subscribe,
     write,
     delete: remove,
+    rename,
     /** Whether `connection` has a subscription open now. */
     isSubscribed(connection: RpcConnection): boolean {
       return subscriptions.has(connection.id);

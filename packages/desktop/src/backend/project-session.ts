@@ -858,6 +858,11 @@ export function createProjectSession(
     return stateService().delete(params);
   }
 
+  /** A rename as one operation, rolled back on failure (`project-state.md` §9). */
+  function projectRename(params: JsonValue | undefined) {
+    return stateService().rename(params);
+  }
+
   /**
    * Point this session at a project, and let go of the last one's unsaved state.
    *
@@ -1737,6 +1742,7 @@ export function createProjectSession(
     projectSubscribe,
     projectWrite,
     projectDelete,
+    projectRename,
     listFormats,
     listExtensionCatalog,
     listExtensions,
