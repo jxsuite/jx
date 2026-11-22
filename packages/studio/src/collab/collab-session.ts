@@ -48,6 +48,7 @@ import { collabState, registerCollabPath, unregisterCollabPath } from "./collab-
 import type { PeerPresence } from "./collab-state";
 import { notify } from "../services/notify";
 import { noteRoomConflict } from "../project-state/buffer";
+import { isContentHash } from "@jxsuite/protocol/project-state";
 
 type CollabModule = typeof CollabNS;
 
@@ -102,6 +103,47 @@ export function configureCollabParser(fn: CollabParser | null): void {
   _parse = fn;
 }
 
+/**
+ * Re-reads an open tab's file from disk, injected at studio init (`files.ts`' `reloadFileInTab`, a
+ * direct import would cycle). A reset room reseeds from the file, so the tab does too before it
+ * joins the fresh room: otherwise the first participant back would seed the room's structure from
+ * the document it held before, which no longer matches the room's text.
+ */
+let _reload: ((path: string) => Promise<void>) | null = null;
+
+export function configureCollabReloader(fn: ((path: string) => Promise<void>) | null): void {
+  _reload = fn;
+}
+
+/**
+ * Who is told when a tab's session starts or ends. A surface bound to the session's shared text
+ * (the Code view's Monaco) binds to ONE session: after a reset that session's Y.Doc is gone, and a
+ * binding left on it shows the text the reset discarded for as long as the surface stands.
+ */
+const sessionListeners = new Set<(tab: Tab) => void>();
+
+/** Hear every session `tab`s start and end. Returns the call that stops it. */
+export function onCollabSessionChange(listener: (tab: Tab) => void): () => void {
+  sessionListeners.add(listener);
+  return () => {
+    sessionListeners.delete(listener);
+  };
+}
+
+function announceSession(tab: Tab): void {
+  for (const listener of sessionListeners) {
+    listener(tab);
+  }
+}
+
+/**
+ * The tab's current session, as an identity a surface compares against the one it bound to, or
+ * `null` when it has none.
+ */
+export function collabSessionOf(tab: Tab): object | null {
+  return runtimeOf(tab)?.session ?? null;
+}
+
 /** Status-message sink injected at studio init (a direct statusbar import would cycle). */
 let _notify: (message: string) => void = () => {};
 
@@ -144,6 +186,8 @@ interface ActiveSession {
    * must win regardless of which round trip returns first.
    */
   sourceLockOwner: object | null;
+  /** How many refusals (`doc-conflict`) this session has heard: a save compares it across a flush. */
+  refusals: number;
   disposers: (() => void)[];
 }
 
@@ -153,6 +197,8 @@ interface TabRuntime {
   generation: number;
   session: ActiveSession | null;
   attaching: Promise<void> | null;
+  /** The re-read and re-attach a reset started, until it settles. */
+  rejoining: Promise<void> | null;
   /**
    * The user asked to leave this document's session.
    *
@@ -213,6 +259,7 @@ function runtimeFor(tab: Tab): TabRuntime {
     runtime = {
       attaching: null,
       generation: 0,
+      rejoining: null,
       optedOut: reactive({ value: false }),
       session: null,
       watcherInstalled: false,
@@ -267,6 +314,7 @@ export function resetCollabForTests(): void {
   setTransactGate(null);
   _serialize = null;
   _parse = null;
+  _reload = null;
   _notify = () => {};
 }
 
@@ -427,9 +475,46 @@ function scheduleMirror(session: ActiveSession): void {
   }, MIRROR_DEBOUNCE_MS);
 }
 
-/** Serialize the tab and fold the text into source Y.Text (what providers persist and commit). */
+/**
+ * Whether the room's shared `text` already says what the tab holds: it parses to the tab's document
+ * and frontmatter. Such a text is left exactly as it is. The server seeds a room from the file's
+ * bytes, and a serialization of the same document normalizes them (a Markdown directive's fence, a
+ * blank line), so writing one over the other would make a room nobody edited dirty, and its save
+ * would rewrite the file. `false` when the text is empty, will not parse, or no parser is
+ * configured: then nothing about it can be kept.
+ */
+async function textHoldsTab(session: ActiveSession, text: string): Promise<boolean> {
+  if (!_parse || text === "") {
+    return false;
+  }
+  const { collab, tab } = session;
+  try {
+    const parsed = await _parse(tab, text);
+    return (
+      collab.deepEqual(parsed.document, jsonClone(toRaw(tab.doc.document))) &&
+      (parsed.frontmatter === undefined ||
+        collab.deepEqual(parsed.frontmatter, jsonClone(toRaw(tab.doc.content.frontmatter))))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Serialize the tab and fold the text into source Y.Text (what providers persist and commit). A
+ * shared text that already says what the tab holds is kept as it is ({@link textHoldsTab}), and
+ * while the text is canonical (the Code view holds it) it is never written from the structure: the
+ * structure is parsed out of it, not the other way round.
+ */
 async function mirrorNow(session: ActiveSession): Promise<void> {
   if (!_serialize || !session.synced) {
+    return;
+  }
+  const { collab, handle } = session;
+  if (collab.canonicalOf(handle.doc) === "source") {
+    return;
+  }
+  if (await textHoldsTab(session, collab.sourceText(handle.doc).toString())) {
     return;
   }
   try {
@@ -541,12 +626,17 @@ export function collabSourceContext(tab: Tab): {
       if (!session.canWrite) {
         return;
       }
-      let serialized: string | null = null;
-      if (_serialize) {
+      /* The shared text is kept when it already says what the tab holds: it is the file's own
+         bytes (the server seeds a room from them) or a peer's typing, and a serialization of the
+         same document would normalize it, making the room dirty with no edit and its save a
+         reformat. It is seeded from the structure only when the structure has moved on from it. */
+      const current = collab.sourceText(handle.doc).toString();
+      let seed = current;
+      if (!(await textHoldsTab(session, current)) && _serialize) {
         try {
-          serialized = await _serialize(tab);
+          seed = await _serialize(tab);
         } catch {
-          serialized = null;
+          seed = current;
         }
       }
       // Asked again across the await: a later mount owns the surface now, and seeding the shared
@@ -554,11 +644,7 @@ export function collabSourceContext(tab: Tab): {
       if (!holdsClaim()) {
         return;
       }
-      collab.acquireSourceCanonical(
-        handle.doc,
-        serialized ?? collab.sourceText(handle.doc).toString(),
-        collab.LOCAL_ORIGIN,
-      );
+      collab.acquireSourceCanonical(handle.doc, seed, collab.LOCAL_ORIGIN);
     },
     leave: () => {
       // Not this mount's lock to hand back, and not its awareness state to reset either — the live
@@ -635,16 +721,84 @@ export function collabReadOnly(tab: Tab): boolean {
  * becomes a licence to write the file behind the room's back.
  */
 export async function collabSave(tab: Tab): Promise<boolean> {
+  return (await saveRoom(tab)) !== null;
+}
+
+/** The session a save or revert of `tab` goes through: synced, and this client may write to it. */
+function writableSession(tab: Tab): ActiveSession | null {
   const session = runtimeOf(tab)?.session;
-  if (!session?.synced || !session.canWrite) {
-    return false;
-  }
+  return session?.synced && session.canWrite ? session : null;
+}
+
+/** Whether `tab` saves through a room: it has a synced session this client may write to. */
+export function savesThroughRoom(tab: Tab): boolean {
+  return writableSession(tab) !== null;
+}
+
+/** Bring the room's source text up to date with the structure now, as a save does first. */
+async function mirrorForSave(session: ActiveSession): Promise<void> {
   if (session.mirrorTimer) {
     clearTimeout(session.mirrorTimer);
     session.mirrorTimer = null;
   }
   await mirrorNow(session);
-  await session.handle.flush();
+}
+
+/**
+ * Save the room `tab` co-edits (`project-state.md` §6.1): `"saved"` once the room persisted,
+ * `"refused"` when the host refused it because the file changed under it (the tab is conflicted
+ * from here), and `null` when the tab has no session this client can save (as {@link collabSave}'s
+ * `false`). `baseHash` names the bytes the save replaces in place of the room's own base: the
+ * author chose to keep the room's edits over what is on disk now.
+ */
+export async function saveRoom(
+  tab: Tab,
+  options: { baseHash?: string | null } = {},
+): Promise<"saved" | "refused" | null> {
+  const session = writableSession(tab);
+  if (!session) {
+    return null;
+  }
+  await mirrorForSave(session);
+  const { refusals } = session;
+  await (options.baseHash === undefined
+    ? session.handle.flush()
+    : session.handle.flush({ baseHash: options.baseHash }));
+  // A refusal reaches every participant before the requester's acknowledgement (collab.md §2).
+  if (session.refusals !== refusals) {
+    return "refused";
+  }
+  // The room is on disk, so a conflict reported before this save no longer stands.
+  noteRoomConflict(tab, false);
+  return "saved";
+}
+
+/**
+ * The bytes a save of the room `tab` co-edits would write, mirrored as a save mirrors them, or
+ * `null` when the tab has no session this client can save.
+ */
+export async function roomSource(tab: Tab): Promise<string | null> {
+  const session = writableSession(tab);
+  if (!session) {
+    return null;
+  }
+  await mirrorForSave(session);
+  return session.collab.sourceText(session.handle.doc).toString();
+}
+
+/**
+ * Take the disk's copy for the room `tab` co-edits (`project-state.md` §6.1): the room drops its
+ * unsaved edits, every participant's session is reset, and this tab re-reads its file before it
+ * joins the fresh room. Resolves `false`, discarding nothing, when the tab has no session this
+ * client can write to or its provider cannot revert a room.
+ */
+export async function revertRoom(tab: Tab): Promise<boolean> {
+  const session = writableSession(tab);
+  if (!session?.handle.revert) {
+    return false;
+  }
+  await session.handle.revert();
+  await runtimeOf(tab)?.rejoining;
   return true;
 }
 
@@ -747,6 +901,25 @@ export function rekeyCollab(tab: Tab): void {
   void attachSession(tab);
 }
 
+/**
+ * Join the fresh room a reset left, once the tab holds the file the room reseeds from. A reset room
+ * starts from the file with no structure, and the first participant back seeds its structure from
+ * the document it holds: one that kept the old room's edits would seed them under the file's text,
+ * a room reporting itself clean while every view showed edits it does not hold. A tab that left the
+ * session, or closed, while the file was read stays out.
+ */
+async function rejoin(tab: Tab, path: string): Promise<void> {
+  try {
+    await _reload?.(path);
+  } catch {
+    // The reload reports its own failure; the room still reseeds from whatever is on disk.
+  }
+  const runtime = runtimeFor(tab);
+  if (liveTabs.has(tab) && !runtime.optedOut.value) {
+    await attachSession(tab);
+  }
+}
+
 async function attachSession(tab: Tab): Promise<void> {
   const runtime = runtimeFor(tab);
   if (runtime.session || runtime.attaching) {
@@ -802,6 +975,7 @@ async function attachSession(tab: Tab): Promise<void> {
       state.readOnly = !runtime.session.canWrite;
       state.attachError = "";
       registerCollabPath(path);
+      announceSession(tab);
     } catch (error) {
       /* An attach that threw is a FAILURE, and it used to be reported as "detached" — the same
          value a solo document carries. A relay that is down, a token that expired and a document
@@ -841,6 +1015,7 @@ function detachSession(tab: Tab): void {
     return;
   }
   unregisterCollabPath(session.path);
+  announceSession(tab);
   if (session.mirrorTimer) {
     clearTimeout(session.mirrorTimer);
   }
@@ -886,6 +1061,7 @@ function createSession(
     mirrorTimer: null,
     path,
     sourceLockOwner: null,
+    refusals: 0,
     sourceParseTimer: null,
     synced: false,
     tab,
@@ -939,8 +1115,9 @@ function createSession(
   );
   /* The room's buffer state is the tab's (`project-state.md` §6.1): a refused save of the room
      makes the tab conflicted for every participant until the room saves. */
-  const offConflict = handle.onConflict?.(() => {
-    noteRoomConflict(tab, true);
+  const offConflict = handle.onConflict?.((conflict) => {
+    session.refusals += 1;
+    noteRoomConflict(tab, true, isContentHash(conflict.diskHash) ? conflict.diskHash : null);
   });
   if (offConflict) {
     session.disposers.push(offConflict);
@@ -1178,7 +1355,13 @@ function createSession(
     handle.onReset(() => {
       // The server replaced this doc's history: drop the session and re-attach fresh.
       detachSession(tab);
-      void attachSession(tab);
+      const runtime = runtimeFor(tab);
+      const rejoining = rejoin(tab, path).finally(() => {
+        if (runtime.rejoining === rejoining) {
+          runtime.rejoining = null;
+        }
+      });
+      runtime.rejoining = rejoining;
     }),
   );
 

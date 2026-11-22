@@ -36,7 +36,11 @@ import {
   stringArg,
   stringProperty,
 } from "../commands/command-args";
-import { collabSourceContext } from "../collab/collab-session";
+import {
+  collabSessionOf,
+  collabSourceContext,
+  onCollabSessionChange,
+} from "../collab/collab-session";
 import { buildChangeMap } from "./diff-marks";
 import type { ChangeMap, ChangeMark } from "./diff-marks";
 import { clearDiffView, diffShowsCode, setDiffChangeMap, setDiffRenderable } from "./diff-view";
@@ -803,6 +807,7 @@ async function mountSourceEditor(
   }
   const modelUri = monaco.Uri.parse(modelUriFor(filePath));
   const model = monaco.editor.createModel("", lang, modelUri);
+  surface.sourceCollabSession = collabSessionOf(tab);
   // Co-edited tabs bind the buffer to the shared Y.Text instead of a local serialization: the
   // Canonical lock flips to "source", peers co-type character-level, and the source reconciler
   // Parses back into the structure tree for everyone's canvas.
@@ -1241,6 +1246,19 @@ function renderCanvasImpl(surface: CanvasSurface) {
       disposeSourceCollab(surface);
       disposeSourceEditor(surface);
     }
+  }
+  /* Source mode across a SESSION change: the buffer was bound to the shared text of the session the
+     tab had when it mounted. A reset (an outside change to a clean room, or a participant taking
+     the disk copy) ends that session, the tab re-reads its file and joins a fresh room, and a
+     buffer still bound to the old text shows the discarded edits, and would publish them again the
+     moment the author typed. Mount it again for the session the tab has now, or for none. */
+  if (
+    canvasMode === "source" &&
+    surface.monacoEditor &&
+    (surface.sourceCollabSession ?? null) !== collabSessionOf(tab)
+  ) {
+    disposeSourceCollab(surface);
+    disposeSourceEditor(surface);
   }
 
   /* THE FAST PATHS, and the one condition every one of them owes.
@@ -2121,6 +2139,16 @@ function reportMountFailure(cause: unknown): void {
 /* The diff toolbar's Visual/Code switch rebuilds the stage, and it cannot import this module to
    do it — this one imports IT. Same injection as the teardown below. */
 setDiffRepaint(renderCanvas);
+
+/* A tab's collab session started or ended: every pane showing it in source mode repaints, and the
+   render above mounts its buffer again for the session the tab has now. */
+onCollabSessionChange((tab) => {
+  for (const pane of workspace.panes) {
+    if (tabOfPane(pane.id)?.id === tab.id && canvasModeOfPane(pane.id) === "source") {
+      scheduleCanvasRender(pane.id);
+    }
+  }
+});
 
 setSurfaceTeardown((surface) => {
   disposeDiffEditor(surface);

@@ -131,7 +131,7 @@ export interface ContentStore {
    * or it reports at a path bytes Studio noted for it. Either way the event consumes the note of
    * its bytes and every older one for the path, since a watcher may coalesce several writes into
    * one report of the last: a write attributed by its id leaves no note behind to take a later
-   * return to the same bytes for Studio's own (§2.4).
+   * return to the same bytes for Studio's own (`project-state.md` §2.4).
    *
    * Unlike the host's ledger (`createEchoLedger`), a report of other bytes clears nothing: the
    * client notes a write before the events already queued ahead of it are applied, so an older

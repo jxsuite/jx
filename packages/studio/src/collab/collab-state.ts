@@ -7,6 +7,7 @@
 import { reactive, toRaw } from "../reactivity";
 import type { Tab } from "../tabs/tab";
 import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
+import type { ContentHash } from "@jxsuite/protocol/project-state";
 
 /**
  * What co-editing is doing for this tab.
@@ -58,6 +59,11 @@ export interface TabCollabState {
    * rather than a buffer state of its own. Cleared when the room saves or the session detaches.
    */
   conflicted: boolean;
+  /**
+   * What the refusal said is on disk now, `null` when nothing is: the base a participant names when
+   * they keep the room's edits over it (§6.1). Meaningful only while {@link conflicted}.
+   */
+  conflictDiskHash: ContentHash | null;
 }
 
 const states = new WeakMap<Tab, TabCollabState>();
@@ -73,6 +79,7 @@ export function collabState(tab: Tab): TabCollabState {
       active: false,
       attachError: "",
       conflicted: false,
+      conflictDiskHash: null,
       peers: [],
       readOnly: false,
       sourceCanonical: false,

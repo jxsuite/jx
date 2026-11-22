@@ -15,6 +15,12 @@
  * tab that is already conflicted, because another writer changed its file under unsaved edits, asks
  * the same question before its save writes anything.
  *
+ * **A co-edited tab asks the same question about its room** (§6.1): the room holds the document's
+ * one buffer, and the dev server reports the file changing under its unsaved edits, or refusing its
+ * save, as `doc-conflict`. Keep Mine saves the room against what is on disk now, Take Disk Copy
+ * reverts the room for every participant, and Compare shows the room's bytes beside the disk's
+ * ({@link saveCoEdited}).
+ *
  * **Every other write names a base too** (§5: a client that subscribes sends one with every write
  * and delete). Studio writes files from many places that hold no buffer of their own: a new file, a
  * settings commit, a media upload, a grid's rows. {@link plainWriteRoute} takes each of those
@@ -55,6 +61,8 @@ import { showConfirmDialog } from "../ui/layers";
 import { activateTab } from "../workspace/workspace";
 import { base64ToBytes } from "../utils/base64";
 import { DISK_COMPARISON_STATUS } from "../panels/git-diff-open";
+import { collabState } from "../collab/collab-state";
+import { revertRoom, roomSource, saveRoom, savesThroughRoom } from "../collab/collab-session";
 import { noteLocalWrite } from "./fs-events";
 
 /** The last path segment, for a sentence. */
@@ -142,8 +150,18 @@ async function writeAgainst(
   return resolveConflict(tab, path, output);
 }
 
+/** What each of the conflict question's answers does for one buffer (§6.1). */
+interface ConflictChoices {
+  /** Keep Mine: write the buffer against what is on disk now; whether it reached disk. */
+  keep: () => Promise<boolean>;
+  /** Take Disk Copy: discard the buffer for the file. */
+  take: () => Promise<void>;
+  /** The bytes a save would write, for Compare. */
+  output: () => Promise<string>;
+}
+
 /** Ask the author how a conflicted buffer is resolved, and do what they chose (§6.1). */
-async function resolveConflict(tab: Tab, path: string, output: string): Promise<boolean> {
+async function askConflict(tab: Tab, path: string, choices: ConflictChoices): Promise<boolean> {
   const name = nameOf(path);
   const answer = await showConfirmDialog(
     `${name} Changed on Disk`,
@@ -151,16 +169,59 @@ async function resolveConflict(tab: Tab, path: string, output: string): Promise<
     { cancelLabel: "Compare", confirmLabel: "Keep Mine", secondaryLabel: "Take Disk Copy" },
   );
   if (answer === true) {
-    return writeAgainst(tab, path, output, tab.doc.buffer.diskHash);
+    return choices.keep();
   }
   if (answer === "secondary") {
-    // Lazily: `files.ts` reaches this module through `file-ops.ts`, and a static edge closes a cycle.
-    const { reloadFileInTab } = await import("./files");
-    await reloadFileInTab(path);
+    await choices.take();
     return false;
   }
-  await compareWithDisk(tab, path, output);
+  await compareWithDisk(tab, path, await choices.output());
   return false;
+}
+
+/** The conflict question for a tab's own buffer, whose bytes are `output`. */
+function resolveConflict(tab: Tab, path: string, output: string): Promise<boolean> {
+  return askConflict(tab, path, {
+    keep: () => writeAgainst(tab, path, output, tab.doc.buffer.diskHash),
+    output: () => Promise.resolve(output),
+    take: async () => {
+      // Lazily: `files.ts` reaches this module through `file-ops.ts`, and a static edge closes a cycle.
+      const { reloadFileInTab } = await import("./files");
+      await reloadFileInTab(path);
+    },
+  });
+}
+
+/**
+ * Save the room a co-edited tab joins (§6.1): `true` once the room is on disk, `false` when the
+ * author resolved a conflict by taking the disk copy or comparing, and `null` when the tab has no
+ * room this client can save, so the caller saves it as a file. A room that is conflicted, because
+ * its file changed under its unsaved edits or its last save was refused, asks before anything is
+ * written, and so does a save the host refuses.
+ */
+export async function saveCoEdited(tab: Tab, path: string): Promise<boolean | null> {
+  if (!savesThroughRoom(tab)) {
+    return null;
+  }
+  if (tabBufferStatus(tab) !== "conflicted" && (await saveRoom(tab)) !== "refused") {
+    return true;
+  }
+  return resolveRoomConflict(tab, path);
+}
+
+/** The conflict question for a co-edited tab, whose buffer is its room's. */
+function resolveRoomConflict(tab: Tab, path: string): Promise<boolean> {
+  return askConflict(tab, path, {
+    keep: async () => {
+      const saved = await saveRoom(tab, { baseHash: collabState(tab).conflictDiskHash });
+      // Refused again: the file changed once more since the author was asked.
+      return saved === "refused" ? resolveRoomConflict(tab, path) : saved !== null;
+    },
+    output: async () => (await roomSource(tab)) ?? "",
+    take: async () => {
+      await revertRoom(tab);
+    },
+  });
 }
 
 /**

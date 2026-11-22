@@ -132,6 +132,7 @@ import {
   openFileInTab,
   openLastSessionOrHome,
   reloadCleanTab,
+  reloadFileInTab,
   reloadTabsIfChanged,
   setSessionWorkspaceShow,
 } from "./files/files";
@@ -147,6 +148,7 @@ import { invalidateParamValues } from "./page-params";
 import {
   configureCollabNotifier,
   configureCollabParser,
+  configureCollabReloader,
   configureCollabSerializer,
 } from "./collab/collab-session";
 import { invalidateLayoutPickerCache } from "./panels/head-panel";
@@ -1061,6 +1063,9 @@ function safeRenderRightPanel() {
 configureCollabSerializer(serializeDocument);
 // `parseCollabSource` also records a JSON text's layout on the tab — see its docstring.
 configureCollabParser(parseCollabSource);
+/* A reset room reseeds from its file, so the tab re-reads it before joining the fresh room. A read
+   that changes nothing leaves the tab alone. */
+configureCollabReloader((path) => reloadFileInTab(path, { onlyIfChanged: true }));
 // The source-canonical freeze is a STATE the author is being held in, not an error: a toast that
 // Says so, keyed so a run of freezes is one message rather than a stack of identical ones.
 configureCollabNotifier((message) => {

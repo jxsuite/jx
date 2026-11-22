@@ -98,7 +98,7 @@ Saving such a document asks first, before anything is written, and the question 
 - **Take Disk Copy** throws your edits away and shows the file as it is on disk.
 - **Compare** saves nothing and shows the document as a comparison: the copy **On Disk** beside **Your Unsaved Version**, so you can see what differs before you decide. Your edits stay in the document, and saving again asks the same question. Closing the question does the same.
 
-A save that finds the file changed since you opened it asks the same question. The notice in Problems goes away once you save, take the disk copy, close the document, or the file on disk goes back to what you opened.
+A save that finds the file changed since you opened it asks the same question. A document you are [co-editing](/docs/studio/publish/collaboration#syncing-is-not-saving) asks it too, about the session's shared edits. The notice in Problems goes away once you save, take the disk copy, close the document, or the file on disk goes back to what you opened.
 
 Studio's other changes to your files, such as a settings change, a new page, an uploaded image or a grid edit, also check that the file is still the one Studio last saw. If another program changed it in the meantime, Studio writes nothing and says so; try again once you have looked. Deleting a file from **Files** or the Library that changed since Studio last listed it deletes nothing and says why; delete it again once you have looked.
 

@@ -90,6 +90,8 @@ interface DocEntry {
   whenSynced: Promise<void>;
   resetCbs: Set<() => void>;
   pendingFlush: Set<() => void>;
+  /** Reverts awaiting the server: settled by its `revert-ack`, or by the reset it caused. */
+  pendingRevert: Set<() => void>;
   handleDestroyed: boolean;
   /** Latest room-level dirty state from the server (survives reconnect on the same entry). */
   dirty: boolean;
@@ -208,6 +210,13 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         }
         return;
       }
+      case "revert-ack": {
+        const entry = docs.get(message.path);
+        if (entry) {
+          settleReverts(entry);
+        }
+        return;
+      }
       case "flush-ack": {
         const entry = docs.get(message.path);
         if (entry) {
@@ -286,10 +295,19 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
     }
   };
 
+  const settleReverts = (entry: DocEntry) => {
+    for (const resolve of entry.pendingRevert) {
+      resolve();
+    }
+    entry.pendingRevert.clear();
+  };
+
   const fireReset = (path: string, entry: DocEntry) => {
     docs.delete(path);
     entry.resolveOpen?.(false);
     entry.resolveOpen = null;
+    // The reset is what a revert asked for, whether or not its acknowledgement follows.
+    settleReverts(entry);
     for (const cb of entry.resetCbs) {
       cb();
     }
@@ -425,6 +443,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         hydrated: false,
         opened: false,
         pendingFlush: new Set(),
+        pendingRevert: new Set(),
         resetCbs: new Set(),
         resolveOpen: null,
         resolveSynced,
@@ -482,10 +501,17 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
           entry.doc.destroy();
         },
         doc: entry.doc,
-        flush: () =>
+        flush: (flushOptions) =>
           new Promise<void>((resolve) => {
             entry.pendingFlush.add(resolve);
-            sendFrame({ message: { path, type: "flush" }, type: "control" });
+            const baseHash = flushOptions?.baseHash;
+            sendFrame({
+              message:
+                baseHash === undefined
+                  ? { path, type: "flush" }
+                  : { baseHash, path, type: "flush" },
+              type: "control",
+            });
           }),
         identity: () => identity,
         onConflict: (cb) => {
@@ -507,6 +533,11 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
           statusCbs.add(cb);
           return () => statusCbs.delete(cb);
         },
+        revert: () =>
+          new Promise<void>((resolve) => {
+            entry.pendingRevert.add(resolve);
+            sendFrame({ message: { path, type: "revert" }, type: "control" });
+          }),
         whenSynced: entry.whenSynced,
       };
       return handle;

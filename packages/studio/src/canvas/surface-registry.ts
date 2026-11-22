@@ -114,6 +114,12 @@ export interface CanvasSurface {
   /** Teardown for this stage's source-mode collab binding (unbind + release the lock). */
   sourceCollabCleanup: (() => void) | null;
   /**
+   * The collab session this stage's source-mode Monaco was mounted for (`collabSessionOf`), `null`
+   * for a buffer of the tab's own. A session that ended or was replaced leaves the buffer bound to
+   * text nobody holds any more, so the next render mounts it again.
+   */
+  sourceCollabSession?: object | null;
+  /**
    * The generation of the last render pass this stage opened.
    *
    * Per-surface because it is a STALENESS comparison within one pane: a deferred artboard asks "is

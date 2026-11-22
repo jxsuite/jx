@@ -13,6 +13,7 @@ import type {
   CollabStatus,
 } from "@jxsuite/collab/provider";
 import { isString } from "@jxsuite/schema/guards";
+import { sourceText } from "@jxsuite/collab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** A `div` holding one paragraph that reads "Hello". */
@@ -72,6 +73,15 @@ export interface MockCollabHub {
   conflict: (path: string, conflict: CollabConflict) => void;
   /** Paths flushed via handle.flush(), in order. */
   flushes: string[];
+  /** What each flush named besides its path, `undefined` for a plain one, in order. */
+  flushOptions: ({ baseHash?: string | null } | undefined)[];
+  /**
+   * Runs inside every flush, before it resolves, as the server's answer does: a test refuses the
+   * save by calling {@link MockCollabHub.conflict} here, or reports it saved with `setDirty`.
+   */
+  onFlush: ((path: string, options?: { baseHash?: string | null }) => void) | null;
+  /** Paths reverted via handle.revert(), in order. Each one resets the room, as the server does. */
+  reverts: string[];
   /** Live handle count per path. */
   connectionCount: (path: string) => number;
 }
@@ -83,11 +93,18 @@ export function createMockCollabHub(
     refuse?: string[];
     /** Delay whenSynced forever (sync-timeout testing). */
     neverSync?: boolean;
+    /**
+     * The file's text a fresh room is seeded with, as the dev server seeds a room's source from the
+     * file's bytes; `null` or absent leaves the shared text empty.
+     */
+    source?: (path: string) => string | null;
   } = {},
 ): MockCollabHub {
   const servers = new Map<string, Y.Doc>();
   const connections = new Map<string, Set<Connection>>();
   const flushes: string[] = [];
+  const flushOptions: MockCollabHub["flushOptions"] = [];
+  const reverts: string[] = [];
   const refuse = new Set(opts.refuse);
 
   const identity: CollabIdentity = {
@@ -102,6 +119,10 @@ export function createMockCollabHub(
     if (!doc) {
       doc = new Y.Doc();
       servers.set(path, doc);
+      const seeded = opts.source?.(path);
+      if (seeded) {
+        sourceText(doc).insert(0, seeded);
+      }
     }
     return doc;
   };
@@ -182,8 +203,10 @@ export function createMockCollabHub(
         conns.delete(conn);
       },
       doc: conn.doc,
-      flush: () => {
+      flush: (options) => {
         flushes.push(docPath);
+        flushOptions.push(options);
+        hub.onFlush?.(docPath, options);
         return Promise.resolve();
       },
       identity: () => identity,
@@ -205,25 +228,35 @@ export function createMockCollabHub(
         conn.statusCbs.add(cb);
         return () => conn.statusCbs.delete(cb);
       },
+      revert: () => {
+        reverts.push(docPath);
+        reset(docPath);
+        return Promise.resolve();
+      },
       whenSynced: opts.neverSync ? new Promise<void>(() => {}) : Promise.resolve(),
     };
     return Promise.resolve(handle);
   };
 
-  return {
+  function reset(path: string): void {
+    servers.delete(path);
+    // Detached copy: reset callbacks detach sessions, mutating the set mid-walk.
+    const live = [...connsFor(path)];
+    for (const conn of live) {
+      for (const cb of conn.resetCbs) {
+        cb();
+      }
+    }
+  }
+
+  const hub: MockCollabHub = {
     capability,
     connectionCount: (path) => connsFor(path).size,
+    flushOptions,
     flushes,
-    reset: (path) => {
-      servers.delete(path);
-      // Detached copy: reset callbacks detach sessions, mutating the set mid-walk.
-      const live = [...connsFor(path)];
-      for (const conn of live) {
-        for (const cb of conn.resetCbs) {
-          cb();
-        }
-      }
-    },
+    onFlush: null,
+    reset,
+    reverts,
     serverDoc,
     conflict: (path, conflict) => {
       for (const conn of connsFor(path)) {
@@ -248,6 +281,7 @@ export function createMockCollabHub(
       }
     },
   };
+  return hub;
 }
 
 /** Flush pending microtasks/timers so async attach flows settle. */

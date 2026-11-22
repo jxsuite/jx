@@ -38,7 +38,7 @@ import { reportPopoverProblems } from "../services/popover-report";
 import { getPlatform } from "../platform";
 import { getGridController } from "../grid/grid-controller";
 import { activeTab, openTab } from "../workspace/workspace";
-import { collabReadOnly, collabSave } from "../collab/collab-session";
+import { collabReadOnly } from "../collab/collab-session";
 import type { CollabParser } from "../collab/collab-session";
 import { flushCanvasEdits } from "../canvas/iframe-host";
 import { flushPreviewOverlay } from "../preview/preview-overlay";
@@ -56,7 +56,7 @@ import type { StudioFormat } from "../format/format-host";
 import type { Tab } from "../tabs/tab.js";
 import { isFileTab } from "../tabs/tab";
 import { markLocalWrite, noteLocalWrite } from "./fs-events";
-import { saveWithBase, writesWithBase } from "./based-writes";
+import { saveCoEdited, saveWithBase, writesWithBase } from "./based-writes";
 import { noteBufferRead } from "../project-state/buffer";
 import { mediaTypeEssence } from "@jxsuite/schema/media-type";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -400,10 +400,16 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
     return !tab.doc.dirty;
   }
   try {
-    // A co-edited tab persists through its provider (a direct file write would reset the room).
-    if (await collabSave(tab)) {
-      reportSaved(tab);
-      return true;
+    /* A co-edited tab persists through its provider (a direct file write would reset the room), and a
+       room whose file changed under its unsaved edits asks the author first (§6.1). */
+    if (tab.documentPath) {
+      const room = await saveCoEdited(tab, tab.documentPath);
+      if (room !== null) {
+        if (room) {
+          reportSaved(tab);
+        }
+        return room;
+      }
     }
     const output = await serializeDocument(tab);
 

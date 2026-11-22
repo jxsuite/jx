@@ -232,10 +232,19 @@ interface FakeCollabCtx {
   text: unknown;
 }
 let collabCtx: FakeCollabCtx | null = null;
+/** The identity of the tab's current session, as `collabSessionOf` answers it. */
+let currentSession: object | null = null;
+/** What the canvas registered to hear a session start or end. */
+const sessionListeners: ((tab: Tab) => void)[] = [];
 const actualCollab = await import("../src/collab/collab-session");
 void mock.module("../src/collab/collab-session.js", () => ({
   ...actualCollab,
+  collabSessionOf: () => currentSession,
   collabSourceContext: () => collabCtx,
+  onCollabSessionChange: (listener: (tab: Tab) => void) => {
+    sessionListeners.push(listener);
+    return () => {};
+  },
 }));
 
 /* The Monaco↔Y.Text binding: record what it was asked to bind, and whether it was released. The
@@ -321,6 +330,7 @@ beforeEach(() => {
   canvasMode = "design";
   gridMounted = false;
   collabCtx = null;
+  currentSession = null;
   bindings.length = 0;
   bindingShouldThrow = false;
   createdEditors.length = 0;
@@ -577,5 +587,56 @@ describe("source-mode collab binding", () => {
     await settle(() => ctx.leave.mock.calls.length > 0);
     expect(bindings).toHaveLength(0);
     expect(ctx.leave).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A RESET LEAVES THE CODE VIEW ON TEXT NOBODY HOLDS. Taking the disk copy (or an outside change
+   * to a clean room) ends the tab's session; the tab re-reads its file and joins a fresh room. The
+   * buffer was bound to the OLD session's shared text, so it kept showing the discarded edits, and
+   * a keystroke would have published them into the fresh room.
+   */
+  test("a session that ends or is replaced mounts the Code view again for the current one", async () => {
+    currentSession = {};
+    const first = makeCollabCtx({ text: { toString: () => "discarded" } });
+    collabCtx = first;
+    setMode("source");
+    renderCanvas();
+    await settle(bindingLanded);
+    const [stale] = createdEditors;
+    expect(stale).toBeDefined();
+
+    // A repaint for the same session keeps the buffer and its binding.
+    renderCanvas();
+    await flush();
+    expect(createdEditors).toHaveLength(1);
+    expect(bindings[0]!.destroyed).toBe(false);
+
+    // The reset: the tab joins a fresh room, and the canvas hears of it.
+    currentSession = {};
+    const second = makeCollabCtx({ text: { toString: () => "from disk" } });
+    collabCtx = second;
+    const tab = activeTab.value!;
+    expect(sessionListeners.length).toBeGreaterThan(0);
+    for (const listener of sessionListeners) {
+      listener(tab);
+    }
+    await settle(() => bindings.length > 1);
+    expect(bindings[0]!.destroyed).toBe(true);
+    expect(first.leave).toHaveBeenCalled();
+    expect(stale!.dispose).toHaveBeenCalled();
+    expect(createdEditors).toHaveLength(2);
+    expect(bindings[1]!.options.text).toBe(second.text);
+  });
+
+  test("a session change for a tab no pane shows in source mode repaints nothing", async () => {
+    setMode("design");
+    renderCanvas();
+    await flush();
+    const before = createdEditors.length;
+    for (const listener of sessionListeners) {
+      listener(activeTab.value!);
+    }
+    await flush(4);
+    expect(createdEditors).toHaveLength(before);
   });
 });

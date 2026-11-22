@@ -275,11 +275,20 @@ export function noteBufferClosed(tab: Tab): void {
 }
 
 /**
- * Record a co-edited tab's room conflict: the room's save was refused (`doc-conflict`), or it saved
- * and the refusal no longer stands. The author is told once, and the notice is taken down with it.
+ * Record a co-edited tab's room conflict: the room's save was refused, or its file changed under
+ * its unsaved edits (`doc-conflict`, with `diskHash` naming what is there now), or it saved and the
+ * conflict no longer stands. The author is told once, and the notice is taken down with it.
  */
-export function noteRoomConflict(tab: Tab, conflicted: boolean): void {
+export function noteRoomConflict(
+  tab: Tab,
+  conflicted: boolean,
+  diskHash: ContentHash | null = null,
+): void {
   const room = collabState(tab);
+  if (conflicted) {
+    // The newest refusal names what is on disk now, whether or not the room was conflicted already.
+    room.conflictDiskHash = diskHash;
+  }
   if (room.conflicted === conflicted) {
     return;
   }
@@ -292,9 +301,9 @@ export function noteRoomConflict(tab: Tab, conflicted: boolean): void {
     clearConflictProblem(path);
     return;
   }
-  notify.warn(`${nameOf(path)} changed on disk, so the shared session could not save it.`, {
+  notify.warn(`${nameOf(path)} changed on disk while the shared session had unsaved edits.`, {
     detail:
-      "The session's edits are still unsaved. Saving again writes them only once the session has caught up with the copy on disk.",
+      "The session's edits are still unsaved. Save it to choose whether to keep the session's edits, take the copy on disk, or compare the copy on disk with the session's version.",
     key: conflictProblemKey(path),
     path,
     source: "Collaboration",
