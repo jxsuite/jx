@@ -106,7 +106,8 @@ import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
 import { createLiveSurfaceSaver } from "./services/live-surfaces";
 import { createLiveComponentLane } from "./services/live-components";
-import { evictPreview } from "./browse/library-preview";
+import { evictPreview, previewDefinitionsMoved } from "./browse/library-preview";
+import { framePreviewRealm, setPreviewRealmFactory } from "./preview-realm/client";
 import { beginProjectOpening, isOpeningProject } from "./project-opening";
 import { beginActivity } from "./panels/activity-panel";
 import {
@@ -576,6 +577,9 @@ toolbarPanel.mount(requireShellRef(toolbarEl, "toolbar"), {
 });
 
 initLayers();
+/* Every out-of-canvas preview is drawn in one frame of its own, made on the first request
+   (`project-state.md` §11.2): nothing a project defines is ever registered in this window. */
+setPreviewRealmFactory(framePreviewRealm);
 /* Before anything reaches the backend: an `action-required` refusal (desktop.md §10.4) can be the
    answer to the very first request, and the dialog that offers its actions needs the layers above. */
 wireActionReports();
@@ -1847,6 +1851,7 @@ const liveChrome = createLiveSurfaceSaver({
    change on disk both lead here (`services/live-components.ts`). */
 const liveComponents = createLiveComponentLane({
   evictPreview,
+  redefineInPreviews: previewDefinitionsMoved,
   noteComponent: noteComponentSaved,
   componentPath: componentPathOf,
   readFile: (path) => getPlatform().readFile(path),

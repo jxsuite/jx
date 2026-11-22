@@ -30,7 +30,7 @@
 
 import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { componentExampleProps } from "../browse/component-examples";
-import { readDefinition, rendersWith } from "../browse/library-preview";
+import { readDefinition, rendersWith } from "../preview-realm/ask";
 import type { ComponentEntry } from "../files/components";
 import { contentStore } from "../project-state/store";
 import type { ContentStore } from "../project-state/store";
@@ -107,8 +107,19 @@ export async function loadStylebookSpecimens(
       const key = definitionKey(component, hashes);
       let cached = known.get(slot);
       if (cached?.key !== key) {
-        cached = { answer: ask(component).catch((): StylebookSpecimen => ({ kind: "bare" })), key };
-        known.set(slot, cached);
+        const entry: CachedSpecimen = {
+          /* A question that found no answer (the preview realm went away mid-trial) is drawn bare
+             for now and not remembered, so the next load asks it again. */
+          answer: ask(component).catch((): StylebookSpecimen => {
+            if (known.get(slot) === entry) {
+              known.delete(slot);
+            }
+            return { kind: "bare" };
+          }),
+          key,
+        };
+        cached = entry;
+        known.set(slot, entry);
       }
       return [component.tagName, await cached.answer];
     }),

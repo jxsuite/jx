@@ -15,37 +15,40 @@
  *    observed and then scrolled past before it ever intersected was retained for the life of the
  *    pane. {@link PreviewObserver.releaseDetached} is how the window gives those back.
  *
- * The renders themselves go through `platform.readFile`, which the PAL counts, so `probe.idle()`
- * already knows a preview is in flight without this module declaring an idle source of its own.
+ * The renders themselves happen in the preview realm (`preview-realm/`, `project-state.md` §11.2):
+ * this module reads a document from the content store, hands it to the realm by `DocId`, and keeps
+ * the snapshot the realm answers. Nothing a project defines is ever registered in this window. The
+ * read goes through `platform.readFile`, which the PAL counts, and the realm's answer is counted by
+ * the realm's own idle source, so `probe.idle()` knows a preview is in flight.
  */
 
-import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
-import {
-  buildScope,
-  renderNode,
-  runScoped,
-  setCanvasAssetResolver,
-  setNpmModuleResolver,
-  setResolveToken,
-  setSkipServerFunctions,
-  setTemplateErrorHandler,
-} from "@jxsuite/runtime";
-import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
+import { isFunction } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
-import { canvasBaseOrigin, documentBase, hostResolveToken } from "../canvas/canvas-origin";
-import { npmModuleUrl } from "../canvas/npm-modules";
+import { assetContextFor, hostAssetDeclarations } from "../canvas/asset-refs";
 import { projectState } from "../store";
 import { assetVersionsSnapshot, localRevisionsSnapshot } from "../files/asset-versions";
 import { componentRegistry } from "../files/components";
-import { getPlatform } from "../platform";
 import { loadFormats, formatForPath } from "../format/format-host";
 import { parseSourceForPath } from "../files/file-ops";
-import { renderComponentInstance } from "../panels/component-preview";
-import { componentExampleProps } from "./component-examples";
+import {
+  onPreviewRealmReplaced,
+  previewComponentsChanged,
+  previewDefinitionsChanged,
+  previewRealm,
+  previewRealmGeneration,
+  storedText,
+} from "../preview-realm/client";
+import {
+  componentPreview,
+  realmTarget,
+  reportPreviewFailure,
+  snapshotOf,
+} from "../preview-realm/ask";
+import type { PreviewSnapshot } from "../preview-realm/host";
 import { loadProjectPreviewSheets } from "./preview-style";
+import { unmountPreview } from "./preview-root";
 import type { ComponentEntry } from "../files/components";
-import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
+import type { JxDocument } from "@jxsuite/schema/types";
 
 /**
  * How many rendered previews stay alive at once.
@@ -64,9 +67,9 @@ export const PREVIEW_CACHE_LIMIT = 150;
 
 export interface PreviewCache {
   /** Fetch and mark as most-recently-used. */
-  get: (key: string) => HTMLElement | undefined;
+  get: (key: string) => PreviewSnapshot | undefined;
   /** Insert, evicting the least-recently-used entry when over the limit. */
-  set: (key: string, value: HTMLElement) => void;
+  set: (key: string, value: PreviewSnapshot) => void;
   has: (key: string) => boolean;
   /** Live entry count — what the perf test asserts stays bounded. */
   size: () => number;
@@ -79,11 +82,12 @@ export interface PreviewCache {
  * A least-recently-used cache over rendered previews.
  *
  * `Map` iterates in insertion order, so re-inserting on read is the whole LRU: the oldest key is
- * always the first one the iterator yields. Evicted subtrees are removed from the DOM as they go —
- * an evicted preview that stayed attached would keep its runtime alive and defeat the cap.
+ * always the first one the iterator yields. An evicted snapshot is taken out of every card still
+ * showing it (`preview-root.ts`), so a card is never left drawing something no cache vouches for:
+ * its next paint asks again.
  */
 export function createPreviewCache(limit: number = PREVIEW_CACHE_LIMIT): PreviewCache {
-  const entries = new Map<string, HTMLElement>();
+  const entries = new Map<string, PreviewSnapshot>();
   liveCaches.add(new WeakRef(entries));
 
   function evict() {
@@ -93,14 +97,14 @@ export function createPreviewCache(limit: number = PREVIEW_CACHE_LIMIT): Preview
         break;
       }
       entries.delete(oldest);
-      stale.remove();
+      unmountPreview(stale);
     }
   }
 
   return {
     clear() {
-      for (const element of entries.values()) {
-        element.remove();
+      for (const snapshot of entries.values()) {
+        unmountPreview(snapshot);
       }
       entries.clear();
     },
@@ -152,15 +156,40 @@ function identityOf(value: EpochInput | null): number {
  *
  * A preview that failed is not retried on every repaint (a document that does not render would be
  * read once per scroll frame); it is retried once this key moves. It moves when the project is
- * replaced, when the component registry is rescanned or gains or loses an entry, and whenever a
- * caller says the inputs moved ({@link invalidatePreviews}: a finished scan, a saved file).
+ * replaced, when the component registry is rescanned or gains or loses an entry, when the preview
+ * realm is replaced, and whenever a caller says the inputs moved ({@link invalidatePreviews}: a
+ * finished scan, a saved file).
  */
 export function previewEpoch(): string {
-  return `${_invalidations}:${identityOf(projectState)}:${identityOf(componentRegistry)}:${componentRegistry.length}`;
+  return `${_invalidations}:${identityOf(projectState)}:${identityOf(componentRegistry)}:${componentRegistry.length}:${previewRealmGeneration()}`;
+}
+
+/**
+ * The definitions of `tags` changed (the live component lane, `services/live-components.ts`): the
+ * preview realm is replaced if it holds one (`project-state.md` §11.2), now or when a reply in
+ * flight shows it defined one, and then every failed preview is worth asking again, since a new
+ * realm can draw what the old one could not (the listener below).
+ */
+export function previewDefinitionsMoved(tags: readonly string[]): void {
+  previewDefinitionsChanged(tags);
+}
+
+/**
+ * The project's set of components changed (`componentsChanged`): a realm that defines any project
+ * tag is replaced, because the tag may now be defined by another file or by none.
+ */
+export function previewComponentSetMoved(): void {
+  previewComponentsChanged();
 }
 
 /** Who repaints when the inputs move: each mounted view that draws previews. */
 const _invalidationListeners = new Set<() => void>();
+
+/* A replaced realm failed every request it had in flight, and the next realm may draw what the
+   last could not: either way every failed preview is worth asking again. */
+onPreviewRealmReplaced(() => {
+  invalidatePreviews();
+});
 
 /**
  * Say that every failed preview is worth trying again, and tell each view that draws previews.
@@ -188,189 +217,51 @@ export function onPreviewsInvalidated(listener: () => void): () => void {
   };
 }
 
-/** The failures already reported, one line each, so a repaint does not repeat them. */
-const _reported = new Set<string>();
-
-/**
- * Report a preview failure on the console, once per file and message.
- *
- * Not a Problem: a document mid-edit that does not render yet is a real state of the project, not
- * something the author must act on. But a failure nobody can see is how "the cards have no
- * previews" went undiagnosed, so the reason is written where a developer looks.
- */
-function reportPreviewFailure(path: string, message: string): void {
-  const key = `${path}\n${message}`;
-  if (_reported.has(key)) {
-    return;
-  }
-  _reported.add(key);
-  console.warn(`Jx Studio: no preview for ${path}: ${message}`);
-}
-
 // ─── Rendering one preview ───────────────────────────────────────────────────
 
 /**
- * The URL a previewed document's relative refs resolve against: the file's own URL under the
- * project, as the canvas spells it. A shell with an opaque origin (a custom-scheme shell such as
- * `views://`) has no such URL to build, and keeps the shell's own address.
- */
-function previewBase(filePath: string): string {
-  const base = documentBase(projectState?.projectRoot);
-  return URL.canParse(base) ? new URL(filePath, base).href : location.href;
-}
-
-/**
- * Render a page/layout/content document to a detached element, or null when it cannot be rendered.
+ * Render a page/layout/content document in the preview realm, or null when it cannot be rendered.
  *
  * Returning null rather than throwing is deliberate: a document that fails to parse is a real state
  * of the project, and the card shows a document glyph for it. The Problems list is for failures the
  * author must ACT on; an in-progress file that does not parse yet is not one.
  */
-export async function renderDocPreview(filePath: string): Promise<HTMLElement | null> {
+export async function renderDocPreview(filePath: string): Promise<PreviewSnapshot | null> {
   try {
-    const content = await getPlatform().readFile(filePath);
-    setSkipServerFunctions(true);
-    const context = assetContextFor(filePath, hostAssetDeclarations());
+    const content = await storedText(filePath);
     await loadFormats();
     let document_: JxDocument;
     if (formatForPath(filePath)) {
       const parsed = await parseSourceForPath(filePath, content);
       /* SAFETY: a format class's parser returns its file as a Jx element tree (the format contract),
-         and the split hands that same tree back as `document`; a tree renderNode cannot draw throws
-         into the catch below, which is "no preview". */
+         and the split hands that same tree back as `document`; a tree the realm cannot draw is
+         answered `failed`, which is "no preview". */
       document_ = parsed.document as JxDocument;
     } else {
       /* SAFETY: a `.json` file in the Library is a project document by the project layout; malformed
-         JSON or a shape renderNode cannot draw throws into the catch below, which is "no preview". */
+         JSON throws into the catch below, and a shape the realm cannot draw is answered `failed`,
+         which is "no preview". */
       document_ = JSON.parse(content) as JxDocument;
     }
-    return await renderDocument(document_, filePath, context);
+    /* The document's media resolve as the canvas resolves them, with the version map as it stands
+       when the request is made: the Library is the many-images screen, and a versioned src is what
+       lets its cards repaint from the browser cache. */
+    const context = assetContextFor(filePath, hostAssetDeclarations());
+    const assets = context && {
+      ...context,
+      revisions: localRevisionsSnapshot(),
+      versions: assetVersionsSnapshot(),
+    };
+    return snapshotOf(
+      await previewRealm().ask({
+        assets,
+        kind: "document",
+        target: realmTarget(filePath, document_),
+      }),
+    );
   } catch {
     return null;
   }
-}
-
-/**
- * Render a document as the file `filePath` holds it would be drawn: its refs resolved from that
- * file's URL, its media through the canvas's resolver. Throws what the render throws.
- */
-async function renderDocument(
-  document_: JxDocument,
-  filePath: string,
-  context: ReturnType<typeof assetContextFor>,
-): Promise<HTMLElement | null> {
-  setSkipServerFunctions(true);
-  /* The document's own URL, as the canvas spells it, and the canvas's dev-proxy token. With the
-     shell's `location.href` as base, a page's `"$src": "../../scripts/x.class.json"` resolved
-     against `/__studio__/`, and without the token the proxy refused it before reading it. */
-  setResolveToken(hostResolveToken());
-  const scope = await buildScope(document_, {}, previewBase(filePath));
-  /* This render lands in the PARENT document, so an `<img src="/hero.jpg">` inside it resolves
-     against `index.html` — which is the shell, not the site. Same hook the canvas installs, same
-     context, restored afterwards because the next preview is a different document and a stale
-     `documentDir` would resolve its relative refs against the wrong entry. The version map is
-     read as the render starts, after the reads above: the Library is the many-images screen,
-     and a versioned src is what lets its cards repaint from the browser cache. */
-  const assets = context && {
-    ...context,
-    revisions: localRevisionsSnapshot(),
-    versions: assetVersionsSnapshot(),
-  };
-  setCanvasAssetResolver((value) => resolveAssetRef(value, assets));
-  try {
-    const element = renderNode(document_, scope);
-    return element instanceof HTMLElement ? element : null;
-  } finally {
-    setCanvasAssetResolver(null);
-  }
-}
-
-/**
- * A project component's preview: an instance given its declared sample props
- * (`component-examples.ts`), or none when the definition does not render with them.
- */
-async function projectComponentPreview(
-  component: ComponentEntry,
-  path: string,
-): Promise<HTMLElement | null> {
-  const definition = await readDefinition(path);
-  if (!definition) {
-    return null;
-  }
-  const props = componentExampleProps(definition);
-  return (await rendersWith(definition, path, props))
-    ? renderComponentInstance(component, props)
-    : null;
-}
-
-/** A project component's definition, or null when its file is not one. */
-export async function readDefinition(path: string): Promise<JxDocument | null> {
-  try {
-    const parsed: unknown = parseNativeDocument(await getPlatform().readFile(path), path);
-    /* SAFETY: a project component's file is its definition, a Jx element document; a shape
-       renderNode cannot draw throws into `rendersWith`'s catch, which is "does not render". */
-    return isNonNullObject(parsed) && !Array.isArray(parsed) ? (parsed as JxDocument) : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Whether `definition` renders given `props` (its sample props, `component-examples.ts`), tried on
- * a detached copy before a live instance is made.
- *
- * A definition may not render with the values it is given: the museum starter's
- * `<mu-exhibition-card>` formats a `date` that defaults to `""`, and `Intl/formatDate` of an empty
- * date is a `RangeError`, exactly as `new Intl.DateTimeFormat().format(new Date(""))` is (`spec.md`
- * §19.4c). An instance renders in its own async `connectedCallback`, where the throw is reported on
- * the console once per card per paint. The same render, made here synchronously into an element
- * nobody sees, can be caught, and a definition that cannot render gets no instance preview.
- */
-export async function rendersWith(
-  definition: JxDocument,
-  path: string,
-  props: ReadonlyMap<string, JsonValue>,
-): Promise<boolean> {
-  let stopRender: (() => void) | null = null;
-  try {
-    setSkipServerFunctions(true);
-    setResolveToken(hostResolveToken());
-    const scope = await buildScope(definition, {}, previewBase(path));
-    for (const [name, value] of props) {
-      scope[name] = value;
-    }
-    /* A template binding that throws no longer unwinds the render (spec.md §6.1): it draws nothing
-       and waits for its data. The trial still has to see it, so the throw is collected for the one
-       synchronous render, as the render critic collects it. */
-    const trial: TemplateTrial = { error: null };
-    setTemplateErrorHandler((error) => {
-      trial.error ??= error;
-    });
-    // Its own tag would make an instance, and the instance's render is the one that cannot be caught.
-    const { stop } = runScoped(() => renderNode({ ...definition, tagName: "div" }, scope));
-    stopRender = stop;
-    if (trial.error !== null) {
-      reportPreviewFailure(path, trial.error.message);
-      return false;
-    }
-    return true;
-  } catch (error) {
-    reportPreviewFailure(path, errorMessage(error));
-    return false;
-  } finally {
-    setTemplateErrorHandler(null);
-    stopRender?.();
-  }
-}
-
-/** What one trial render's template error handler saw: the first binding that threw, if any. */
-interface TemplateTrial {
-  error: Error | null;
-}
-
-/** A component whose definition is a JSON file in the project, which is what can be tried first. */
-function isProjectDefinition(component: ComponentEntry): boolean {
-  return component.source !== "npm" && isNativeDocumentPath(component.path ?? "");
 }
 
 /**
@@ -384,25 +275,25 @@ function isProjectDefinition(component: ComponentEntry): boolean {
 export async function previewFor(
   path: string,
   cache: PreviewCache,
-): Promise<HTMLElement | undefined> {
+): Promise<PreviewSnapshot | undefined> {
   const cached = cache.get(path);
   if (cached) {
     return cached;
   }
-  let rendered: HTMLElement | null | undefined;
+  let rendered: PreviewSnapshot | null;
   try {
-    /* A component's `npm:` sidecar, from where the project's packages are served: a preview is a
-       live render in this window, and the runtime would otherwise hand `import()` the `npm:` URL. */
-    setNpmModuleResolver((specifier) => npmModuleUrl(specifier, `${canvasBaseOrigin()}/`));
     // The project's stylesheet, ready for the box this preview is shown in (`preview-style.ts`).
     await loadProjectPreviewSheets();
     const component = componentRegistry.find((c: ComponentEntry) => c.path === path);
-    if (component && isProjectDefinition(component)) {
-      rendered = await projectComponentPreview(component, path);
+    if (component) {
+      const answer = await componentPreview(component);
+      // A realm that went away mid-request is no failure of this file: it is asked again.
+      if (answer.kind === "failed" && answer.lost !== true) {
+        reportPreviewFailure(path, answer.message);
+      }
+      rendered = snapshotOf(answer);
     } else {
-      rendered = component
-        ? await renderComponentInstance(component)
-        : await renderDocPreview(path);
+      rendered = await renderDocPreview(path);
     }
   } catch (error) {
     reportPreviewFailure(path, errorMessage(error));
@@ -556,10 +447,10 @@ export function createPreviewObserver(onVisible: (element: Element) => void): Pr
  * Every preview cache's entries, held weakly: a cache lives as long as the panel that made it, and
  * a panel that was torn down must not be kept alive by this list.
  */
-const liveCaches = new Set<WeakRef<Map<string, HTMLElement>>>();
+const liveCaches = new Set<WeakRef<Map<string, PreviewSnapshot>>>();
 
 /**
- * Drop one path's rendered preview from every cache, detaching it from the card it was in, so the
+ * Drop one path's rendered preview from every cache, taking it out of the card it was in, so the
  * next paint renders the file again (`services/live-components.ts`, when a component definition
  * changes). The card's box is left empty, and the previews are invalidated ({@link
  * invalidatePreviews}) so every pane that subscribed repaints and its settle pass refills it,
@@ -576,7 +467,7 @@ export function evictPreview(path: string): void {
     const stale = entries.get(path);
     if (stale) {
       entries.delete(path);
-      stale.remove();
+      unmountPreview(stale);
       evicted = true;
     }
   }

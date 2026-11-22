@@ -77,7 +77,7 @@ export function restylesTag(
  */
 let reader: Promise<(path: string) => Promise<JxDocument | null>> | null = null;
 function readFromProject(path: string): Promise<JxDocument | null> {
-  reader ??= import("../browse/library-preview").then((module) => module.readDefinition);
+  reader ??= import("../preview-realm/ask").then((module) => module.readDefinition);
   return reader.then((read) => read(path));
 }
 

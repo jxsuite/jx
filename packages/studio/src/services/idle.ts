@@ -38,6 +38,9 @@
  * 6. `grid-idle.gridIdleBlockers()` — tables still building, or built but not yet showing the
  *    selection range `selectableRange: 1` gives them. Nothing else covered Tabulator: a grid
  *    command resolves when the panel mounts, which is several frames before the table is drawn.
+ * 7. `preview-realm/client.previewRealmIdleBlockers()` — previews asked of the preview realm and not
+ *    answered yet (`project-state.md` §11.2). A preview's read is a PAL call, but its render is a
+ *    round trip to another frame that no PAL call spans.
  *
  * The consumers are the `packages/studio:verify` skill, the screenshot runner and the Activity
  * tracker of §16.4 (this is a read-only projection of the same in-flight set that dock renders).
@@ -49,6 +52,7 @@ import { canvasIdleBlockers } from "../canvas/iframe-host";
 import { platformInFlight } from "../platform";
 import { overlayIdleBlockers } from "../ui/layers";
 import { gridIdleBlockers } from "../grid/grid-idle";
+import { previewRealmIdleBlockers } from "../preview-realm/client";
 
 /** One subsystem that can be outstanding, and its account of why. */
 export interface IdleSource {
@@ -80,7 +84,7 @@ export class NotIdleError extends Error {
 }
 
 /**
- * The six live sources.
+ * The seven live sources.
  *
  * Built per call rather than held in a module constant so a test can substitute one without
  * unpicking the others, and so a second window's hosts are never read through the first window's
@@ -109,6 +113,7 @@ export function defaultIdleSources(): IdleSource[] {
     { blockers: overlayIdleBlockers, name: "overlay" },
     { blockers: activityIdleBlockers, name: "activity" },
     { blockers: gridIdleBlockers, name: "grid" },
+    { blockers: previewRealmIdleBlockers, name: "preview" },
   ];
 }
 

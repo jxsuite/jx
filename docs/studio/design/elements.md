@@ -5,7 +5,7 @@ spec:
   - studio.md#5.3
 code:
   - packages/studio/src/panels/elements-panel.ts
-  - packages/studio/src/panels/component-preview.ts
+  - packages/studio/src/preview-realm/ask.ts
   - packages/studio/src/panels/dnd.ts
   - packages/studio/src/surfaces/panel-elements.json
   - packages/studio/src/surfaces/panel-elements.ts
@@ -32,7 +32,7 @@ It opens in the Navigator, under an **INSERT · document** header. Unlike the ot
 Two tabs run across the top of the panel:
 
 - **Elements** holds the HTML building blocks, grouped into sections: **Text**, **Lists**, **Media**, **Layout**, **Interactive**, **Forms**, **Tables**, **Inline text** and **Advanced**. The everyday ones come first. **Inline text** (bold, italic, highlight and the like, which usually go inside a paragraph) and **Advanced** start closed; click a section's header to open or close it, and Studio remembers your choice.
-- **Components** holds your project's own components, plus components from installed packages once they're enabled for the project (see **[Dependencies](/docs/studio/projects/dependencies)**). Each card renders a live preview, so you see the real thing before you place it. A project with no components yet says how to make one.
+- **Components** holds your project's own components, plus components from installed packages once they're enabled for the project (see **[Dependencies](/docs/studio/projects/dependencies)**). Each card renders a live preview, drawn in Studio's separate preview frame like every other preview, so you see the real thing before you place it. A card is drawn again after you save its component, and a component the preview frame can't draw shows a box with its tag name instead. A project with no components yet says how to make one.
 
 Each element card shows a small preview and the element's name, such as **Heading 1**, **Bulleted list** or **Image**, with its HTML tag beside it. Hover a card to read what the element is for. Names are in English for now; Studio is built to show them in your browser's language once a translation for it ships.
 

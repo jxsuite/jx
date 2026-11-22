@@ -139,7 +139,7 @@ describe("componentRestyles", () => {
     let reads = 0;
     const read = async (path: string): Promise<JxDocument | null> => {
       reads += 1;
-      const { readDefinition } = await import("../src/browse/library-preview");
+      const { readDefinition } = await import("../src/preview-realm/ask");
       return readDefinition(path);
     };
     // Asked twice while the read is in flight, it answers empty and does not start a second one.

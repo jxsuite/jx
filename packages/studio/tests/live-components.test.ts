@@ -1,7 +1,8 @@
 /**
  * The live component lane (`services/live-components.ts`): a project component saved in Studio or
- * rewritten on disk is redefined in every canvas frame, its Library preview is evicted, and nothing
- * that is not a component, or that the chrome lane owns, is touched.
+ * rewritten on disk is redefined in every canvas frame, its Library preview is evicted, the preview
+ * realm is told its definition changed, and nothing that is not a component, or that the chrome
+ * lane owns, is touched.
  */
 import "./with-dom.js";
 
@@ -15,6 +16,7 @@ import {
   evictPreview,
   onPreviewsInvalidated,
 } from "../src/browse/library-preview";
+import { mountPreview, shownPreview } from "../src/browse/preview-root";
 
 /* SAFETY: `./with-dom.js` registers happy-dom's GlobalRegistrator, which copies the window's members
    onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
@@ -37,6 +39,8 @@ interface Harness {
   files: Map<string, string>;
   redefined: { doc: JxDocument; base: string }[];
   evicted: string[];
+  /** The tags each telling of the preview realm named. */
+  realm: string[][];
   noted: string[];
   repaints: number;
 }
@@ -47,10 +51,14 @@ function harness(): Harness {
   const evicted: string[] = [];
   const noted: string[] = [];
   const redefined: Harness["redefined"] = [];
+  const realm: string[][] = [];
   const h: Harness = {
     deps: {
       evictPreview: (path) => {
         evicted.push(path);
+      },
+      redefineInPreviews: (tags) => {
+        realm.push([...tags]);
       },
       noteComponent: (path) => {
         noted.push(path);
@@ -72,6 +80,7 @@ function harness(): Harness {
     evicted,
     files,
     noted,
+    realm,
     redefined,
     repaints: 0,
     workspace,
@@ -101,6 +110,15 @@ describe("saved", () => {
     expect(h.redefined[0]!.doc).toBe(card);
     expect(h.redefined[0]!.base).toBe("http://localhost:3000/sites/demo/components/site-card.json");
     expect(h.evicted).toEqual(["components/site-card.json"]);
+    // The preview realm is told, never the shell's registry.
+    expect(h.realm).toEqual([["site-card"]]);
+  });
+
+  test("a lane with no preview realm to tell still redefines the frames", () => {
+    const { redefineInPreviews: _realm, ...deps } = h.deps;
+    expect(createLiveComponentLane(deps).saved("components/site-card.json", card)?.tag).toBe(
+      "site-card",
+    );
   });
 
   test("does nothing for a document that is not a component", () => {
@@ -207,21 +225,21 @@ describe("changedOnDisk", () => {
 });
 
 describe("evictPreview", () => {
-  test("drops one path from every live cache and detaches its rendered preview", () => {
+  test("drops one path from every live cache and takes its preview out of the card", () => {
     const a = createPreviewCache();
     const b = createPreviewCache();
     const box = document.createElement("div");
-    const stale = document.createElement("span");
-    box.append(stale);
+    const stale = { html: "<span></span>", sheet: null };
+    mountPreview(box, stale);
     a.set("components/site-card.json", stale);
-    b.set("components/site-card.json", document.createElement("span"));
-    b.set("components/other.json", document.createElement("span"));
+    b.set("components/site-card.json", { html: "<span></span>", sheet: null });
+    b.set("components/other.json", { html: "<span></span>", sheet: null });
     evictPreview("components/site-card.json");
     expect(a.has("components/site-card.json")).toBe(false);
     expect(b.has("components/site-card.json")).toBe(false);
     expect(b.has("components/other.json")).toBe(true);
-    expect(stale.isConnected).toBe(false);
-    expect(box.childElementCount).toBe(0);
+    expect(shownPreview(box)).toBeNull();
+    expect(box.shadowRoot?.childElementCount).toBe(0);
   });
 
   test("tells the panes to repaint when it dropped something, and only then", () => {
@@ -231,7 +249,7 @@ describe("evictPreview", () => {
     });
     try {
       const cache = createPreviewCache();
-      cache.set("components/told.json", document.createElement("span"));
+      cache.set("components/told.json", { html: "<span></span>", sheet: null });
       evictPreview("components/told.json");
       expect(told).toBe(1);
       evictPreview("components/never-rendered.json");
@@ -258,6 +276,8 @@ describe("the dependents door", () => {
     );
     expect(results.map((result) => result?.tag)).toEqual(["site-card"]);
     expect(h.evicted).toEqual(["pages/index.json", "components/site-card.json"]);
+    // The preview realm hears every changed tag, and the one redefinition again.
+    expect(h.realm).toEqual([["site-card", "site-hero", "site-hero", "pkg-tag"], ["site-card"]]);
     expect(h.redefined.map((entry) => entry.doc.tagName)).toEqual(["site-card"]);
   });
 

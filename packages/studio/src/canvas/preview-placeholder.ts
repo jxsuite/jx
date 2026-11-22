@@ -8,9 +8,9 @@
  * resolves to the document's own url and fails as an image. Previews show the component's SHAPE, so
  * an empty image is drawn as a neutral placeholder of a typical photo's proportions instead.
  *
- * Used by the two surfaces that draw components on their own: the parent-realm previews
- * (`panels/component-preview.ts`: the Library, the Site panel's component cards, the palette) and
- * the Stylebook's specimen render in the canvas frame (`canvas/iframe-render.ts`). Never the page
+ * Used by the two realms that draw components on their own: the preview realm
+ * (`preview-realm/frame.ts`: the Library, the Site panel's component cards, the palette) and the
+ * Stylebook's specimen render in the canvas frame (`canvas/iframe-render.ts`). Never the page
  * canvas: an empty image on a page is something its author should see.
  *
  * Plain DOM with no realm-specific imports, so the frame and the editor share one definition.

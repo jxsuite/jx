@@ -50,7 +50,12 @@ import {
   routedPageExtensions,
 } from "../format/format-host";
 import { resolveI18n } from "@jxsuite/schema/locale";
-import { createPreviewCache, createPreviewObserver, previewFor } from "../browse/library-preview";
+import {
+  createPreviewCache,
+  createPreviewObserver,
+  previewComponentSetMoved,
+  previewFor,
+} from "../browse/library-preview";
 import { mountPreview, shownPreview } from "../browse/preview-root";
 import {
   _componentRegistryLoaded,
@@ -234,9 +239,11 @@ export function invalidateSiteIndex(paths?: readonly string[], structural = true
 /**
  * The host says the project's set of components changed (`componentsChanged`, `project-state.md`
  * §4.3): re-read the registry now, whether or not the panel is standing, since the Stylebook, the
- * Component Settings and the Library read it too.
+ * Component Settings and the Library read it too, and replace a preview realm that defines a
+ * project tag (§11.2).
  */
 export function invalidateComponentRegistry(): void {
+  previewComponentSetMoved();
   _registryStale = true;
   ensureRegistry();
 }

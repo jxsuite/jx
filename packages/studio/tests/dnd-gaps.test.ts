@@ -124,19 +124,25 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item", () => ({
 }));
 
 let previewRenders = 0;
-void mock.module("../src/panels/component-preview", () => ({
-  renderComponentInstance: async (comp: ComponentEntry) => document.createElement(comp.tagName),
-  renderComponentPreview: async (comp: ComponentEntry) => {
+/** Whether the doubled realm answers; null is a realm that went away before it did. */
+let realmDraws = true;
+/** Each answer's text, so a test can tell which ask an answer belongs to. */
+let answerText = "preview";
+/** When set, every answer waits for this before it arrives. */
+let answerGate: Promise<null> | null = null;
+void mock.module("../src/preview-realm/ask", () => ({
+  cardSnapshot: async (comp: ComponentEntry) => {
     previewRenders += 1;
-    const el = document.createElement(comp.tagName);
-    el.textContent = "preview";
-    return el;
+    const text = answerText;
+    await answerGate;
+    return realmDraws ? { html: `<${comp.tagName}>${text}</${comp.tagName}>`, sheet: null } : null;
   },
 }));
 
 const { initShellRefs, registerRenderer } = await import("../src/store");
 const { view } = await import("../src/view");
 const { componentRegistry } = await import("../src/files/components");
+const { previewRealm } = await import("../src/preview-realm/client");
 const { activeTab } = await import("../src/workspace/workspace");
 const dnd = await import("../src/panels/dnd");
 
@@ -611,7 +617,9 @@ describe("registerComponentsDnD", () => {
     const preview = leftPanel.querySelector(
       "[data-component-tag='my-card'] .element-card-preview",
     )!;
-    expect(preview.querySelector("my-card")).not.toBeNull();
+    // Drawn by the preview realm and shown in the box's own shadow root, never defined here.
+    expect(preview.shadowRoot?.querySelector("my-card")?.textContent).toBe("preview");
+    expect(customElements.get("my-card")).toBeUndefined();
 
     const data = draggables[0]!.getInitialData();
     expect(data.type).toBe("block");
@@ -623,22 +631,94 @@ describe("registerComponentsDnD", () => {
     expect(draggables[0]!.getInitialData().fragment).not.toBe(data.fragment);
   });
 
-  test("rows with an empty tag are skipped and existing previews are not re-rendered", async () => {
+  test("a card whose realm went away before answering stays empty and is asked again", async () => {
     componentsDom(["my-card"]);
-    leftPanel
-      .querySelector("[data-component-tag='my-card'] .element-card-preview")!
-      .append(document.createElement("my-card"));
+    componentRegistry.push({ tagName: "my-card" });
+    realmDraws = false;
+    try {
+      dnd.registerComponentsDnD();
+      await raf();
+      await flush();
+    } finally {
+      realmDraws = true;
+    }
+    expect(previewRenders).toBe(1);
+    const preview = leftPanel.querySelector("[data-component-tag='my-card'] .element-card-preview");
+    expect(preview?.shadowRoot ?? null).toBeNull();
+    dnd.registerComponentsDnD();
+    await raf();
+    await flush();
+    expect(previewRenders).toBe(2);
+    expect(preview?.shadowRoot?.textContent).toBe("preview");
+  });
+
+  test("a card is asked once per registry entry and realm, and again after a save or a replaced realm", async () => {
+    componentsDom(["my-card"]);
     const empty = document.createElement("div");
     empty.dataset.componentTag = "";
     leftPanel.querySelector(".components-section")!.append(empty);
     componentRegistry.push({ tagName: "my-card" });
+    const pass = async () => {
+      dnd.registerComponentsDnD();
+      await raf();
+      await flush();
+    };
+    const shown = () =>
+      leftPanel.querySelector("[data-component-tag='my-card'] .element-card-preview")?.shadowRoot
+        ?.textContent;
+    // While the answer is pending a pass asks nothing more.
+    const { promise: gate, resolve: open } = Promise.withResolvers<null>();
+    answerGate = gate;
+    await pass();
+    await pass();
+    expect(previewRenders).toBe(1);
+    open(null);
+    answerGate = null;
+    await flush();
+    expect(shown()).toBe("preview");
+    // Answered: the same entry and realm ask nothing.
+    await pass();
+    expect(previewRenders).toBe(1);
+    // A save replaces the registry entry, which asks again; the old picture stays until it answers.
+    answerText = "saved";
+    componentRegistry[0] = { tagName: "my-card" };
+    await pass();
+    expect(previewRenders).toBe(2);
+    expect(shown()).toBe("saved");
+    // A replaced realm may have drawn a stale definition, so it asks again.
+    await previewRealm().ask({ attributes: {}, kind: "package", tag: "x-made" });
+    previewRealm().replace();
+    answerText = "replaced";
+    await pass();
+    expect(previewRenders).toBe(3);
+    expect(shown()).toBe("replaced");
+    answerText = "preview";
+    // No props array → empty $props
+    expect(draggables.at(-1)!.getInitialData().fragment).toEqual({
+      $props: {},
+      tagName: "my-card",
+    });
+  });
+
+  test("an answer a newer ask overtook is dropped", async () => {
+    componentsDom(["my-card"]);
+    componentRegistry.push({ tagName: "my-card" });
+    const { promise: gate, resolve: open } = Promise.withResolvers<null>();
+    answerGate = gate;
+    answerText = "old";
+    dnd.registerComponentsDnD();
+    await raf();
+    answerGate = null;
+    answerText = "new";
+    componentRegistry[0] = { tagName: "my-card" };
     dnd.registerComponentsDnD();
     await raf();
     await flush();
-    expect(previewRenders).toBe(0);
-    expect(draggables).toHaveLength(1);
-    // No props array → empty $props
-    expect(draggables[0]!.getInitialData().fragment).toEqual({ $props: {}, tagName: "my-card" });
+    open(null);
+    await flush();
+    answerText = "preview";
+    const preview = leftPanel.querySelector("[data-component-tag='my-card'] .element-card-preview");
+    expect(preview?.shadowRoot?.textContent).toBe("new");
   });
 });
 

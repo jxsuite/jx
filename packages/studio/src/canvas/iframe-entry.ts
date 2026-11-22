@@ -114,6 +114,8 @@ import type {
 import type { JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 import type { IframeRenderCtx, RenderDocumentOptions, RenderHandle } from "./iframe-render";
 import { setBundleBase } from "../services/bundle-base";
+import { bootPreviewRealm, isPreviewRealmSearch } from "../preview-realm/frame";
+import type { PreviewRealmWindow } from "../preview-realm/frame";
 
 /* Anchor shipped-asset URLs to this ENTRY's directory — see src/studio.ts for why only an
    entry may, and tests/entry-anchors.test.ts for the guard. */
@@ -1565,7 +1567,16 @@ export function bootCanvasIframe(win: BootWindow): () => void {
   return startCanvasIframe({ channel, container });
 }
 
+/**
+ * Boot whichever frame the document's URL asks for. `canvas.html` is also the preview realm's
+ * document (`preview-realm/frame.ts`, `project-state.md` §11.2): one page and one bundle serve
+ * both, so every host that serves the canvas serves the realm with no route of its own.
+ */
+export function bootFrame(win: BootWindow & PreviewRealmWindow): () => void {
+  return isPreviewRealmSearch(win.location.search) ? bootPreviewRealm(win) : bootCanvasIframe(win);
+}
+
 // Boot only when actually loaded as the iframe document (has a real parent frame), never in tests.
 if (typeof window !== "undefined" && window.parent !== window) {
-  bootCanvasIframe(window);
+  bootFrame(window);
 }
