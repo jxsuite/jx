@@ -184,8 +184,9 @@ describe("projectState.subscribe (§3.2)", () => {
     expect(header(calls[0]!, "Last-Event-ID")).toBeNull();
     expect(calls[0]!.url.search).toBe("");
 
+    // The `StudioPlatform` member is the same subscribe, so it replaces the first too.
     const next = recorder();
-    const resubscribing = platform.projectState.subscribe({}, next.listener);
+    const resubscribing = platform.subscribeProjectState({}, next.listener);
     second.push(encodeSseSubscribe(ANSWER));
     await resubscribing;
     expect(calls[0]!.init.signal?.aborted).toBe(true);
@@ -255,6 +256,9 @@ describe("projectState.write and delete (§5)", () => {
         : Response.json({ hash: H, ok: true, path: "pages/a.json", rev: 7 });
     const platform = createDevServerPlatform();
     platform.projectRoot = "site";
+    // The `StudioPlatform` members Studio saves and deletes through are the same two calls.
+    expect(platform.writeProjectState).toBe(platform.projectState.write);
+    expect(platform.deleteProjectState).toBe(platform.projectState.delete);
     const result = await platform.projectState.write({
       baseHash: H,
       bufferRev: 3,

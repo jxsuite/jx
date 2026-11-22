@@ -15,14 +15,15 @@
  * plain editors) intentionally keep working off the last-saved file until then. The host owns the
  * room-level dirty signal broadcast to every peer; the embedder just tells it a persist landed via
  * `markPersisted`. Genuinely external file changes (not our own write-back echo) bump the doc's
- * epoch and reset subscribers, per the contract. No persistence beyond the files themselves: this
- * is deliberately a reference implementation.
+ * epoch and reset subscribers, per the contract, except that a room inside the project holding
+ * unsaved edits keeps them and tells its participants of the conflict instead. No persistence
+ * beyond the files themselves: this is deliberately a reference implementation.
  */
 
 import { randomUUID } from "node:crypto";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
-import { contentHash } from "@jxsuite/protocol/project-state";
+import { contentHash, isContentHash } from "@jxsuite/protocol/project-state";
 import type { ContentHash, ProjectEvent, ProjectSnapshot } from "@jxsuite/protocol/project-state";
 import { colorForKey } from "@jxsuite/collab/awareness-types";
 import { createCollabHost } from "@jxsuite/collab/room";
@@ -221,16 +222,21 @@ export function createCollabRegistry(opts: {
 
   /**
    * Save a hosted room through the host, with its base (§5); a stale base reaches the room. The
-   * active project's host by default, or `through`, the host of a project being retired.
+   * active project's host by default, or `through`, the host of a project being retired. `override`
+   * is a base the participant named in place of the room's own: they chose to keep the room's edits
+   * over what is on disk now (§6.1).
    */
   const persistHosted = async (
     key: string,
     room: HostedRoom,
     source: string,
     through?: ProjectStateHost,
+    override?: { baseHash: ContentHash | null },
   ): Promise<void> => {
     const hash = await contentHash(source);
-    if (hash === room.base) {
+    const base = override === undefined ? room.base : override.baseHash;
+    if (hash === base) {
+      room.base = hash;
       pendingPersist.delete(key);
       host.markPersisted(key);
       return;
@@ -243,7 +249,7 @@ export function createCollabRegistry(opts: {
     try {
       const running = through ?? (await projectEvents!.start());
       const result = await running.write({
-        baseHash: room.base,
+        baseHash: base,
         contents: source,
         path: relative(room.root, room.abs).replaceAll("\\", "/"),
         writeId,
@@ -296,8 +302,16 @@ export function createCollabRegistry(opts: {
     return next;
   };
 
-  /** Save the room `key` names now, through `through` when given (see {@link persistHosted}). */
-  const persist = (key: string, through?: ProjectStateHost): Promise<void> =>
+  /**
+   * Save the room `key` names now, through `through` when given, and against `override` when the
+   * participant named a base (see {@link persistHosted}). A room keyed by its path saves without a
+   * base, so it has none to override.
+   */
+  const persist = (
+    key: string,
+    through?: ProjectStateHost,
+    override?: { baseHash: ContentHash | null },
+  ): Promise<void> =>
     serialize(key, async () => {
       const source = host.sourceOf(key);
       if (source === null) {
@@ -306,7 +320,7 @@ export function createCollabRegistry(opts: {
       const room = hosted.get(key);
       await (room === undefined
         ? persistPlain(key, source)
-        : persistHosted(key, room, source, through));
+        : persistHosted(key, room, source, through, override));
     });
 
   /** Decodes a file as `readFile(path, "utf8")` does, keeping a byte order mark in the text. */
@@ -350,7 +364,19 @@ export function createCollabRegistry(opts: {
         }, EMPTY_ROOM_GRACE_MS),
       );
     },
-    onFlush: (path) => persist(path),
+    onFlush: (path, flush) => {
+      const named = flush?.baseHash;
+      // A base that names no bytes is not one: the save keeps the room's own.
+      return named === null || isContentHash(named)
+        ? persist(path, undefined, { baseHash: named })
+        : persist(path);
+    },
+    /* Take the disk's copy (§6.1): the room's unsaved edits go, and every participant reopens it
+       seeded from the file. */
+    onRevert: (path) => {
+      pendingPersist.delete(path);
+      host.resetDoc(path);
+    },
     onSourceChange: (path) => {
       // No write-back: edits reach disk only on explicit flush (or graceful shutdown). The host
       // Owns the dirty broadcast; we just note the path for the shutdown worklist.
@@ -375,7 +401,8 @@ export function createCollabRegistry(opts: {
 
   /**
    * Follow the host's index (§11.3): a rename moves a room, a removal closes it, and a change that
-   * is not the room's own save reseeds it, unless it left the bytes the room already holds.
+   * is not the room's own save reseeds it, unless it left the bytes the room already holds or the
+   * room holds unsaved edits, which it keeps as a conflict (§6.1).
    */
   const apply = async (root: string, event: ProjectEvent): Promise<void> => {
     if (event.type === "fileRenamed") {
@@ -417,10 +444,19 @@ export function createCollabRegistry(opts: {
       return;
     }
     const source = host.sourceOf(key);
-    if (source !== null && (await contentHash(source)) === event.hash) {
+    const held = source === null ? null : await contentHash(source);
+    if (held === event.hash) {
       room.base = event.hash;
       pendingPersist.delete(key);
       host.markPersisted(key);
+      return;
+    }
+    if (held !== null && held !== room.base) {
+      /* The room holds unsaved edits, and the file changed under them: its buffer is conflicted
+         (§6.1). Reseeding it would drop those edits while every participant's tab still showed
+         them, so it keeps them and its base, and every participant is told now, as a refused save
+         would tell them. Its next save is refused until a participant chooses whose bytes win. */
+      host.conflict(key, { diskHash: event.hash, docId: event.docId });
       return;
     }
     host.resetDoc(key);

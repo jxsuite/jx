@@ -730,6 +730,22 @@ describe("comparisons", () => {
     expect(shell.git.diffState).toBeNull();
   });
 
+  test("a comparison with the copy on disk outlives a refresh, and a save of its file ends it", async () => {
+    withFiles({ "pages/index.json": "fresh" });
+    const disk = {
+      currentContent: "mine",
+      filePath: "pages/index.json",
+      fileStatus: "disk",
+      originalContent: "theirs",
+    };
+    shell.git.diffState = { ...disk };
+    await sc.refreshGitStatus();
+    expect(shell.git.diffState).toEqual(disk);
+    shell.git.loading = true;
+    await sc.noteFileSaved("pages/index.json");
+    expect(shell.git.diffState).toBeNull();
+  });
+
   test("a refresh whose re-read fails keeps the comparison", async () => {
     withFiles({});
     shell.git.diffState = {

@@ -53,6 +53,11 @@ export function loadComponentRegistry(): Promise<void> {
   return scan;
 }
 
+/** The project file that defines the custom element `tag`, if the registry has one. */
+export function componentPathOf(tag: string): string | undefined {
+  return componentRegistry.find((entry) => entry.tagName === tag)?.path;
+}
+
 /**
  * Bring the registry up to date with a document that was just saved.
  *

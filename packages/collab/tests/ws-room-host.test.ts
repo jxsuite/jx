@@ -266,3 +266,34 @@ describe("rooms keyed by document (keyOf)", () => {
     expect(opened.map((message) => message.epoch)).toEqual([0, 1]);
   });
 });
+
+describe("revert (project-state.md §6.1)", () => {
+  test("goes through the embedder's onRevert, for a path the connection opened", async () => {
+    const reverted: string[] = [];
+    const host = createCollabHost({
+      keyOf: () => "doc:1",
+      loadSource: () => Promise.resolve("# A\n"),
+      onRevert: (key) => {
+        reverted.push(key);
+      },
+    });
+    cleanups.push(() => host.destroy());
+    const { frames, socket } = recordingSocket();
+    const conn = host.connect(socket, IDENTITY);
+    conn.handleMessage(encodeFrame({ message: { path: "a.md", type: "open" }, type: "control" }));
+    await settle();
+    conn.handleMessage(encodeFrame({ message: { path: "a.md", type: "revert" }, type: "control" }));
+    // A path it never opened names no room of its: acknowledged, nothing reverted.
+    conn.handleMessage(encodeFrame({ message: { path: "b.md", type: "revert" }, type: "control" }));
+    await settle();
+    expect(reverted).toEqual(["doc:1"]);
+    expect(
+      controls(frames)
+        .filter((message) => message.type === "revert-ack")
+        .map((message) => message.path)
+        .toSorted(),
+    ).toEqual(["a.md", "b.md"]);
+    // The embedder decides: this one kept the room.
+    expect(host.sourceOf("doc:1")).toBe("# A\n");
+  });
+});

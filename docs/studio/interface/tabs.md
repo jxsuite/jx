@@ -2,6 +2,7 @@
 title: "Documents and panes"
 description: "How open documents work in Jx Studio: the pane's strip, labels, preview and pinned documents, explicit saving, two panes, and the pane's own bars."
 spec:
+  - studio.md#9.2
   - studio.md#9.4
   - studio.md#14
   - studio.md#14.7
@@ -9,6 +10,8 @@ spec:
 code:
   - packages/studio/src/panels/tab-strip.ts
   - packages/studio/src/files/file-ops.ts
+  - packages/studio/src/files/based-writes.ts
+  - packages/studio/src/project-state/buffer.ts
   - packages/studio/src/files/serialize-document.ts
   - packages/schema/src/json-layout.ts
   - packages/studio/src/commands/context.ts
@@ -81,6 +84,23 @@ Saving writes the file in place, in your project folder, as plain Markdown, JSON
 :::
 
 **A save keeps the file's layout.** A JSON document goes back to disk the way it was written: an object you kept on one line stays on one line while it fits, a blank line you left between two keys stays, and a character you spelled as an escape stays an escape. Studio reads those facts when it opens the file and honors them when it writes, so changing one value changes one line of the file, and a project kept in Prettier's or oxfmt's layout is still in it after a save. Something the edit created, a new element or a new object, is laid out the way the formatter would lay it out: a short array on one line, a new object opened up. A repeater written as an element's whole `children` is saved that way too, even though Studio edits it as the one member of a list, so a save never rewrites a list you did not touch. The Code view shows exactly the bytes a save writes, and a change you make there is saved in the layout you typed.
+
+### When the file changes on disk
+
+Another program, a script or a git checkout can change a file you have open. On the desktop app and the dev server, Studio notices:
+
+- A document with no unsaved changes shows the new version.
+- A document with unsaved changes keeps them, and [Problems](/docs/studio/interface/problems-and-progress) says the file changed on disk.
+
+Saving such a document asks first, before anything is written, and the question has three answers:
+
+- **Keep Mine** replaces the copy on disk with your version.
+- **Take Disk Copy** throws your edits away and shows the file as it is on disk.
+- **Compare** saves nothing and shows the document as a comparison: the copy **On Disk** beside **Your Unsaved Version**, so you can see what differs before you decide. Your edits stay in the document, and saving again asks the same question. Closing the question does the same.
+
+A save that finds the file changed since you opened it asks the same question. A document you are [co-editing](/docs/studio/publish/collaboration#syncing-is-not-saving) asks it too, about the session's shared edits. The notice in Problems goes away once you save, take the disk copy, close the document, or the file on disk goes back to what you opened.
+
+Studio's other changes to your files, such as a settings change, a new page, an uploaded image or a grid edit, also check that the file is still the one Studio last saw. If another program changed it in the meantime, Studio writes nothing and says so; try again once you have looked. Deleting a file from **Files** or the Library that changed since Studio last listed it deletes nothing and says why; delete it again once you have looked.
 
 ## Each document remembers its view
 

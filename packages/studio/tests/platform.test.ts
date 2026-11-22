@@ -8,7 +8,9 @@ import {
   launcherSignal,
   platformInFlight,
   registerPlatform,
+  routePlainWrites,
 } from "../src/platform";
+import type { PlainWriteRoute } from "../src/platform";
 import type { StudioPlatform } from "../src/types";
 
 const original = globalThis.__jxPlatform;
@@ -190,5 +192,61 @@ describe("call counting", () => {
     expect(api.gitClone).toBeUndefined();
     // The same read through a second getPlatform() call is the same proxy, not a fresh one.
     expect(getPlatform()).toBe(api);
+  });
+});
+
+describe("the plain-write route", () => {
+  test("writes, uploads and deletes reach an installed route with the raw adapter, and nothing else does", async () => {
+    const seen: string[] = [];
+    const adapter = fakeAdapter({
+      deleteFile: async (path) => {
+        seen.push(`adapter delete ${path}`);
+      },
+      readFile: async (path) => `read ${path}`,
+      uploadFile: async (path) => ({ path }),
+      writeFile: async (path) => {
+        seen.push(`adapter write ${path}`);
+      },
+    });
+    registerPlatform(adapter);
+    const route: PlainWriteRoute = {
+      deleteFile: async (raw, path) => {
+        seen.push(`route delete ${path} ${raw === adapter}`);
+      },
+      uploadFile: async (raw, path) => {
+        seen.push(`route upload ${path} ${raw === adapter}`);
+        return { path };
+      },
+      writeFile: async (raw, path, content) => {
+        seen.push(`route write ${path} ${content} ${raw === adapter}`);
+        await raw.writeFile(path, content);
+      },
+    };
+    const before = getPlatform().writeFile;
+    expect(routePlainWrites(route)).toBeNull();
+    try {
+      const platform = getPlatform();
+      // A new route is a new member, and the same one while it stays installed.
+      expect(platform.writeFile).not.toBe(before);
+      expect(platform.writeFile).toBe(platform.writeFile);
+      const writing = platform.writeFile("a.json", "{}");
+      // Counted in flight like any other call.
+      expect(platformInFlight()).toEqual(["writeFile"]);
+      await writing;
+      expect(await platform.uploadFile("b.png", new ArrayBuffer(1))).toEqual({ path: "b.png" });
+      await platform.deleteFile("c.json");
+      expect(await platform.readFile("d.json")).toBe("read d.json");
+    } finally {
+      expect(routePlainWrites(null)).toBe(route);
+    }
+    expect(seen).toEqual([
+      "route write a.json {} true",
+      "adapter write a.json",
+      "route upload b.png true",
+      "route delete c.json true",
+    ]);
+    // Removed, the adapter answers again.
+    await getPlatform().deleteFile("e.json");
+    expect(seen.at(-1)).toBe("adapter delete e.json");
   });
 });

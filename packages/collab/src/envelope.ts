@@ -50,10 +50,24 @@ export type ControlMessage =
   | { type: "opened"; path: string; epoch: number }
   /** Server → client: the doc's history was replaced; destroy the local Y.Doc and re-open. */
   | { type: "doc-reset"; path: string; epoch: number }
-  /** Client → server: persist this doc to durable storage now (Cmd+S). */
-  | { type: "flush"; path: string }
+  /**
+   * Client → server: persist this doc to durable storage now (Cmd+S). `baseHash`, when present,
+   * names the bytes the save replaces in place of the room's own base (`null`: nothing is there):
+   * the author chose to keep the room's edits over what is on disk now (`project-state.md` §6.1). A
+   * host that saves without a base ignores it.
+   */
+  | { type: "flush"; path: string; baseHash?: string | null }
   /** Server → client: the flush landed. */
   | { type: "flush-ack"; path: string }
+  /**
+   * Client → server: discard the room's unsaved edits and reseed it from storage
+   * (`project-state.md` §6.1, taking the disk's copy). The host answers every subscriber with
+   * `doc-reset`, then the requester with `revert-ack`. A read-only connection, or a path it has not
+   * opened, reverts nothing and is acknowledged all the same.
+   */
+  | { type: "revert"; path: string }
+  /** Server → client: the revert was handled. */
+  | { type: "revert-ack"; path: string }
   /**
    * Server → client: the room's unsaved-since-last-persist state changed (drives the Save
    * affordance). Room-level and authoritative: any peer's edit dirties the room for everyone; a

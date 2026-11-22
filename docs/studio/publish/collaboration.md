@@ -12,6 +12,7 @@ code:
   - packages/studio/src/collab/monaco-cursors.ts
   - packages/studio/src/collab/monaco-binding.ts
   - packages/server/src/collab.ts
+  - packages/studio/src/files/based-writes.ts
 ---
 
 # Real-time collaboration
@@ -63,7 +64,15 @@ Open the **[Command palette](/docs/studio/interface/commands)** and type `Collab
 
 Your edits reach your collaborators instantly, but the file on disk still changes only when someone saves. The explicit **Save** is unchanged. What _is_ shared is the unsaved state itself: the moment anyone edits, the file counts as unsaved for the whole session, and one person saving saves the shared result for everyone. Committing in **[Source control](/docs/studio/publish/source-control)** saves open co-edited files first, so a commit always captures what the session currently sees.
 
-A save never overwrites a change it has not seen. On the dev server, a session remembers the exact bytes it loaded or last saved, and its save is written only if the file on disk is still those bytes. A change made outside the session (another editor, a script, a git checkout) normally reaches it first and resets it onto the new content, as described under [Falling back to solo](#falling-back-to-solo). If a save lands before that change has reached the session, the save is refused instead: the disk keeps the other change, and the file stays unsaved for everyone in the session.
+A save never overwrites a change it has not seen. On the dev server, a session remembers the exact bytes it loaded or last saved, and its save is written only if the file on disk is still those bytes. When a change made outside the session (another editor, a script, a git checkout) reaches a session with no unsaved edits, the session resets onto the new content, as described under [Falling back to solo](#falling-back-to-solo). When the session has unsaved edits, it keeps them: the file stays unsaved for everyone in the session, and [Problems](/docs/studio/interface/problems-and-progress) says that the file changed on disk. A save that lands before the outside change has reached the session finds the same thing and writes nothing.
+
+Saving the session then asks first, with the same three answers as a document of your own (see [When the file changes on disk](/docs/studio/interface/tabs#when-the-file-changes-on-disk)):
+
+- **Keep Mine** saves the session's edits over the copy on disk.
+- **Take Disk Copy** throws the session's edits away for everyone in it, and every open copy of the file, the Code view included, shows it as it is on disk.
+- **Compare** saves nothing and shows what the session would save beside the copy on disk.
+
+The notice clears once the session saves, takes the disk copy, or you leave it.
 
 Renaming or moving a co-edited file inside the open project keeps the session. Everyone who had it open stays in it, opening it at its new path joins the same session with its unsaved edits, and the next save lands at the new path. Deleting the file ends the session.
 
@@ -87,7 +96,7 @@ Collaboration degrades, never blocks:
 - A backend running a **different version of the co-editing wire format** also gives you solo editing, rather than a session. Studio and the backend agree on a format before the connection opens, and when they can't, joining anyway would mean two copies of the document merging edits neither side reads the same way. Updating whichever side is older restores it.
 - If a session can't sync within a few seconds of opening, the tab proceeds solo and the pill reads **Not connected** with the reason on hover. This is deliberately not the same as **Solo**: **Solo** means nobody else is here, **Not connected** means something went wrong, and the two never wear the same word.
 - If the connection drops, the pill reads **`Offline — changes sync on reconnect`**: keep editing, and your changes merge when the connection returns.
-- If the file is replaced underneath the session (a git pull or discard, an outside edit), the session resets and rejoins on the new content automatically.
+- If the file is replaced underneath a session with no unsaved edits (a git pull or discard, an outside edit), the session resets and rejoins on the new content automatically. One with unsaved edits keeps them and asks when you save (see [Syncing is not saving](#syncing-is-not-saving)).
 
 ## Next
 

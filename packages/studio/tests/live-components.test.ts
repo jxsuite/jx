@@ -241,3 +241,31 @@ describe("evictPreview", () => {
     }
   });
 });
+
+describe("the dependents door", () => {
+  test("evicts each dependent and redefines each changed tag Studio did not just save", async () => {
+    h.files.set("components/site-card.json", JSON.stringify(card));
+    h.files.set("components/site-hero.json", JSON.stringify({ ...card, tagName: "site-hero" }));
+    const paths = new Map([
+      ["site-card", "components/site-card.json"],
+      ["site-hero", "components/site-hero.json"],
+    ]);
+    const lane = createLiveComponentLane({ ...h.deps, componentPath: (tag) => paths.get(tag) });
+    const results = await lane.dependentsInvalidated(
+      ["pages/index.json"],
+      ["site-card", "site-hero", "site-hero", "pkg-tag"],
+      (path) => path === "components/site-hero.json",
+    );
+    expect(results.map((result) => result?.tag)).toEqual(["site-card"]);
+    expect(h.evicted).toEqual(["pages/index.json", "components/site-card.json"]);
+    expect(h.redefined.map((entry) => entry.doc.tagName)).toEqual(["site-card"]);
+  });
+
+  test("without a registry lookup, only the dependents' previews go", async () => {
+    const lane = createLiveComponentLane(h.deps);
+    expect(await lane.dependentsInvalidated(["pages/a.json"], ["site-card"], () => false)).toEqual(
+      [],
+    );
+    expect(h.evicted).toEqual(["pages/a.json"]);
+  });
+});

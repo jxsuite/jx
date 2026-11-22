@@ -39,7 +39,7 @@ To open a component from an instance, right-click the instance and choose **Edit
 
 ## Edit a component and every instance follows
 
-Save a component and every open canvas redraws its instances with the new version at once: pages, layouts, and the specimens in the [Stylebook](/docs/studio/design/stylebook). Its card in the **Components** section redraws too. The same happens when the file changes outside Studio, for example from another editor, a `git pull` or an assistant, unless you have the component open with unsaved changes. In that case your open copy wins, and saving it updates the canvases.
+Save a component and every open canvas redraws its instances with the new version at once: pages, layouts, and the specimens in the [Stylebook](/docs/studio/design/stylebook). Its card in the **Components** section redraws too. The same happens when the file changes outside Studio, for example from another editor, a `git pull` or an assistant, unless you have the component open with unsaved changes. In that case your open copy wins, and saving it updates the canvases. On the desktop app and the development server, the Library's previews of the pages that use a changed component are drawn again too.
 
 ## Props: the component's options
 

@@ -38,7 +38,7 @@ import { reportPopoverProblems } from "../services/popover-report";
 import { getPlatform } from "../platform";
 import { getGridController } from "../grid/grid-controller";
 import { activeTab, openTab } from "../workspace/workspace";
-import { collabReadOnly, collabSave } from "../collab/collab-session";
+import { collabReadOnly } from "../collab/collab-session";
 import type { CollabParser } from "../collab/collab-session";
 import { flushCanvasEdits } from "../canvas/iframe-host";
 import { flushPreviewOverlay } from "../preview/preview-overlay";
@@ -55,7 +55,9 @@ import {
 import type { StudioFormat } from "../format/format-host";
 import type { Tab } from "../tabs/tab.js";
 import { isFileTab } from "../tabs/tab";
-import { markLocalMutation } from "./fs-events";
+import { markLocalWrite, noteLocalWrite } from "./fs-events";
+import { saveCoEdited, saveWithBase, writesWithBase } from "./based-writes";
+import { noteBufferRead } from "../project-state/buffer";
 import { mediaTypeEssence } from "@jxsuite/schema/media-type";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -181,7 +183,7 @@ export async function openFile() {
       const format = formatForPath(name);
       if (format) {
         const { document, frontmatter } = await parseFormatSource(format, text);
-        openTab({
+        const tab = openTab({
           document,
           documentPath,
           fileHandle: handle,
@@ -190,11 +192,18 @@ export async function openFile() {
           source: text,
           sourceFormat: format.name,
         });
+        // A project file's bytes just read are its buffer's base (`project-state.md` §6.1).
+        if (documentPath) {
+          void noteBufferRead(tab, text, documentPath);
+        }
       } else if (name.endsWith(".json")) {
         // The layout travels with the document so a save writes the file back the way it was laid
         // Out (`json-layout.ts`), not the way `JSON.stringify` would lay it.
         const { document, layout } = parseJsonDocument(text);
-        openTab({ document, documentPath, fileHandle: handle, id: name, layout });
+        const tab = openTab({ document, documentPath, fileHandle: handle, id: name, layout });
+        if (documentPath) {
+          void noteBufferRead(tab, text, documentPath);
+        }
       } else {
         throw noFormatError(name);
       }
@@ -391,17 +400,37 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
     return !tab.doc.dirty;
   }
   try {
-    // A co-edited tab persists through its provider (a direct file write would reset the room).
-    if (await collabSave(tab)) {
-      reportSaved(tab);
-      return true;
+    /* A co-edited tab persists through its provider (a direct file write would reset the room), and a
+       room whose file changed under its unsaved edits asks the author first (§6.1). */
+    if (tab.documentPath) {
+      const room = await saveCoEdited(tab, tab.documentPath);
+      if (room !== null) {
+        if (room) {
+          reportSaved(tab);
+        }
+        return room;
+      }
     }
     const output = await serializeDocument(tab);
 
     if (tab.documentPath) {
       const platform = getPlatform();
-      await platform.writeFile(tab.documentPath, output);
-      tab.doc.dirty = false;
+      if (writesWithBase(platform)) {
+        /* Against the tab's base (`project-state.md` §6.1): a file another writer changed is a
+           conflict the author resolves before anything is written, and the save's echo is
+           recognised by its write id. */
+        if (!(await saveWithBase(tab, tab.documentPath, output))) {
+          return false;
+        }
+      } else {
+        /* The save's own echo reloads nothing: with a project state subscription it is recognised
+           by its bytes (§9.2). Without one the save is unmarked, as it always was. */
+        noteLocalWrite(tab.documentPath, output);
+        await platform.writeFile(tab.documentPath, output);
+        tab.doc.dirty = false;
+        // The bytes just written are the buffer's base now.
+        void noteBufferRead(tab, output, tab.documentPath);
+      }
       if (tab.doc.sourceFormat !== null) {
         tab.doc.source = output;
       }
@@ -530,7 +559,7 @@ export async function uploadFile(tab: Tab): Promise<void> {
   }
   try {
     const text = await file.text();
-    markLocalMutation(path);
+    markLocalWrite(path, text);
     await getPlatform().writeFile(path, text);
     tab.doc.dirty = false;
     const grid = getGridController(tab);

@@ -321,6 +321,87 @@ describe("a room keyed by document (§11.3)", () => {
     await until(() => seen.count === 1);
   });
 
+  test("a change under unsaved edits keeps them as a conflict until a participant chooses", async () => {
+    await events.start();
+    const a = await open("site/pages/a.md");
+    const b = await open("site/pages/a.md");
+    const seen = resets(a);
+    const conflicts: CollabConflict[] = [];
+    a.onConflict!((conflict) => conflicts.push(conflict));
+    b.onConflict!((conflict) => conflicts.push(conflict));
+    let dirty = false;
+    a.onDirty((now) => {
+      dirty = now;
+    });
+    await edit(a, "# A\n\nmine\n");
+    // Another program rewrites the file while the room holds unsaved edits.
+    writeFileSync(join(project, "pages/a.md"), "# theirs\n");
+    const theirs = await contentHash("# theirs\n");
+    emit({
+      docId: "d1",
+      hash: theirs,
+      origin: "external",
+      path: "pages/a.md",
+      type: "fileChanged",
+    });
+    await until(() => conflicts.length === 2);
+    // The room keeps the edits and stays dirty: nothing reseeded it, and every participant knows.
+    expect(conflicts[0]).toEqual({ diskHash: theirs, docId: "d1" });
+    expect(seen.count).toBe(0);
+    expect(dirty).toBe(true);
+    expect(sourceText(b.doc).toString()).toBe("# A\n\nmine\n");
+    // A plain save is refused: the room's base is still the bytes it loaded.
+    await a.flush();
+    await until(() => conflicts.length === 4);
+    expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe("# theirs\n");
+    // Keep Mine names what is on disk now, and the room's edits land.
+    await a.flush({ baseHash: theirs });
+    await until(() => !dirty);
+    expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe("# A\n\nmine\n");
+    // The room's base moved with the save: the next one is not refused.
+    await edit(a, "# A\n\nagain\n");
+    await a.flush();
+    await until(() => !dirty);
+    expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe("# A\n\nagain\n");
+    expect(conflicts).toHaveLength(4);
+  });
+
+  test("a base that names no bytes is ignored, and one naming the room's own bytes saves nothing", async () => {
+    await events.start();
+    const a = await open("site/pages/a.md");
+    let dirty = false;
+    a.onDirty((now) => {
+      dirty = now;
+    });
+    await edit(a, "# A\n\nmine\n");
+    await a.flush({ baseHash: "not-a-hash" });
+    await until(() => !dirty);
+    expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe("# A\n\nmine\n");
+    const writes = hosts[0]!.writes.length;
+    // The room already holds what the named base is: it is persisted without a write.
+    await edit(a, ORIGINAL);
+    await a.flush({ baseHash: await contentHash(ORIGINAL) });
+    await until(() => !dirty);
+    expect(hosts[0]!.writes).toHaveLength(writes);
+  });
+
+  test("taking the disk's copy reverts the room for every participant", async () => {
+    await events.start();
+    const a = await open("site/pages/a.md");
+    const b = await open("site/pages/a.md");
+    const seenA = resets(a);
+    const seenB = resets(b);
+    await edit(a, "# A\n\nmine\n");
+    writeFileSync(join(project, "pages/a.md"), "# theirs\n");
+    await a.revert!();
+    await until(() => seenA.count === 1 && seenB.count === 1);
+    // Nothing is left to flush on shutdown, and the room reopens from the file.
+    const again = await open("site/pages/a.md");
+    expect(sourceText(again.doc).toString()).toBe("# theirs\n");
+    await registry.stop();
+    expect(hosts[0]!.writes).toEqual([]);
+  });
+
   test("a stale save is refused, leaves the disk, and reaches every participant", async () => {
     await events.start();
     const a = await open("site/pages/a.md");

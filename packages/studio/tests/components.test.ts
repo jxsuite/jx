@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   buildComponentInstance,
   componentRegistry,
+  componentPathOf,
   computeRelativePath,
   loadComponentRegistry,
   noteComponentSaved,
@@ -230,6 +231,12 @@ describe("noteComponentSaved", () => {
       { default: "", format: "image", name: "imageSrc" },
       { default: "", name: "title", type: "string" },
     ]);
+  });
+
+  test("a tag's definition path is read from the registry", async () => {
+    await seed();
+    expect(componentPathOf("mas-service-card")).toBe("components/mas-service-card.json");
+    expect(componentPathOf("mas-missing")).toBeUndefined();
   });
 
   test("a component saved for the first time joins the registry", async () => {

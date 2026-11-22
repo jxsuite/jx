@@ -163,8 +163,9 @@ describe("projectState", () => {
       expect(ended).toEqual(["e1"]);
       expect(errors.length).toBe(1);
       expect(received.at(-1)).toEqual({ method: "projectSubscribe", params: { clientId: "w" } });
-      // A listener without an `ended` hook ignores the end.
-      await platform.projectState.subscribe({}, { events: () => {} });
+      // A listener without an `ended` hook ignores the end; the `StudioPlatform` member is the same
+      // Subscribe.
+      await platform.subscribeProjectState({}, { events: () => {} });
       await until(() => errors.length > 1);
       expect(errors.length).toBe(2);
     } finally {
@@ -191,7 +192,8 @@ describe("projectState", () => {
         writeId: "w1",
       },
     });
-    await platform.projectState.write({
+    // The `StudioPlatform` member Studio saves through is the same write.
+    await platform.writeProjectState({
       baseHash: HASH,
       contents: "{}",
       path: "pages/text.json",
@@ -221,8 +223,9 @@ describe("projectState", () => {
         writeId: "d1",
       }),
     ).toEqual({ conflict: CONFLICT, ok: false });
+    // So is the delete Studio removes files through.
     expect(
-      await platform.projectState.delete({
+      await platform.deleteProjectState({
         base: { hash: HASH },
         path: "pages/b.json",
         writeId: "d2",

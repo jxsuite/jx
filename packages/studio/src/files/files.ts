@@ -44,7 +44,9 @@ import { projectState, requireProjectState } from "../store";
 import { canOpenProject, getPlatform } from "../platform";
 import { notify } from "../services/notify";
 import { maybePromptJxsuiteUpdate } from "../packages/jxsuite-update";
-import { markLocalMutation } from "./fs-events";
+import { markLocalMutation, markLocalWrite } from "./fs-events";
+import { noteBufferRead } from "../project-state/buffer";
+import { deletePath } from "./based-writes";
 import { notedListing } from "./asset-versions";
 import { ensureIgnoreLayers, isIgnoredEntry, resetIgnoreCache } from "./gitignore";
 import { SETTINGS } from "../services/settings/definitions";
@@ -1981,7 +1983,7 @@ export async function writeNewFile(
   opts: { dir?: string; source?: string; quiet?: boolean } = {},
 ): Promise<string | null> {
   const dir = opts.dir ?? (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ".");
-  markLocalMutation(path);
+  markLocalWrite(path, content);
   try {
     await getPlatform().writeFile(path, content);
     await loadDirectory(dir);
@@ -2291,9 +2293,9 @@ async function deleteFile(
     return;
   }
   try {
-    const platform = getPlatform();
     markLocalMutation(entry.path);
-    await platform.deleteFile(entry.path);
+    // Naming what it removes, once the host serves the contract (`project-state.md` §5).
+    await deletePath(entry.path);
     invalidateUsages();
     const delPath = entry.path.replaceAll("\\", "/");
     const parentDirPath = delPath.includes("/") ? delPath.slice(0, delPath.lastIndexOf("/")) : ".";
@@ -2486,7 +2488,7 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
     }
 
     const id = path;
-    openTab({
+    const tab = openTab({
       id,
       documentPath: path,
       document,
@@ -2499,6 +2501,8 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
       ...(opts.focus === false && { focus: false }),
       ...(opts.canvasMode !== undefined && { canvasMode: opts.canvasMode }),
     });
+    // The bytes just read are the buffer's base (`project-state.md` §6.1).
+    void noteBufferRead(tab, content, path);
     if (follows) {
       requireProjectState().selectedPath = path;
     }
@@ -2611,6 +2615,8 @@ export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: bool
           if (overtaken()) {
             return;
           }
+          // The tab holds these bytes from here, whether or not they parse to a new document.
+          void noteBufferRead(tab, content, path);
           if (
             opts.onlyIfChanged &&
             deepEqual(document, tab.doc.document) &&
@@ -2624,6 +2630,7 @@ export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: bool
         } else if (path.endsWith(".json")) {
           // The file changed under the tab, so its layout is whatever the new text says.
           const parsed = parseJsonDocument(content);
+          void noteBufferRead(tab, content, path);
           tab.doc.layout = parsed.layout;
           /* SAFETY: this tab was opened on this `.json` path as a Jx document, and the file's schema
              Makes its top-level object a node — the object `parseJsonDocument` states it returns. */

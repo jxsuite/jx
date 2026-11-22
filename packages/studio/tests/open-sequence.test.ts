@@ -128,7 +128,8 @@ describe("loadOpenedProject", () => {
   test("a project with its dependencies in place installs nothing and still resolves the registry", async () => {
     resetStudioState();
     const { order, platform } = freshStarter({ needsInstall: false });
-    resetProjectRegistries(platform);
+    // The host's `formatsChanged` calls it with no platform: the open project's own is used.
+    resetProjectRegistries();
     const loadDirectories = mock(async () => {});
     expect(await loadOpenedProject({ loadDirectories, platform })).toEqual({ installed: false });
     expect(loadDirectories).toHaveBeenCalledTimes(1);
@@ -221,6 +222,35 @@ describe("leaveProject", () => {
     expect(shell.stylebook.filter).toBe("");
     expect(resetProjectCaches).toHaveBeenCalledTimes(1);
     localStorage.removeItem(key);
+  });
+
+  test("the content store and its subscription are the project's, and leave with it", async () => {
+    resetStudioState();
+    const store = await import("../src/project-state/store");
+    const sync = await import("../src/project-state/subscription");
+    store.contentStore.put(
+      "pages/a.json",
+      "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "A",
+    );
+    const running = sync.startProjectStateSync({
+      subscribeProjectState: () => new Promise(() => {}),
+    });
+    expect(sync.projectStateTracksWrites()).toBe(true);
+    leaveProject();
+    expect(sync.projectStateTracksWrites()).toBe(false);
+    expect(running?.live).toBe(false);
+    store.contentStore.applyEvent({
+      docId: "d1",
+      hash: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      isDir: false,
+      origin: "external",
+      path: "pages/a.json",
+      rev: 1,
+      type: "fileAdded",
+    });
+    expect(store.contentStore.contentsAt("pages/a.json")).toBeUndefined();
+    store.contentStore.reset();
   });
 
   test("a door with no panel caches of its own leaves with no options", () => {

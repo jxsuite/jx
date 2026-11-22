@@ -195,6 +195,8 @@ describe("the canonical source lock", () => {
     );
     const stale = collabSourceContext(tab)!;
     const staleEntering = stale.enter();
+    // It first asks whether the shared text already holds the tab, so its serialization starts a turn later.
+    await settleCollab();
 
     // The author toggles Code view again while the first serialization is still in flight: a second
     // Mount takes the lock and gives it back.

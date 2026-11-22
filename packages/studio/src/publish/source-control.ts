@@ -36,6 +36,7 @@ import { PAGES_COLLECTION, collectionKeyOfPath } from "../content/content-collec
 import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-types";
 import { projectState } from "../store";
 import { shell } from "../shell";
+import { DISK_COMPARISON_STATUS } from "../panels/git-diff-open";
 import type { GitLogEntry } from "../shell";
 import { showConfirmDialog, showPromptDialog } from "../ui/layers";
 import { GIT_REFRESH_DEBOUNCE, POLL_GIT } from "../ui/timing";
@@ -243,7 +244,8 @@ export function scheduleGitRefresh(): void {
  */
 async function rereadOpenComparison(current: () => boolean): Promise<void> {
   const state = shell.git.diffState;
-  if (!state) {
+  // A comparison with the copy on disk is not one against `HEAD`, and a status says nothing of it.
+  if (!state || state.fileStatus === DISK_COMPARISON_STATUS) {
     return;
   }
   const change = shell.git.status?.files.find((file) => file.path === state.filePath);
@@ -279,6 +281,11 @@ export async function noteFileSaved(path: string | null): Promise<void> {
   requestGitRefresh();
   const state = shell.git.diffState;
   if (!path || state?.filePath !== path) {
+    return;
+  }
+  if (state.fileStatus === DISK_COMPARISON_STATUS) {
+    // The save chose between the two, so the comparison is over.
+    shell.git.diffState = null;
     return;
   }
   try {

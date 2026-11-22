@@ -48,8 +48,17 @@ export interface CollabHostOptions {
   keyOf?: (path: string) => string;
   /** A room's source text changed (debounce and persist in the embedder). */
   onSourceChange?: (key: string) => void;
-  /** A client asked to persist this room now; resolve when durable or refused. */
-  onFlush?: (key: string) => Promise<void> | void;
+  /**
+   * A client asked to persist this room now; resolve when durable or refused. `baseHash`, when the
+   * client named one, is the base the save replaces in place of the room's own (`flush`).
+   */
+  onFlush?: (key: string, options?: { baseHash?: string | null }) => Promise<void> | void;
+  /**
+   * A client with write access asked to discard the room's unsaved edits (`revert`). The embedder
+   * drops whatever it holds for the room and calls {@link CollabHost.resetDoc}; without this
+   * callback the host resets the room itself.
+   */
+  onRevert?: (key: string) => Promise<void> | void;
   /** The last subscriber left a room (schedule teardown in the embedder). */
   onEmpty?: (key: string) => void;
 }
@@ -370,7 +379,7 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
     }
   };
 
-  return {
+  const host: CollabHost = {
     connect(socket, identity) {
       const conn: InternalConnection = {
         close: () => {
@@ -424,11 +433,24 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
               } else if (message.type === "flush") {
                 // A path this connection has not opened names no room of its: nothing to save.
                 const key = conn.subscribed.get(message.path);
+                const { baseHash } = message;
                 void (async () => {
                   if (key !== undefined) {
-                    await options.onFlush?.(key);
+                    await (baseHash === undefined
+                      ? options.onFlush?.(key)
+                      : options.onFlush?.(key, { baseHash }));
                   }
                   sendControl(conn, { path: message.path, type: "flush-ack" });
+                })();
+              } else if (message.type === "revert") {
+                const key = conn.subscribed.get(message.path);
+                // Discarding everyone's edits is a write: a read-only peer reverts nothing.
+                const allowed = key !== undefined && conn.identity.permission !== "read";
+                void (async () => {
+                  if (allowed) {
+                    await (options.onRevert ? options.onRevert(key) : host.resetDoc(key));
+                  }
+                  sendControl(conn, { path: message.path, type: "revert-ack" });
                 })();
               }
               return;
@@ -554,4 +576,5 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
       return rooms.get(key)?.subscribers.size ?? 0;
     },
   };
+  return host;
 }

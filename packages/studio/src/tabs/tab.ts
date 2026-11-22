@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { effectScope, reactive } from "../reactivity";
+import { effectScope, reactive, toRaw } from "../reactivity";
 import { formatByName, formatForPath } from "../format/format-host";
 import type { FormatFrontmatter } from "../format/format-host";
 import { normalizeDocument } from "./bare-repeaters";
@@ -15,6 +15,7 @@ import type { JxDocOp, JxFmOp } from "./patch-ops";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import { NEW_PROJECT_FILE_NAME, isProjectConfigPath } from "@jxsuite/schema/project-file";
 import type { ProjectFileName } from "@jxsuite/schema/project-file";
+import type { BufferState } from "@jxsuite/protocol/project-state";
 
 /** Which file the open project is declared by: `project.jxn` or `project.json`. */
 let projectFileName: ProjectFileName = NEW_PROJECT_FILE_NAME;
@@ -287,7 +288,19 @@ export interface Tab {
     mode: string;
     sourceFormat: string | null;
     handlersSource: string | null;
+    /**
+     * Whether the buffer holds edits its file does not: `buffer.bufferRev !== buffer.savedRev`, the
+     * first half of `bufferStatus` (`project-state.md` §6.1). An ACCESSOR over {@link buffer}, so
+     * every writer keeps its one-word spelling: setting it `true` is an edit and moves `bufferRev`,
+     * and setting it `false` says the buffer now matches its base and moves `savedRev` to it.
+     */
     dirty: boolean;
+    /**
+     * The unsaved buffer against the bytes it was read from (`project-state.md` §6.1): `baseHash`,
+     * `diskHash`, `bufferRev` and `savedRev`. Its status is derived (`project-state/buffer.ts`'s
+     * `tabBufferStatus`), never stored, and a co-edited tab reads its room's instead.
+     */
+    buffer: BufferState;
     /**
      * The layout the document's JSON file was written in (`@jxsuite/schema/json-layout`), or null
      * for a document with no JSON source — a format-class file, a new document, a stub.
@@ -521,8 +534,23 @@ export function createTab({
 
   const doc: Tab["doc"] = {
     bareRepeaters,
+    buffer: { baseHash: null, bufferRev: 0, diskHash: null, savedRev: 0 },
     content: { frontmatter: frontmatter || {} },
-    dirty: false,
+    /* Read from the RAW buffer, so a reader of `dirty` tracks `dirty` alone and re-runs when it
+       flips, as it did when this was a field: the proxy's set trap triggers `dirty` only when its
+       value changes, and a revision bump on every keystroke must not re-run every reader of it.
+       Written through the proxy, so a reader of the buffer itself sees the revisions move. */
+    get dirty(): boolean {
+      const { buffer } = toRaw(this);
+      return buffer.bufferRev !== buffer.savedRev;
+    },
+    set dirty(value: boolean) {
+      if (value) {
+        this.buffer.bufferRev += 1;
+      } else {
+        this.buffer.savedRev = this.buffer.bufferRev;
+      }
+    },
     document,
     handlersSource: null,
     layout,

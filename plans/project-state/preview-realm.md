@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - project-state.md#11.2
-requires:
-  - project-state/client-store
+requires: []
 workspaces:
   - packages/studio
 size: M

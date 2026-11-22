@@ -27,7 +27,7 @@ import { notify } from "../services/notify";
 import { invalidateUsages } from "../services/references";
 import { activeTab } from "../workspace/workspace";
 import { forgetVersions, noteLocalWrite, notedListing } from "./asset-versions";
-import { markLocalMutation } from "./fs-events";
+import { markLocalWrite } from "./fs-events";
 import { canHoldMediaRecord, carryMediaRecord, forgetMediaRecord } from "./media-record";
 import { renameRefusal } from "./new-file-name";
 import { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, extensionOf, mediaKind } from "./media-types";
@@ -570,7 +570,7 @@ export async function replaceAsset(
   /* The file's alt text and tags describe the picture, not these bytes: where the new file has none
      of its own (a canvas re-encode never does), the old file's are written into it (§22.6). */
   const upload = opts.carry === false ? file : await withCarriedRecord(path, file);
-  markLocalMutation(path);
+  markLocalWrite(path, upload);
   let written: string;
   try {
     ({ path: written } = await getPlatform().uploadFile(path, upload));

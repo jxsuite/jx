@@ -5,17 +5,27 @@ import { jsonClone } from "../src/utils/studio-utils";
 import { activateTab, closeAllTabs, closeTab, openTab } from "../src/workspace/workspace";
 import {
   collabSave,
+  collabSessionOf,
+  collabSourceContext,
+  configureCollabParser,
+  configureCollabReloader,
   configureCollabSerializer,
+  onCollabSessionChange,
   resetCollabForTests,
+  revertRoom,
+  roomSource,
+  saveRoom,
+  savesThroughRoom,
   setCollabEnabled,
 } from "../src/collab/collab-session";
 import { collabState, isCollabActive, isCollabPath } from "../src/collab/collab-state";
+import { tabBufferStatus } from "../src/project-state/buffer";
 import { createGridController } from "../src/grid/grid-controller";
 import type { GridEditBatch, GridSource } from "../src/grid/grid-source";
 import { reloadCleanTab } from "../src/files/files";
 import { saveFile } from "../src/files/file-ops";
 import { getHistoryDelegate, mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
-import { seedStructure, yDocToJson } from "@jxsuite/collab";
+import { seedStructure, sourceText, yDocToJson } from "@jxsuite/collab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { afterEach, describe, expect, test } from "bun:test";
 
@@ -88,6 +98,23 @@ describe("session attach", () => {
     // A save by any collaborator clears the room for everyone.
     hub.setDirty(PATH, false);
     expect(tab.doc.dirty).toBe(false);
+  });
+
+  test("a refused save of the room conflicts the tab until the room saves or the session ends", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    await settleCollab();
+    hub.setDirty(PATH, true);
+    hub.conflict(PATH, { diskHash: "h-theirs", docId: "d1" });
+    expect(tabBufferStatus(tab)).toBe("conflicted");
+    // The room saved: the refusal no longer stands.
+    hub.setDirty(PATH, false);
+    expect(tabBufferStatus(tab)).toBe("clean");
+
+    hub.setDirty(PATH, true);
+    hub.conflict(PATH, { diskHash: "h-theirs", docId: "d1" });
+    setCollabEnabled(tab, false);
+    expect(collabState(tab).conflicted).toBe(false);
   });
 
   test("a second client adopts the already-seeded shared tree", async () => {
@@ -209,6 +236,75 @@ describe("session lifecycle", () => {
     expect(yDocToJson(hub.serverDoc(PATH))).toEqual(HELLO_DOC);
   });
 
+  test("a reset room's tab re-reads its file before it joins the fresh room", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    await settleCollab();
+    const reads: string[] = [];
+    configureCollabReloader((path) => {
+      reads.push(path);
+      // The file as the fresh room reseeds from it.
+      tab.doc.document = { tagName: "section" };
+      tab.doc.dirty = false;
+      return Promise.resolve();
+    });
+    hub.setDirty(PATH, true);
+    hub.reset(PATH);
+    await settleCollab();
+    expect(reads).toEqual([PATH]);
+    expect(collabState(tab).active).toBe(true);
+    // The fresh room's structure is the file's, not the edits the old room held.
+    expect(yDocToJson(hub.serverDoc(PATH))).toEqual({ tagName: "section" });
+    expect(tab.doc.dirty).toBe(false);
+  });
+
+  test("a reset is announced as the session ending and the fresh one starting", async () => {
+    const hub = createMockCollabHub();
+    const heard: string[] = [];
+    const stop = onCollabSessionChange((t) => {
+      heard.push(collabSessionOf(t) === null ? "ended" : "started");
+    });
+    const tab = openCollabTab(hub);
+    await settleCollab();
+    const first = collabSessionOf(tab);
+    expect(first).not.toBeNull();
+    hub.reset(PATH);
+    await settleCollab();
+    stop();
+    expect(heard).toEqual(["started", "ended", "started"]);
+    const fresh = collabSessionOf(tab);
+    expect(fresh).not.toBeNull();
+    expect(fresh).not.toBe(first);
+    // Stopped listening: a further change is not heard.
+    hub.reset(PATH);
+    await settleCollab();
+    expect(heard).toHaveLength(3);
+  });
+
+  test("a reload that fails still rejoins; a tab that left meanwhile stays out", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    await settleCollab();
+    configureCollabReloader(() => Promise.reject(new Error("gone")));
+    hub.reset(PATH);
+    await settleCollab();
+    expect(collabState(tab).active).toBe(true);
+
+    let release: () => void = () => {};
+    configureCollabReloader(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    hub.reset(PATH);
+    setCollabEnabled(tab, false);
+    release();
+    await settleCollab();
+    expect(collabState(tab).active).toBe(false);
+    expect(hub.connectionCount(PATH)).toBe(0);
+  });
+
   test("offline status surfaces on the tab state", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
@@ -321,5 +417,91 @@ describe("file plumbing guards", () => {
     const source = hub.serverDoc(PATH).getText("source").toString();
     expect(source).toContain("Mirrored");
     expect(hub.flushes).toEqual([PATH]);
+  });
+});
+
+describe("saving, comparing and reverting the room (project-state.md §6.1)", () => {
+  test("a tab with no writable session has no room to save, compare or revert", async () => {
+    installMockPlatform();
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    expect(savesThroughRoom(tab)).toBe(false);
+    expect(await saveRoom(tab)).toBeNull();
+    expect(await roomSource(tab)).toBeNull();
+    expect(await revertRoom(tab)).toBe(false);
+  });
+
+  test("a save reports a refusal, and one that lands takes the conflict down", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
+    await settleCollab();
+    hub.setDirty(PATH, true);
+    hub.onFlush = (path) => {
+      hub.conflict(path, { diskHash: null, docId: null });
+    };
+    expect(await saveRoom(tab)).toBe("refused");
+    expect(tabBufferStatus(tab)).toBe("conflicted");
+    // A refusal naming no bytes the client can name leaves nothing to keep against but absence.
+    hub.conflict(PATH, { diskHash: "not-a-hash", docId: null });
+    expect(collabState(tab).conflictDiskHash).toBeNull();
+    hub.onFlush = null;
+    expect(await saveRoom(tab, { baseHash: null })).toBe("saved");
+    expect(hub.flushOptions.at(-1)).toEqual({ baseHash: null });
+    expect(collabState(tab).conflicted).toBe(false);
+    expect(await roomSource(tab)).toBe(JSON.stringify(HELLO_DOC));
+  });
+
+  test("a provider that cannot revert discards nothing", async () => {
+    const hub = createMockCollabHub();
+    installMockPlatform({
+      collab: async (path) => {
+        const handle = await hub.capability(path);
+        if (handle) {
+          delete handle.revert;
+        }
+        return handle;
+      },
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    expect(savesThroughRoom(tab)).toBe(true);
+    expect(await revertRoom(tab)).toBe(false);
+    expect(hub.reverts).toEqual([]);
+  });
+
+  test("a shared text that parses to the tab, frontmatter included, is never rewritten", async () => {
+    const FILE = '---\ntitle: Kept\n---\n{ "tagName": "div" }\n';
+    const hub = createMockCollabHub({ source: () => FILE });
+    installMockPlatform({ collab: hub.capability });
+    const tab = openTab({
+      document: { tagName: "div" },
+      documentPath: PATH,
+      frontmatter: { title: "Kept" },
+      id: PATH,
+    });
+    configureCollabSerializer(() => Promise.resolve("REFORMATTED"));
+    const parse = (text: string) => {
+      const [, head = "", body = text] = /^---\ntitle: (.*)\n---\n([\s\S]*)$/.exec(text) ?? [];
+      return { document: JSON.parse(body), frontmatter: { title: head } };
+    };
+    configureCollabParser((_t, text) => Promise.resolve(parse(text)));
+    await settleCollab();
+    expect(await roomSource(tab)).toBe(FILE);
+
+    // Frontmatter the text does not say is a reason to write it from the tab.
+    tab.doc.content.frontmatter.title = "Moved";
+    expect(await roomSource(tab)).toBe("REFORMATTED");
+
+    // A text that will not parse says nothing about the tab either.
+    configureCollabParser(() => Promise.reject(new Error("unparseable")));
+    configureCollabSerializer(() => Promise.resolve("AGAIN"));
+    expect(await roomSource(tab)).toBe("AGAIN");
+
+    // The Code view's lock, with nothing to serialize either: the text it already has is kept.
+    configureCollabSerializer(() => Promise.reject(new Error("no serializer")));
+    await collabSourceContext(tab)!.enter();
+    await settleCollab();
+    expect(collabState(tab).sourceCanonical).toBe(true);
+    expect(sourceText(hub.serverDoc(PATH)).toString()).toBe("AGAIN");
   });
 });

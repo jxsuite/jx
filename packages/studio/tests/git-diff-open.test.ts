@@ -9,7 +9,8 @@
 import "./harness";
 import { describe, expect, test } from "bun:test";
 
-const { canRenderComparison, comparisonRefusal } = await import("../src/panels/git-diff-open");
+const { canRenderComparison, comparisonRefusal, comparisonSideLabels, DISK_COMPARISON_STATUS } =
+  await import("../src/panels/git-diff-open");
 
 describe("canRenderComparison", () => {
   test("a .json document and a format-backed one have a visual half", () => {
@@ -72,5 +73,15 @@ describe("files outside the project", () => {
   test("a path merely containing dots is fine", () => {
     expect(comparisonRefusal("pages/my..page.json", "M")).toBeNull();
     expect(comparisonRefusal("a/b/c.json", "M")).toBeNull();
+  });
+});
+
+describe("comparisonSideLabels", () => {
+  test("a comparison against HEAD is Original and Current; one with the disk names both sides", () => {
+    expect(comparisonSideLabels("M")).toEqual({ current: "Current", original: "Original" });
+    expect(comparisonSideLabels(DISK_COMPARISON_STATUS)).toEqual({
+      current: "Your Unsaved Version",
+      original: "On Disk",
+    });
   });
 });

@@ -350,6 +350,96 @@ export function createDevServerPlatform() {
     return p.startsWith(`${_projectRoot}/`) ? p.slice(_projectRoot.length + 1) : p;
   }
 
+  /**
+   * The project state service (`project-state.md` §3.2, §5): the dev server's event stream, and the
+   * writes and deletes that name their base. The same client shape the desktop adapter exposes; its
+   * subscribe is also the adapter's `subscribeProjectState`. A server that predates the stream
+   * answers its subscribe with a 404, and the client keeps the resync reasons of `studio.md` §9.2.
+   */
+  const projectState = {
+    /**
+     * Subscribe, and hand every later frame to `listener` until the next subscribe replaces it. The
+     * cursor travels as `Last-Event-ID`, exactly as an `EventSource` reconnecting sends it;
+     * `listener.ended` reports the stream closing (a restart, another project activated, a reader
+     * that fell behind), after which the client subscribes again with its cursor.
+     */
+    async subscribe(
+      request: SubscribeRequest,
+      listener: ProjectStateListener,
+    ): Promise<SubscribeResponse> {
+      _projectStream?.abort();
+      const stream = new AbortController();
+      _projectStream = stream;
+      // The stream serves the server's active project, which must be this tab's first.
+      await _activation;
+      const cursor =
+        request.epoch !== undefined && request.sinceRev !== undefined
+          ? { "Last-Event-ID": formatEventId(request.epoch, request.sinceRev) }
+          : {};
+      // The project the stream must serve: another tab activating its own is refused, not served.
+      const query = new URLSearchParams();
+      if (request.clientId) {
+        query.set(PROJECT_CLIENT_PARAM, request.clientId);
+      }
+      if (_projectRoot) {
+        query.set(PROJECT_ROOT_PARAM, _projectRoot);
+      }
+      const search = query.size > 0 ? `?${query}` : "";
+      const res = await fetch(`${PROJECT_EVENTS_PATH}${search}`, {
+        headers: { Accept: "text/event-stream", ...cursor },
+        signal: stream.signal,
+      });
+      if (!res.ok || res.body === null) {
+        if (_projectStream === stream) {
+          _projectStream = null;
+        }
+        throw new Error(`The project stream is unavailable (${res.status}).`);
+      }
+      return readProjectStream(res.body, () => _projectStream === stream, listener);
+    },
+    /** A write naming the bytes it replaces; a stale base answers its conflict. */
+    async write(write: WriteRequest): Promise<WriteResult> {
+      await _activation;
+      const res = await fetch(`/__studio/file?path=${encodeURIComponent(serverPath(write.path))}`, {
+        body: writeBody(write.contents),
+        headers: {
+          ...writePreconditionHeaders(write.baseHash),
+          ...writeIdentityHeaders(write),
+        },
+        method: "PUT",
+      });
+      if (!res.ok) {
+        return {
+          conflict: await conflictOrThrow(res, `Failed to write ${write.path}`),
+          ok: false,
+        };
+      }
+      const done = await readJson<ProjectWriteReply>(res);
+      return { hash: done.hash, ok: true, rev: done.rev };
+    },
+    /** A delete naming what it removes; a stale base answers its conflict. */
+    async delete(remove: DeleteRequest): Promise<DeleteResult> {
+      await _activation;
+      const precondition = deletePrecondition(remove.base);
+      const res = await fetch(
+        `/__studio/file?path=${encodeURIComponent(serverPath(remove.path))}`,
+        {
+          ...(precondition.body !== undefined && { body: precondition.body }),
+          headers: { ...precondition.headers, ...writeIdentityHeaders(remove) },
+          method: "DELETE",
+        },
+      );
+      if (!res.ok) {
+        return {
+          conflict: await conflictOrThrow(res, `Failed to delete ${remove.path}`),
+          ok: false,
+        };
+      }
+      const done = await readJson<ProjectWriteReply>(res);
+      return { ok: true, rev: done.rev };
+    },
+  } satisfies ProjectStateClient;
+
   return {
     id: "devserver",
 
@@ -692,99 +782,18 @@ export function createDevServerPlatform() {
       return connection.openDoc(serverPath(docPath));
     },
 
+    projectState,
+
     /**
-     * The project state service (`project-state.md` §3.2, §5): the dev server's event stream, and
-     * the writes and deletes that name their base. The same client shape the desktop adapter
-     * exposes, and not a `StudioPlatform` member: Studio's content store is what will read it. A
-     * server that predates the stream answers its subscribe with a 404, and the client keeps the
-     * resync reasons of `studio.md` §9.2.
+     * The subscribe half of {@link projectState}, as the `StudioPlatform` member Studio's content
+     * store reads (`studio.md` §3.4). The reload stream's file events and resync reasons stay
+     * beside it.
      */
-    projectState: {
-      /**
-       * Subscribe, and hand every later frame to `listener` until the next subscribe replaces it.
-       * The cursor travels as `Last-Event-ID`, exactly as an `EventSource` reconnecting sends it;
-       * `listener.ended` reports the stream closing (a restart, another project activated, a reader
-       * that fell behind), after which the client subscribes again with its cursor.
-       */
-      async subscribe(
-        request: SubscribeRequest,
-        listener: ProjectStateListener,
-      ): Promise<SubscribeResponse> {
-        _projectStream?.abort();
-        const stream = new AbortController();
-        _projectStream = stream;
-        // The stream serves the server's active project, which must be this tab's first.
-        await _activation;
-        const cursor =
-          request.epoch !== undefined && request.sinceRev !== undefined
-            ? { "Last-Event-ID": formatEventId(request.epoch, request.sinceRev) }
-            : {};
-        // The project the stream must serve: another tab activating its own is refused, not served.
-        const query = new URLSearchParams();
-        if (request.clientId) {
-          query.set(PROJECT_CLIENT_PARAM, request.clientId);
-        }
-        if (_projectRoot) {
-          query.set(PROJECT_ROOT_PARAM, _projectRoot);
-        }
-        const search = query.size > 0 ? `?${query}` : "";
-        const res = await fetch(`${PROJECT_EVENTS_PATH}${search}`, {
-          headers: { Accept: "text/event-stream", ...cursor },
-          signal: stream.signal,
-        });
-        if (!res.ok || res.body === null) {
-          if (_projectStream === stream) {
-            _projectStream = null;
-          }
-          throw new Error(`The project stream is unavailable (${res.status}).`);
-        }
-        return readProjectStream(res.body, () => _projectStream === stream, listener);
-      },
-      /** A write naming the bytes it replaces; a stale base answers its conflict. */
-      async write(write: WriteRequest): Promise<WriteResult> {
-        await _activation;
-        const res = await fetch(
-          `/__studio/file?path=${encodeURIComponent(serverPath(write.path))}`,
-          {
-            body: writeBody(write.contents),
-            headers: {
-              ...writePreconditionHeaders(write.baseHash),
-              ...writeIdentityHeaders(write),
-            },
-            method: "PUT",
-          },
-        );
-        if (!res.ok) {
-          return {
-            conflict: await conflictOrThrow(res, `Failed to write ${write.path}`),
-            ok: false,
-          };
-        }
-        const done = await readJson<ProjectWriteReply>(res);
-        return { hash: done.hash, ok: true, rev: done.rev };
-      },
-      /** A delete naming what it removes; a stale base answers its conflict. */
-      async delete(remove: DeleteRequest): Promise<DeleteResult> {
-        await _activation;
-        const precondition = deletePrecondition(remove.base);
-        const res = await fetch(
-          `/__studio/file?path=${encodeURIComponent(serverPath(remove.path))}`,
-          {
-            ...(precondition.body !== undefined && { body: precondition.body }),
-            headers: { ...precondition.headers, ...writeIdentityHeaders(remove) },
-            method: "DELETE",
-          },
-        );
-        if (!res.ok) {
-          return {
-            conflict: await conflictOrThrow(res, `Failed to delete ${remove.path}`),
-            ok: false,
-          };
-        }
-        const done = await readJson<ProjectWriteReply>(res);
-        return { ok: true, rev: done.rev };
-      },
-    } satisfies ProjectStateClient,
+    subscribeProjectState: projectState.subscribe,
+    /** The write half, with which Studio saves a tab against its base hash (§6.1). */
+    writeProjectState: projectState.write,
+    /** The delete half, with which Studio deletes what it last saw. */
+    deleteProjectState: projectState.delete,
 
     /** @param {string} _path */
     async createDirectory(_path: string) {

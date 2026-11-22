@@ -9,6 +9,7 @@ import { MODULE_PROBLEM_SOURCE } from "../src/services/module-report";
 import { problems, resetNotifications } from "../src/services/notify";
 import { isString } from "@jxsuite/schema/guards";
 import type { StudioPlatform } from "../src/types";
+import { contentHash } from "@jxsuite/protocol/project-state";
 
 beforeAll(() => {
   seedMarkdownFormat();
@@ -135,6 +136,36 @@ describe("openFile", () => {
     expect(tab!.doc.sourceFormat).toBe("Markdown");
     // The tab keeps the picker's own handle; the stub implements only what openFile reads.
     expect<FileSystemFileHandle | typeof mockHandle | null>(tab!.fileHandle).toEqual(mockHandle);
+  });
+
+  test("a picked file the project holds takes the bytes it was read from as its base", async () => {
+    registerPartialPlatform({
+      locateFile: async (name) => `pages/${name}`,
+      subscribeProjectState: async () => {
+        throw new Error("unused");
+      },
+    });
+    const json = JSON.stringify({ tagName: "div" });
+    const pick = (name: string, text: string) => {
+      const handle = { getFile: async () => ({ text: async () => text }), name };
+      Object.assign(window, { showOpenFilePicker: async () => [handle] });
+    };
+    const based = async (hash: string) => {
+      for (let i = 0; i < 50 && activeTab.value?.doc.buffer.baseHash !== hash; i += 1) {
+        await new Promise((resume) => {
+          setTimeout(resume, 0);
+        });
+      }
+    };
+    pick("picked.json", json);
+    await openFile();
+    await based(await contentHash(json));
+    expect(activeTab.value?.doc.buffer.baseHash).toBe(await contentHash(json));
+    pick("picked.md", "# Picked");
+    await openFile();
+    await based(await contentHash("# Picked"));
+    expect(activeTab.value?.documentPath).toBe("pages/picked.md");
+    expect(activeTab.value?.doc.buffer.baseHash).toBe(await contentHash("# Picked"));
   });
 
   test("a Markdown file saved through its handle is what the next save keeps the spelling of", async () => {

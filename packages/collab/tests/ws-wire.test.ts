@@ -98,6 +98,8 @@ interface Fixture {
   host: CollabHost;
   files: Map<string, string>;
   flushes: string[];
+  /** What each flush named besides its path, `undefined` for a plain one. */
+  flushOptions: ({ baseHash?: string | null } | undefined)[];
   emptied: string[];
   connect: (identity?: Partial<CollabIdentity>) => WsCollabConnection;
   sockets: LoopbackSocket[];
@@ -108,6 +110,7 @@ const cleanups: (() => void)[] = [];
 function fixture(): Fixture {
   const files = new Map<string, string>([["pages/index.json", `{"tagName":"div"}`]]);
   const flushes: string[] = [];
+  const flushOptions: Fixture["flushOptions"] = [];
   const emptied: string[] = [];
   const sockets: LoopbackSocket[] = [];
   const host = createCollabHost({
@@ -115,8 +118,9 @@ function fixture(): Fixture {
     onEmpty: (path) => {
       emptied.push(path);
     },
-    onFlush: (path) => {
+    onFlush: (path, options) => {
       flushes.push(path);
+      flushOptions.push(options);
     },
     rejectPath: (path) => (path.endsWith(".png") ? "binary-file" : null),
   });
@@ -134,7 +138,7 @@ function fixture(): Fixture {
     return connection;
   };
   cleanups.push(() => host.destroy());
-  return { connect, emptied, files, flushes, host, sockets };
+  return { connect, emptied, files, flushOptions, flushes, host, sockets };
 }
 
 afterEach(() => {
@@ -265,6 +269,44 @@ describe("lifecycle", () => {
     await handle!.whenSynced;
     await handle!.flush();
     expect(fx.flushes).toEqual(["pages/index.json"]);
+  });
+
+  test("a flush can name the base the save replaces (project-state.md §6.1)", async () => {
+    const fx = fixture();
+    const handle = await fx.connect().openDoc("pages/index.json");
+    await handle!.whenSynced;
+    await handle!.flush({ baseHash: "sha256-disk" });
+    await handle!.flush({ baseHash: null });
+    await handle!.flush({});
+    expect(fx.flushOptions).toEqual([{ baseHash: "sha256-disk" }, { baseHash: null }, undefined]);
+  });
+
+  test("a writer's revert resets the room for every subscriber; a reader's reverts nothing", async () => {
+    const fx = fixture();
+    const writer = await fx.connect().openDoc("pages/index.json");
+    const peer = await fx.connect().openDoc("pages/index.json");
+    const reader = await fx
+      .connect({ login: "viewer", permission: "read" })
+      .openDoc("pages/index.json");
+    await Promise.all([writer!.whenSynced, peer!.whenSynced, reader!.whenSynced]);
+    let resets = 0;
+    const counted = () => {
+      resets += 1;
+    };
+    for (const handle of [writer!, peer!, reader!]) {
+      handle.onReset(counted);
+    }
+    // A reader is acknowledged, and nothing is discarded.
+    await reader!.revert!();
+    await settle();
+    expect(resets).toBe(0);
+    expect(fx.host.sourceOf("pages/index.json")).not.toBeNull();
+
+    // The writer's revert resolves once its own handle was reset, with everyone else's.
+    await writer!.revert!();
+    await settle();
+    expect(resets).toBe(3);
+    expect(fx.host.sourceOf("pages/index.json")).toBeNull();
   });
 
   test("resetDoc bumps the epoch and fires onReset on subscribers", async () => {

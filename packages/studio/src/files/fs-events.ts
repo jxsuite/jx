@@ -11,14 +11,43 @@
  * has a gap (a reconnect, or the stream's first open after listings were made) or never carried the
  * change (a commit). Events are deltas; a gap in deltas cannot be patched by more deltas, so a
  * resync re-reads what this window has cached.
+ *
+ * Beside them runs the host's project state subscription, when the platform has one
+ * (`project-state/subscription.ts`, `project-state.md` §3). While it is live, an echo is recognised
+ * by its bytes rather than by the 1.5 second window: the content changes an open tab reloads on
+ * come from the subscription's `docChanged` events, each attributed by write id or hash and held
+ * against the tab's buffer (`project-state/buffer.ts`, `project-state.md` §6.1), and the window is
+ * neither kept nor read.
+ *
+ * While it is live the subscription also owns every derived cache (`project-state.md` §11.1):
+ * `project-state/derive.ts` drops each one on the store event that makes it stale, the content
+ * versions are the store's hashes (`deriveVersionsFrom`), and the watcher's batches update the tree
+ * alone. Without a live subscription everything here is as it was.
  */
 
 import { getPlatform } from "../platform";
 import { reloadIgnoreCache, touchesGitignore } from "./gitignore";
 import { invalidateUsages } from "../services/references";
-import { forgetAllVersions, forgetVersions, notedListing } from "./asset-versions";
+import {
+  derivedVersionsChanged,
+  deriveVersionsFrom,
+  forgetAllVersions,
+  forgetVersions,
+  notedListing,
+} from "./asset-versions";
 import { isCollabPath } from "../collab/collab-state";
 import { projectState } from "../store";
+import { contentStore } from "../project-state/store";
+import type { OwnWriteContents } from "../project-state/store";
+import { createStoreDerivations } from "../project-state/derive";
+import { forgetDiskRevisions, noteDiskHash } from "../project-state/buffer";
+import type { ReadinessState } from "@jxsuite/protocol/project-state";
+import {
+  projectStateLive,
+  projectStateTracksWrites,
+  startProjectStateSync,
+  stopProjectStateSync,
+} from "../project-state/subscription";
 import { workspace } from "../workspace/workspace";
 import type { DirEntry, FsEvent, FsResyncReason, StudioPlatform } from "../types";
 
@@ -49,12 +78,36 @@ const norm = (p: string) => p.replaceAll("\\", "/");
  */
 export function markLocalMutation(...paths: string[]): void {
   forgetVersions(paths, paths);
+  // A live subscription attributes echoes by their bytes (`noteLocalWrite`), so no window is kept.
+  if (projectStateLive()) {
+    return;
+  }
   const expiry = Date.now() + RECENT_MS;
   for (const p of paths) {
     if (p) {
       recentLocal.set(norm(p), expiry);
     }
   }
+}
+
+/**
+ * Note the bytes Studio is about to write at `path`, so that the host's report of them is
+ * recognised as Studio's own (`project-state.md` §2.4). Only while a project state subscription
+ * runs: without one there is no event to attribute, and nothing is hashed.
+ */
+export function noteLocalWrite(path: string, contents: OwnWriteContents): void {
+  if (projectStateTracksWrites()) {
+    void contentStore.noteOwnWrite(norm(path), contents);
+  }
+}
+
+/**
+ * {@link markLocalMutation} for a write whose bytes Studio has in hand: the window where there is no
+ * subscription, the bytes' hash where there is one.
+ */
+export function markLocalWrite(path: string, contents: OwnWriteContents): void {
+  markLocalMutation(path);
+  noteLocalWrite(path, contents);
 }
 
 /** True while a path is within the recent-local-mutation window (self-cleans on expiry). */
@@ -310,12 +363,35 @@ export interface FsSyncContext {
    */
   onResyncContent?: (paths: string[]) => void;
   /**
-   * The working tree moved: re-read git status. Called for every batch, Studio's own echoes
-   * included (a write Studio made changes the status as much as anyone else's), and for every
-   * resync. The callee debounces; this module only reports. Injected for the reason
-   * `renderLeftPanel` is: the git flow sits far above the file layer.
+   * The working tree moved: re-read git status. Called for every watcher batch, Studio's own echoes
+   * included (a write Studio made changes the status as much as anyone else's) and whether or not
+   * the subscription is live, for every resync, and for the host's `gitChanged`. The callee
+   * debounces; this module only reports. Injected for the reason `renderLeftPanel` is: the git flow
+   * sits far above the file layer.
    */
   noteRepositoryChange?: () => void;
+  /**
+   * Another writer changed a document's bytes: the live component lane re-reads it. From the
+   * subscription's `docChanged` while it is live, from the watcher's `change` otherwise.
+   */
+  onDocumentChange?: (path: string) => void;
+  /**
+   * The host reported documents whose rendering depends on a changed one, and the custom-element
+   * tags whose definitions changed (`dependentsInvalidated`, `project-state.md` §4.3). `applied`
+   * says whether a path's current bytes already reached the canvas (Studio wrote them, or
+   * `onDocumentChange` was told of them). Only while the subscription is live.
+   */
+  onDependentsInvalidated?: (
+    paths: readonly string[],
+    tags: readonly string[],
+    applied: (path: string) => boolean,
+  ) => void;
+  /** The set of discoverable components changed (`componentsChanged`): re-read the registry. */
+  onComponentsChanged?: () => void;
+  /** The project's format set changed (`formatsChanged`): rebuild the format registry. */
+  onFormatsChanged?: () => void;
+  /** The host's readiness moved (`project-state.md` §7): re-derive what waited on it. */
+  onReadiness?: (state: ReadinessState) => void;
 }
 
 /**
@@ -330,8 +406,89 @@ export interface FsSyncContext {
  */
 export function startFsSync(ctx: FsSyncContext): () => void {
   const platform = getPlatform();
+  /* What each store change means for the derived caches, while the subscription is live: the same
+     invalidators the watcher's batches call otherwise, each on the event that makes it stale. */
+  const derivations = createStoreDerivations(contentStore, {
+    componentsChanged: ctx.onComponentsChanged,
+    dependentsInvalidated: ctx.onDependentsInvalidated,
+    documentChanged: ctx.onDocumentChange,
+    forgetVersions,
+    formatsChanged: ctx.onFormatsChanged,
+    gitChanged: ctx.noteRepositoryChange,
+    invalidateDerivedCaches: ctx.invalidateDerivedCaches,
+    invalidateUsages,
+    readinessChanged: ctx.onReadiness,
+    releaseVersions: derivedVersionsChanged,
+    repaint: ctx.renderLeftPanel,
+  });
+  // Every path the store reports again moves its derived content version.
+  const stopVersions = contentStore.onChange((change) => {
+    derivedVersionsChanged(change.paths);
+  });
+  /* The host's own account of the project, when it gives one. Its `docChanged` events reach the
+     open tabs in place of the watcher's `change` events (a client re-reads on `docChanged`, never
+     on a bare file event, `project-state.md` §4.3), attributed by write id or hash, so Studio's own
+     save reloads nothing however late its echo arrives and a foreign write inside the window is
+     not mistaken for one. A snapshot that replaced earlier state reports every file it changed. */
+  /** The hash each path's last own file event carried, until its `docChanged` arrives. */
+  const ownHashes = new Map<string, string>();
+  const subscription = startProjectStateSync(platform, {
+    onEvents: (applied) => {
+      for (const { event, own } of applied) {
+        if (event.type === "fileAdded" || event.type === "fileChanged") {
+          if (own && event.hash) {
+            ownHashes.set(event.path, event.hash);
+          }
+        } else if (event.type === "docChanged") {
+          /* A `docChanged` carries its file event's origin, and a write Studio made through plain
+             `writeFile` reaches the host as `"external"`: the hash its file event matched is what
+             marks the `docChanged` after it as Studio's own too. */
+          const mine = own || ownHashes.get(event.path) === event.hash;
+          ownHashes.delete(event.path);
+          /* Each open tab of the path takes the new disk hash (`project-state.md` §6.1): one that
+             already holds those bytes re-reads nothing, a clean one is re-read on another writer's
+             change, and an edited one becomes conflicted. */
+          const holds = noteDiskHash(workspace.tabs.values(), event.path, event.hash, {
+            own: mine,
+            rev: event.rev,
+          });
+          if (!mine && !holds) {
+            ctx.onContentChange?.(event.path);
+          }
+        } else if (event.type === "fileRemoved" && !event.isDir) {
+          noteDiskHash(workspace.tabs.values(), event.path, null, { own, rev: event.rev });
+        }
+      }
+      derivations.events(applied);
+    },
+    onLive: (live) => {
+      // The store's hashes are versions only while the store follows the host.
+      deriveVersionsFrom(live ? contentStore : null);
+    },
+    onSnapshot: (paths) => {
+      for (const path of paths) {
+        const doc = contentStore.docAt(path);
+        if (doc?.isDir === true) {
+          continue;
+        }
+        const holds = noteDiskHash(workspace.tabs.values(), path, doc?.hash ?? null);
+        if (doc && !holds) {
+          ctx.onContentChange?.(path);
+        }
+      }
+    },
+    onSnapshotApplied: (change) => {
+      // A snapshot answers a new epoch or a gap: the revisions after it start a new count.
+      forgetDiskRevisions();
+      derivations.snapshot(change);
+    },
+  });
+  const stopSubscription = () => {
+    stopProjectStateSync(subscription);
+    stopVersions();
+  };
   if (!platform.subscribeFileEvents) {
-    return () => {};
+    return stopSubscription;
   }
   let pending: FsEvent[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -343,7 +500,8 @@ export function startFsSync(ctx: FsSyncContext): () => void {
   const flush = () => {
     timer = null;
     const state = projectState;
-    const batch = pending.filter((e) => !isRecentLocal(e.path));
+    const live = projectStateLive();
+    const batch = live ? pending : pending.filter((e) => !isRecentLocal(e.path));
     pending = [];
     const repaintDerived = derivedDropped;
     derivedDropped = false;
@@ -357,10 +515,12 @@ export function startFsSync(ctx: FsSyncContext): () => void {
       return;
     }
     const changedDirs = applyFsEvents(state.dirs, state.expanded, batch);
-    if (ctx.onContentChange) {
+    // A live subscription reports content changes itself, attributed by hash rather than by time.
+    if (!live) {
       for (const ev of batch) {
         if (ev.type === "change") {
-          ctx.onContentChange(ev.path);
+          ctx.onContentChange?.(ev.path);
+          ctx.onDocumentChange?.(ev.path);
         }
       }
     }
@@ -445,19 +605,26 @@ export function startFsSync(ctx: FsSyncContext): () => void {
       // Link-target picker offering a route whose page was deleted, the layout picker attributing a
       // Removed layout's `$head` to the open page, a `$paths` enumeration listing entries that are
       // Gone.
-      invalidateUsages();
-      if (ctx.invalidateDerivedCaches) {
-        ctx.invalidateDerivedCaches(
-          events.map((event) => event.path),
-          events.some((event) => event.type !== "change"),
-        );
-        derivedDropped = true;
+      //
+      // While the subscription is live none of it happens here: the store's events drop each cache
+      // On the change that makes it stale (`project-state/derive.ts`), and this batch is the tree's.
+      if (!projectStateLive()) {
+        invalidateUsages();
+        if (ctx.invalidateDerivedCaches) {
+          ctx.invalidateDerivedCaches(
+            events.map((event) => event.path),
+            events.some((event) => event.type !== "change"),
+          );
+          derivedDropped = true;
+        }
+        // Content versions are derived state of the same kind, and Studio's own writes change
+        // Bytes: a version kept past its echo would let an immutable cache answer with the old file.
+        forgetEventVersions(events);
       }
-      // Git status is derived from the tree too, and a self-write moves it like any other.
+      /* Git status is derived from the tree too, and a self-write moves it like any other: live or
+         not, since the host's `gitChanged` moves only with the summary, and a second edit to a file
+         already modified leaves the summary alone while changing its comparison. */
       ctx.noteRepositoryChange?.();
-      // Content versions are derived state of the same kind, and Studio's own writes change bytes:
-      // A version kept past its echo would let an immutable cache answer with the old file.
-      forgetEventVersions(events);
       /* A `.gitignore` governs the whole tree beneath it, so it is handled HERE rather than in the
          batch below: the echo filter drops the events Studio caused, and an author who just edited
          their own `.gitignore` in Studio is precisely the one waiting to see the tree change. It also
@@ -479,6 +646,7 @@ export function startFsSync(ctx: FsSyncContext): () => void {
       clearTimeout(resyncTimer);
       resyncTimer = null;
     }
+    stopSubscription();
     unsubscribe();
   };
 }

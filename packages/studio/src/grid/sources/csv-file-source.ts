@@ -11,7 +11,7 @@
 import { getPlatform } from "../../platform";
 import { projectState } from "../../store";
 import { findContentTypeSchema } from "../../utils/studio-utils";
-import { isRecentLocal, markLocalMutation } from "../../files/fs-events";
+import { isRecentLocal, markLocalWrite } from "../../files/fs-events";
 import { parseCsv, serializeCsv } from "../csv-codec";
 import {
   cellToText,
@@ -217,7 +217,7 @@ export function createCsvFileSource(path: string): GridSource {
 
       const nextDoc = applyBatch(current, batch);
       const text = serializeCsv(nextDoc);
-      markLocalMutation(path);
+      markLocalWrite(path, text);
       await platform.writeFile(path, text);
       loadPromise = Promise.resolve(buildModel(text, path));
       return uniformResult(batch, { ok: true });

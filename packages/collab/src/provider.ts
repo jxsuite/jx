@@ -39,8 +39,18 @@ export interface CollabHandle {
   whenSynced: Promise<void>;
   /** Identity issued by the server's hello; null until the connection greeted. */
   identity: () => CollabIdentity | null;
-  /** Ask the provider to persist this doc to durable storage now (Cmd+S). */
-  flush: () => Promise<void>;
+  /**
+   * Ask the provider to persist this doc to durable storage now (Cmd+S). `baseHash` names the bytes
+   * the save replaces in place of the room's own base (`null`: nothing is there), which is how the
+   * author keeps the room's edits over a file that changed under it (`project-state.md` §6.1).
+   */
+  flush: (options?: { baseHash?: string | null }) => Promise<void>;
+  /**
+   * Discard the room's unsaved edits and reseed it from storage (`project-state.md` §6.1, taking
+   * the disk's copy). Resolves once the server reset the room, which every participant sees as
+   * `onReset`. Optional: a provider whose rooms never refuse a save has no conflict to resolve.
+   */
+  revert?: () => Promise<void>;
   /** Connection status changes (shared per connection). Returns an unsubscribe. */
   onStatus: (cb: (status: CollabStatus) => void) => () => void;
   /**

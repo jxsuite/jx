@@ -1043,7 +1043,8 @@ export async function deleteMediaFile(path: string): Promise<boolean> {
   const { markLocalMutation } = await import("../files/fs-events");
   try {
     markLocalMutation(path);
-    await getPlatform().deleteFile(path);
+    const { deletePath } = await import("../files/based-writes");
+    await deletePath(path);
   } catch (error) {
     notify.error(`Could not delete ${name}.`, {
       detail: errorMessage(error),

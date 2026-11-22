@@ -63,6 +63,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { effect, toRaw } from "../reactivity";
 import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
+import { noteBufferRead } from "../project-state/buffer";
 import { projectState, requireProjectState, setProjectState } from "../state";
 import { setWorkspaceProject, workspace } from "../workspace/workspace";
 import { projectConfigPath, createTab, disposeTab } from "./tab";
@@ -145,6 +146,8 @@ let _layout: JsonLayout | null = null;
 
 /** For a `project.jxn`, the text {@link seedCommitted} read or a commit last wrote. */
 let _source: string | null = null;
+/** The file's text as the seed read it, the bytes a tab lent this record holds (§6.1's base). */
+let _read: string | null = null;
 
 /**
  * Why a `project.jxn` must not be written: it does not read, so a commit from what the app holds
@@ -189,6 +192,7 @@ function unbind(): void {
   _committed = null;
   _layout = null;
   _source = null;
+  _read = null;
   _unwritable = null;
   _seeding = null;
 }
@@ -210,6 +214,7 @@ function seedCommitted(): Promise<void> {
       _committed = null;
       return;
     }
+    _read = text;
     try {
       const { document, layout } = parseJsonDocument(text);
       _layout = layout;
@@ -234,6 +239,7 @@ async function seedJxn(path: string): Promise<void> {
     _committed = null;
     return;
   }
+  _read = text;
   try {
     parseProjectSource(text, path);
     _source = text;
@@ -268,6 +274,10 @@ export async function lendProjectConfigLayout(tab: Tab): Promise<void> {
   // A `project.jxn`'s record is its text, which is what its Code view shows and its save merges with.
   if (tab.doc.source === null && _source !== null) {
     tab.doc.source = _source;
+  }
+  // The text the tab's document was read as is its base, while the tab has nothing of its own.
+  if (_read !== null && !tab.doc.dirty) {
+    void noteBufferRead(tab, _read, projectConfigPath());
   }
 }
 
@@ -545,6 +555,8 @@ export async function commitProjectConfig(
     tab.doc.source = output;
   }
   tab.doc.dirty = false;
+  // The commit wrote the tab's whole document: those bytes are its base now (§6.1).
+  void noteBufferRead(tab, output, projectConfigPath());
   if (extensionsKey(config) !== before) {
     await refreshExtensionSurfaces();
   }

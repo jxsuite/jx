@@ -40,6 +40,7 @@ import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
 import { isString } from "@jxsuite/schema/guards";
 import { projectState, renderOnly } from "../store";
+import { projectStateLive } from "../project-state/subscription";
 import { getPlatform, hasPlatform } from "../platform";
 import { activeTab } from "../workspace/workspace";
 import { scanLibrary } from "../browse/library-model";
@@ -204,19 +205,49 @@ function siteIndex(): SiteIndex | null {
  * a component already updates the registry (`noteComponentSaved`), and a page or an entry is not
  * one.
  *
+ * While a project state subscription is live, a batch that only rewrote files costs no scan: the
+ * host reports a change to the component set itself (`componentsChanged`,
+ * {@link invalidateComponentRegistry}). A batch that added, removed or moved a file that could hold
+ * a definition still re-scans, because a move keeps the set of tags the host compares and changes
+ * the path the registry reads each definition from.
+ *
  * @param paths - The project-relative paths the event batch touched; `undefined` (a gap in the
  *   stream, or an upload) means anything may have changed.
+ * @param structural - Whether the batch added, removed or renamed anything, rather than only
+ *   rewriting files that exist.
  */
-export function invalidateSiteIndex(paths?: readonly string[]): void {
+export function invalidateSiteIndex(paths?: readonly string[], structural = true): void {
   _epoch += 1;
   _indexStale = true;
   _loading = null;
-  if (paths === undefined || paths.some((path) => mayDefineComponent(path))) {
+  if (
+    paths === undefined ||
+    ((structural || !projectStateLive()) && paths.some((path) => mayDefineComponent(path)))
+  ) {
     _registryStale = true;
   }
   if (_standing) {
     repaint();
   }
+}
+
+/**
+ * The host says the project's set of components changed (`componentsChanged`, `project-state.md`
+ * §4.3): re-read the registry now, whether or not the panel is standing, since the Stylebook, the
+ * Component Settings and the Library read it too.
+ */
+export function invalidateComponentRegistry(): void {
+  _registryStale = true;
+  ensureRegistry();
+}
+
+/**
+ * The host's readiness moved (`project-state.md` §7): the pages and templates the panel lists are
+ * read again, because a host below `ready` may not have answered for every file. The index on
+ * screen stays until the re-read lands, so a readiness change never blanks the panel.
+ */
+export function noteReadiness(): void {
+  invalidateSiteIndex([]);
 }
 
 /** The trees whose JSON files are documents of their own kind, never component definitions. */

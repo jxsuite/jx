@@ -19,6 +19,7 @@
  */
 
 import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { UploadResult } from "@jxsuite/protocol";
 import type { StudioPlatform } from "./types";
 
 /** What a launcher's boot module recorded when its adapter could not be constructed. */
@@ -87,6 +88,63 @@ export function announceLauncher(): LauncherSignal {
 /** The launcher signal, when a launcher's boot module announced itself in this window. */
 export function launcherSignal(): LauncherSignal | undefined {
   return globalThis.__jxLauncher;
+}
+
+// ─── The plain-write route ────────────────────────────────────────────────────
+
+/**
+ * Where Studio's last-writer-wins writes go once something above this layer decides how they are
+ * made: each member receives the raw adapter and the call's arguments, and answers for the call.
+ *
+ * `project-state.md` §5 says a client that subscribes to the project state sends a base with every
+ * write and delete it makes. Studio writes files from some thirty places, so the route is applied
+ * here, at the one seam all of them share, rather than at each of them (`files/based-writes.ts`
+ * supplies it). A call through {@link getPlatform} reaches the route; the adapter's own members, and
+ * the route itself through the raw adapter it is handed, do not.
+ */
+export interface PlainWriteRoute {
+  writeFile: (raw: StudioPlatform, path: string, content: string) => Promise<void>;
+  uploadFile: (
+    raw: StudioPlatform,
+    path: string,
+    data: string | File | Blob | ArrayBuffer,
+  ) => Promise<UploadResult>;
+  deleteFile: (raw: StudioPlatform, path: string) => Promise<void>;
+}
+
+/** The installed route, `null` while every write goes straight to the adapter. */
+let writeRoute: PlainWriteRoute | null = null;
+
+/** The members a route answers for. */
+const ROUTED = new Set<string>(["writeFile", "uploadFile", "deleteFile"]);
+
+/**
+ * Send `writeFile`, `uploadFile` and `deleteFile` calls made through {@link getPlatform} to `route`,
+ * or straight to the adapter again (`null`). Returns the route it replaced.
+ */
+export function routePlainWrites(route: PlainWriteRoute | null): PlainWriteRoute | null {
+  const previous = writeRoute;
+  writeRoute = route;
+  return previous;
+}
+
+/** A routed member as the proxy hands it out: the route's, closed over the raw adapter. */
+/** What a routed member answers: a write's or a delete's nothing, or an upload's result. */
+type RoutedAnswer = ReturnType<PlainWriteRoute[keyof PlainWriteRoute]>;
+
+function routedMember(
+  route: PlainWriteRoute,
+  property: string,
+  adapter: StudioPlatform,
+): (...args: never[]) => RoutedAnswer {
+  /* SAFETY: `ROUTED`, checked by the only caller, names exactly the three members
+     `PlainWriteRoute` declares, and the proxy's callers pass each the arguments of its
+     StudioPlatform signature, which the route's member takes after the adapter. */
+  const member = route[property as keyof PlainWriteRoute] as (
+    raw: StudioPlatform,
+    ...args: never[]
+  ) => RoutedAnswer;
+  return (...args: never[]) => member(adapter, ...args);
 }
 
 // ─── In-flight accounting ─────────────────────────────────────────────────────
@@ -168,7 +226,7 @@ function countCalls<R>(
 function countingPlatform(platform: StudioPlatform): StudioPlatform {
   const wrappers = new Map<
     string,
-    { raw: StudioPlatform[keyof StudioPlatform]; wrapper: unknown }
+    { raw: StudioPlatform[keyof StudioPlatform]; route: PlainWriteRoute | null; wrapper: unknown }
   >();
   return new Proxy(platform, {
     get(target, property) {
@@ -185,12 +243,15 @@ function countingPlatform(platform: StudioPlatform): StudioPlatform {
       // Keyed by the FUNCTION, not just the name: an adapter whose method is replaced later (a
       // Lazily-installed capability, a test swapping one out) must not keep answering through a
       // Wrapper closed over the old implementation.
+      // And by the ROUTE for a routed write, so installing or removing one takes effect at once.
+      const route = writeRoute !== null && ROUTED.has(property) ? writeRoute : null;
       const cached = wrappers.get(property);
-      if (cached && cached.raw === value) {
+      if (cached && cached.raw === value && cached.route === route) {
         return cached.wrapper;
       }
-      const wrapper = countCalls<ReturnType<typeof value>>(property, value, target);
-      wrappers.set(property, { raw: value, wrapper });
+      const member = route ? routedMember(route, property, target) : value;
+      const wrapper = countCalls<ReturnType<typeof member>>(property, member, target);
+      wrappers.set(property, { raw: value, route, wrapper });
       return wrapper;
     },
   });

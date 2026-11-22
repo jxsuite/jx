@@ -5,6 +5,7 @@
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ComponentEntry } from "../src/files/components";
+import type { ContentHash } from "@jxsuite/protocol/project-state";
 import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 let definition: JxDocument | null = { tagName: "x-card" };
@@ -21,7 +22,7 @@ void mock.module("../src/browse/library-preview", () => ({
     Promise.resolve(renders(props.size)),
 }));
 
-const { componentSpecimen, loadStylebookSpecimens } =
+const { componentSpecimen, definitionKey, loadStylebookSpecimens } =
   await import("../src/style/stylebook-specimens");
 
 const CARD: ComponentEntry = { path: "components/x-card.json", source: "local", tagName: "x-card" };
@@ -89,6 +90,30 @@ describe("loadStylebookSpecimens", () => {
     // A re-read registry is a new array, and is asked again.
     await loadStylebookSpecimens([CARD], ask);
     expect(ask).toHaveBeenCalledTimes(3);
+  });
+
+  test("a definition whose hash moves is asked again within the same registry", async () => {
+    const registry: ComponentEntry[] = [CARD, { tagName: "x-pkg" }];
+    const hashes = new Map<string, ContentHash>();
+    const pending = new Map<string, ContentHash>();
+    const store = {
+      hashAt: (path: string) => hashes.get(path),
+      pendingWriteAt: (path: string) => pending.get(path),
+    };
+    const ask = mock(() => Promise.resolve({ kind: "bare" as const }));
+    await loadStylebookSpecimens(registry, ask, store);
+    expect(ask).toHaveBeenCalledTimes(2);
+    // The host reports the definition's bytes: a new key, asked once.
+    hashes.set(CARD.path!, "sha256-h1");
+    await loadStylebookSpecimens(registry, ask, store);
+    await loadStylebookSpecimens(registry, ask, store);
+    expect(ask).toHaveBeenCalledTimes(3);
+    // Studio saves it: the unechoed write is part of the key, before the host says so.
+    pending.set(CARD.path!, "sha256-h2");
+    await loadStylebookSpecimens(registry, ask, store);
+    expect(ask).toHaveBeenCalledTimes(4);
+    expect(definitionKey(CARD, store)).toBe("x-card\nsha256-h1\nsha256-h2");
+    expect(definitionKey({ tagName: "x-pkg" }, store)).toBe("x-pkg");
   });
 
   test("the default question is componentSpecimen", async () => {

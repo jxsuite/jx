@@ -136,27 +136,40 @@ export function isPopoverOpen(): boolean {
  * (studio-ui-guidelines.md §9.4).
  */
 
+/** The labels and tone of {@link showConfirmDialog}'s buttons. */
+export interface ConfirmDialogOptions {
+  confirmLabel?: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+}
+
 /**
  * Show a confirm/cancel dialog. Returns true if confirmed, false otherwise.
  *
- * @param {string} headline
- * @param {string | import("lit-html").TemplateResult} message
- * @param {{ confirmLabel?: string; cancelLabel?: string; destructive?: boolean }} [opts]
- * @returns {Promise<boolean>}
+ * With a `secondaryLabel` it asks a three-way question, and a press of that button resolves
+ * `"secondary"`: the save conflict's Keep Mine / Take Disk Copy / Compare (`project-state.md`
+ * §6.1). Cancel and a dismissal both resolve `false`, so the cancel button names the choice that
+ * writes nothing.
  */
 export function showConfirmDialog(
   headline: string,
   message: string | TemplateResult,
-  opts: {
-    confirmLabel?: string;
-    cancelLabel?: string;
-    destructive?: boolean;
-  } = {},
-): Promise<boolean> {
+  opts?: ConfirmDialogOptions,
+): Promise<boolean>;
+export function showConfirmDialog(
+  headline: string,
+  message: string | TemplateResult,
+  opts: ConfirmDialogOptions & { secondaryLabel: string },
+): Promise<boolean | "secondary">;
+export function showConfirmDialog(
+  headline: string,
+  message: string | TemplateResult,
+  opts: ConfirmDialogOptions & { secondaryLabel?: string } = {},
+): Promise<boolean | "secondary"> {
   const { confirmLabel = "Confirm", cancelLabel = "Cancel", destructive = false } = opts;
   return new Promise((resolve) => {
     let settled = false;
-    const done = (value: boolean) => {
+    const done = (value: boolean | "secondary") => {
       if (settled) {
         return;
       }
@@ -174,6 +187,10 @@ export function showConfirmDialog(
       onCancel: () => done(false),
       onClosed: () => done(false),
       onConfirm: () => done(true),
+      ...(opts.secondaryLabel !== undefined && {
+        onSecondary: () => done("secondary"),
+        secondaryLabel: opts.secondaryLabel,
+      }),
     });
   });
 }

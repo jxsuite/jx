@@ -675,8 +675,8 @@ export function createDesktopPlatform() {
 
     /**
      * The project state service (`project-state.md` §3.2, §5): the desktop binding's subscribe, and
-     * the writes and deletes that name their base. Not a `StudioPlatform` member: Studio's content
-     * store is what will read it.
+     * the writes and deletes that name their base. Its subscribe is the `subscribeProjectState`
+     * member below; writes and deletes reach Studio's tabs once they track a base hash.
      */
     projectState: {
       /**
@@ -721,6 +721,27 @@ export function createDesktopPlatform() {
         }
       },
     } satisfies ProjectStateClient,
+
+    /**
+     * The subscribe half of {@link projectState}, as the `StudioPlatform` member Studio's content
+     * store reads (`studio.md` §3.4). The file events and their resync reasons stay beside it.
+     */
+    subscribeProjectState(
+      subscribeRequest: SubscribeRequest,
+      listener: ProjectStateListener,
+    ): Promise<SubscribeResponse> {
+      return platform.projectState.subscribe(subscribeRequest, listener);
+    },
+
+    /** The write half of {@link projectState}: Studio saves a tab against its base hash with it. */
+    writeProjectState(write: WriteRequest): Promise<WriteResult> {
+      return platform.projectState.write(write);
+    },
+
+    /** The delete half of {@link projectState}: Studio deletes what it last saw with it. */
+    deleteProjectState(remove: DeleteRequest): Promise<DeleteResult> {
+      return platform.projectState.delete(remove);
+    },
 
     /**
      * Live filesystem sync for the sidebar.
