@@ -29,7 +29,10 @@ import {
   PROJECT_ENDED_METHOD,
   PROJECT_EVENTS_METHOD,
 } from "@jxsuite/protocol/project-state-frames";
-import type { ProjectEventsParams } from "@jxsuite/protocol/project-state-frames";
+import type {
+  ProjectStateClient,
+  ProjectStateListener,
+} from "@jxsuite/protocol/project-state-frames";
 import type {
   DeleteRequest,
   DeleteResult,
@@ -114,16 +117,12 @@ export class BackendRefusalError extends Error {
 }
 
 /**
- * Where a project state subscription's later frames go (`project-state.md` §3.2): its batched
- * events, and its end, after which the client subscribes again. A subscription ends when the host
- * announces it with `projectEnded`, and also when the socket reconnects: the backend ends a
- * subscription with the socket it streamed to, and a closed socket can be told nothing, so the
- * adapter reports that end itself, once the new socket is open to subscribe on.
+ * Where a project state subscription's later frames go (`project-state.md` §3.2). A subscription
+ * ends when the host announces it with `projectEnded`, and also when the socket reconnects: the
+ * backend ends a subscription with the socket it streamed to, and a closed socket can be told
+ * nothing, so the adapter reports that end itself, once the new socket is open to subscribe on.
  */
-export interface ProjectStateListener {
-  events: (params: ProjectEventsParams) => void;
-  ended?: (epoch: string) => void;
-}
+export type { ProjectStateListener } from "@jxsuite/protocol/project-state-frames";
 
 /** The conflict a refused conditional write or delete carries, or the error itself. */
 function conflictOf(error: Error): WriteResult & { ok: false } {
@@ -721,7 +720,7 @@ export function createDesktopPlatform() {
           return conflictOf(error instanceof Error ? error : new Error(String(error)));
         }
       },
-    },
+    } satisfies ProjectStateClient,
 
     /**
      * Live filesystem sync for the sidebar.

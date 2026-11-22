@@ -1,9 +1,15 @@
 /**
  * Transport-agnostic collab host: the server half of the wire envelope, shared by the Bun dev
  * server and the Cloudflare platform DO. The embedder supplies sockets ({@link RoomSocket}),
- * identity per connection, and source loading; the host owns rooms (one Y.Doc per path,
+ * identity per connection, and source loading; the host owns rooms (one Y.Doc per room key,
  * server-seeded `source` per the schema contract), the y-protocols sync handshake, project-level
  * awareness relay, read-only enforcement, and the docEpoch/doc-reset lifecycle.
+ *
+ * A room is addressed by path on the wire and keyed by {@link CollabHostOptions.keyOf} here: the
+ * path itself by default, or the document an embedder that follows documents across renames names
+ * (`project-state.md` §11.3). Each subscriber is answered under the path it opened the room by, so
+ * a peer that opened a document before it moved keeps talking to the same room at its old path
+ * while a peer opening the new path joins it.
  */
 
 import * as Y from "yjs";
@@ -19,7 +25,7 @@ import * as syncProtocol from "y-protocols/sync";
 import { isString } from "@jxsuite/schema/guards";
 import { decodeFrame, encodeFrame } from "./envelope.ts";
 import type { CollabFrame, ControlMessage } from "./envelope.ts";
-import type { CollabIdentity } from "./provider.ts";
+import type { CollabConflict, CollabIdentity } from "./provider.ts";
 import { sourceText } from "./schema.ts";
 
 export interface RoomSocket {
@@ -28,22 +34,31 @@ export interface RoomSocket {
 }
 
 export interface CollabHostOptions {
-  /** Current file text for seeding a room's source, or null when unavailable. */
-  loadSource: (path: string) => Promise<string | null>;
+  /**
+   * Current file text for seeding a room's source, or null when unavailable. `key` is the room's
+   * key ({@link keyOf}), which is `path` unless the embedder keys rooms otherwise.
+   */
+  loadSource: (path: string, key: string) => Promise<string | null>;
   /** Refuse a path with an error code (e.g. "binary-file"), or null to allow. */
   rejectPath?: (path: string) => string | null;
+  /**
+   * The room a path names. Defaults to the path. Called once per `open`, after `rejectPath`; the
+   * callbacks below and the host's methods take the key it returns.
+   */
+  keyOf?: (path: string) => string;
   /** A room's source text changed (debounce and persist in the embedder). */
-  onSourceChange?: (path: string) => void;
-  /** A client asked to persist this path now; resolve when durable. */
-  onFlush?: (path: string) => Promise<void> | void;
+  onSourceChange?: (key: string) => void;
+  /** A client asked to persist this room now; resolve when durable or refused. */
+  onFlush?: (key: string) => Promise<void> | void;
   /** The last subscriber left a room (schedule teardown in the embedder). */
-  onEmpty?: (path: string) => void;
+  onEmpty?: (key: string) => void;
 }
 
 interface Room {
   doc: Y.Doc;
   epoch: number;
-  subscribers: Set<InternalConnection>;
+  /** Each subscriber and the paths it opened the room by (more than one after a move). */
+  subscribers: Map<InternalConnection, Set<string>>;
   ready: Promise<void>;
   /** The source text as of the last persist (seed or markPersisted) — the room-dirty baseline. */
   baseline: string;
@@ -60,7 +75,8 @@ export interface HostConnection {
 interface InternalConnection extends HostConnection {
   socket: RoomSocket;
   identity: CollabIdentity;
-  subscribed: Set<string>;
+  /** Each path this connection opened, and the key of the room it opened. */
+  subscribed: Map<string, string>;
   /** Awareness clientIDs this socket controls (removed on close). */
   controlledIds: Set<number>;
   warnedReadOnly: boolean;
@@ -70,29 +86,50 @@ interface InternalConnection extends HostConnection {
 export interface CollabHost {
   connect: (socket: RoomSocket, identity: CollabIdentity) => HostConnection;
   /**
-   * Out-of-band content replacement: bump the path's epoch, drop its Y history, and tell every
+   * Out-of-band content replacement: bump the room's epoch, drop its Y history, and tell every
    * subscriber to re-open. The invariant "Y history never dies without an epoch bump" lives here.
    */
-  resetDoc: (path: string) => void;
+  resetDoc: (key: string) => void;
   /** The room's current source text, or null when no room is live. */
-  sourceOf: (path: string) => string | null;
+  sourceOf: (key: string) => string | null;
   /** Live subscriber count (0 when the room is absent). */
-  subscriberCount: (path: string) => number;
+  subscriberCount: (key: string) => number;
   /** Destroy an empty room (embedder teardown after its grace period). */
-  destroyRoomIfEmpty: (path: string) => void;
+  destroyRoomIfEmpty: (key: string) => void;
   /**
    * The embedder folded the room's source to durable storage: reset the dirty baseline to the
    * current source and broadcast `doc-dirty{false}` to every subscriber. Called from `onFlush`
    * after a successful write.
    */
-  markPersisted: (path: string) => void;
+  markPersisted: (key: string) => void;
+  /**
+   * The embedder refused to save the room because the file is no longer what the room was loaded
+   * from (`project-state.md` §5): tell every subscriber with `doc-conflict`. The room stays dirty.
+   */
+  conflict: (key: string, conflict: CollabConflict) => void;
   destroy: () => void;
 }
 
 export function createCollabHost(options: CollabHostOptions): CollabHost {
+  const keyOf = options.keyOf ?? ((path: string) => path);
   const rooms = new Map<string, Room>();
   /** Epochs survive room teardown so re-opened docs never reuse a dead history's epoch. */
   const epochs = new Map<string, number>();
+  /**
+   * The highest epoch each path has been answered under. A path's room can change key (a document
+   * the embedder had not indexed yet, a file replaced by another), and the new room starts at no
+   * lower epoch than the path has seen, so a path's epoch never goes back (collab.md §3).
+   */
+  const pathEpochs = new Map<string, number>();
+  /** Record that `path` was answered under `epoch`. */
+  const notePathEpoch = (path: string, epoch: number): void => {
+    if (epoch > (pathEpochs.get(path) ?? 0)) {
+      pathEpochs.set(path, epoch);
+    }
+  };
+  /** The epoch a path's room key stands at, never below what the path has seen. */
+  const epochFor = (key: string, path: string): number =>
+    Math.max(epochs.get(key) ?? 0, pathEpochs.get(path) ?? 0);
   const connections = new Set<InternalConnection>();
   const awarenessDoc = new Y.Doc();
   const awareness = new Awareness(awarenessDoc);
@@ -111,10 +148,26 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
     send(conn, { message, type: "control" });
   };
 
-  const broadcastToRoom = (room: Room, frame: CollabFrame, except?: InternalConnection) => {
-    const data = encodeFrame(frame);
-    for (const target of room.subscribers) {
-      if (target !== except && !target.closed) {
+  /**
+   * Send every subscriber the frame `frameFor` builds for each path it opened the room by, encoding
+   * each path's frame once.
+   */
+  const broadcastToRoom = (
+    room: Room,
+    frameFor: (path: string) => CollabFrame,
+    except?: InternalConnection,
+  ) => {
+    const encoded = new Map<string, Uint8Array>();
+    for (const [target, paths] of room.subscribers) {
+      if (target === except || target.closed) {
+        continue;
+      }
+      for (const path of paths) {
+        let data = encoded.get(path);
+        if (data === undefined) {
+          data = encodeFrame(frameFor(path));
+          encoded.set(path, data);
+        }
         try {
           target.socket.send(data);
         } catch {
@@ -124,24 +177,24 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
     }
   };
 
-  const ensureRoom = (path: string): Room => {
-    const existing = rooms.get(path);
+  const ensureRoom = (key: string, path: string): Room => {
+    const existing = rooms.get(key);
     if (existing) {
       return existing;
     }
     const doc = new Y.Doc();
-    const epoch = epochs.get(path) ?? 0;
-    epochs.set(path, epoch);
+    const epoch = epochFor(key, path);
+    epochs.set(key, epoch);
     const room: Room = {
       baseline: "",
       dirty: false,
       doc,
       epoch,
       ready: Promise.resolve(),
-      subscribers: new Set(),
+      subscribers: new Map(),
     };
     room.ready = (async () => {
-      const source = await options.loadSource(path);
+      const source = await options.loadSource(path, key);
       if (source === null) {
         throw new Error("content-not-loaded");
       }
@@ -154,30 +207,31 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
     /* A room doc is written only here: the "seed" transaction above, and the sync-protocol reads in
        `handleDocSync`, which tag the update with the connection it came from. */
     doc.on("update", (update: Uint8Array, origin: InternalConnection | string) => {
-      const current = rooms.get(path);
+      const current = rooms.get(key);
       if (!current || current.doc !== doc) {
         return;
       }
       const body = encoding.createEncoder();
       syncProtocol.writeUpdate(body, update);
+      const sync = encoding.toUint8Array(body);
       broadcastToRoom(
         current,
-        { body: encoding.toUint8Array(body), epoch: current.epoch, path, type: "doc-sync" },
+        (at) => ({ body: sync, epoch: current.epoch, path: at, type: "doc-sync" }),
         // The sender already has the update, so it is the one subscriber the relay skips.
         isString(origin) ? undefined : origin,
       );
-      options.onSourceChange?.(path);
+      options.onSourceChange?.(key);
       // Room-level dirty: broadcast on transition so every peer's Save affordance stays in sync.
       const nowDirty = sourceText(current.doc).toString() !== current.baseline;
       if (nowDirty !== current.dirty) {
         current.dirty = nowDirty;
-        broadcastToRoom(current, {
-          message: { dirty: nowDirty, path, type: "doc-dirty" },
+        broadcastToRoom(current, (at) => ({
+          message: { dirty: nowDirty, path: at, type: "doc-dirty" },
           type: "control",
-        });
+        }));
       }
     });
-    rooms.set(path, room);
+    rooms.set(key, room);
     return room;
   };
 
@@ -187,11 +241,14 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
       sendControl(conn, { code: rejection, message: `Refused: ${rejection}`, path, type: "error" });
       return;
     }
-    const room = ensureRoom(path);
+    const key = keyOf(path);
+    const room = ensureRoom(key, path);
     try {
       await room.ready;
     } catch {
-      rooms.delete(path);
+      if (rooms.get(key) === room) {
+        rooms.delete(key);
+      }
       sendControl(conn, {
         code: "content-not-loaded",
         message: "The file is not available for co-editing yet",
@@ -200,11 +257,14 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
       });
       return;
     }
-    if (conn.closed || rooms.get(path) !== room) {
+    if (conn.closed || rooms.get(key) !== room) {
       return;
     }
-    room.subscribers.add(conn);
-    conn.subscribed.add(path);
+    const paths = room.subscribers.get(conn) ?? new Set<string>();
+    paths.add(path);
+    room.subscribers.set(conn, paths);
+    conn.subscribed.set(path, key);
+    notePathEpoch(path, room.epoch);
     sendControl(conn, { epoch: room.epoch, path, type: "opened" });
     // The joiner learns the room's current unsaved state (it may join a room others have dirtied).
     sendControl(conn, { dirty: room.dirty, path, type: "doc-dirty" });
@@ -220,10 +280,11 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
     epoch: number,
     body: Uint8Array,
   ) => {
-    const room = rooms.get(path);
-    if (!room || !conn.subscribed.has(path) || epoch !== room.epoch) {
+    const key = conn.subscribed.get(path);
+    const room = key === undefined ? undefined : rooms.get(key);
+    if (!room || epoch !== room.epoch) {
       sendControl(conn, {
-        epoch: epochs.get(path) ?? 0,
+        epoch: epochFor(key ?? keyOf(path), path),
         path,
         type: "doc-reset",
       });
@@ -294,12 +355,17 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
   };
 
   const unsubscribe = (conn: InternalConnection, path: string) => {
-    const room = rooms.get(path);
+    const key = conn.subscribed.get(path);
     conn.subscribed.delete(path);
-    if (room) {
-      room.subscribers.delete(conn);
+    const room = key === undefined ? undefined : rooms.get(key);
+    const paths = room?.subscribers.get(conn);
+    if (room && paths) {
+      paths.delete(path);
+      if (paths.size === 0) {
+        room.subscribers.delete(conn);
+      }
       if (room.subscribers.size === 0) {
-        options.onEmpty?.(path);
+        options.onEmpty?.(key!);
       }
     }
   };
@@ -313,7 +379,7 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
           }
           conn.closed = true;
           // Detached copy: unsubscribe mutates the set mid-walk.
-          const paths = [...conn.subscribed];
+          const paths = [...conn.subscribed.keys()];
           for (const path of paths) {
             unsubscribe(conn, path);
           }
@@ -356,8 +422,12 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
               if (message.type === "open") {
                 void handleOpen(conn, message.path);
               } else if (message.type === "flush") {
+                // A path this connection has not opened names no room of its: nothing to save.
+                const key = conn.subscribed.get(message.path);
                 void (async () => {
-                  await options.onFlush?.(message.path);
+                  if (key !== undefined) {
+                    await options.onFlush?.(key);
+                  }
                   sendControl(conn, { path: message.path, type: "flush-ack" });
                 })();
               }
@@ -379,7 +449,7 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
         },
         identity,
         socket,
-        subscribed: new Set(),
+        subscribed: new Map(),
         warnedReadOnly: false,
       };
       connections.add(conn);
@@ -421,54 +491,67 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
       awarenessDoc.destroy();
     },
 
-    destroyRoomIfEmpty(path) {
-      const room = rooms.get(path);
-      if (room && room.subscribers.size === 0) {
-        room.doc.destroy();
-        rooms.delete(path);
+    conflict(key, conflict) {
+      const room = rooms.get(key);
+      if (room) {
+        broadcastToRoom(room, (at) => ({
+          message: { ...conflict, path: at, type: "doc-conflict" },
+          type: "control",
+        }));
       }
     },
 
-    markPersisted(path) {
-      const room = rooms.get(path);
+    destroyRoomIfEmpty(key) {
+      const room = rooms.get(key);
+      if (room && room.subscribers.size === 0) {
+        room.doc.destroy();
+        rooms.delete(key);
+      }
+    },
+
+    markPersisted(key) {
+      const room = rooms.get(key);
       if (!room) {
         return;
       }
       room.baseline = sourceText(room.doc).toString();
       if (room.dirty) {
         room.dirty = false;
-        broadcastToRoom(room, {
-          message: { dirty: false, path, type: "doc-dirty" },
+        broadcastToRoom(room, (at) => ({
+          message: { dirty: false, path: at, type: "doc-dirty" },
           type: "control",
-        });
+        }));
       }
     },
 
-    resetDoc(path) {
-      const nextEpoch = (epochs.get(path) ?? 0) + 1;
-      epochs.set(path, nextEpoch);
-      const room = rooms.get(path);
+    resetDoc(key) {
+      const nextEpoch = (epochs.get(key) ?? 0) + 1;
+      epochs.set(key, nextEpoch);
+      const room = rooms.get(key);
       if (!room) {
         return;
       }
-      broadcastToRoom(room, {
-        message: { epoch: nextEpoch, path, type: "doc-reset" },
+      broadcastToRoom(room, (at) => ({
+        message: { epoch: nextEpoch, path: at, type: "doc-reset" },
         type: "control",
-      });
-      for (const subscriber of room.subscribers) {
-        subscriber.subscribed.delete(path);
+      }));
+      for (const [subscriber, paths] of room.subscribers) {
+        for (const path of paths) {
+          subscriber.subscribed.delete(path);
+          notePathEpoch(path, nextEpoch);
+        }
       }
       room.doc.destroy();
-      rooms.delete(path);
+      rooms.delete(key);
     },
 
-    sourceOf(path) {
-      const room = rooms.get(path);
+    sourceOf(key) {
+      const room = rooms.get(key);
       return room ? sourceText(room.doc).toString() : null;
     },
 
-    subscriberCount(path) {
-      return rooms.get(path)?.subscribers.size ?? 0;
+    subscriberCount(key) {
+      return rooms.get(key)?.subscribers.size ?? 0;
     },
   };
 }

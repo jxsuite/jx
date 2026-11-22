@@ -75,7 +75,8 @@ import type {
   RenameReport,
 } from "@jxsuite/server/refactor";
 import { openExternal } from "./open-external.ts";
-import { collectionLoaderResolver, createProjectStateService } from "./project-state.ts";
+import { collectionLoaderResolver } from "@jxsuite/server/project-state/collections";
+import { createProjectStateService } from "./project-state.ts";
 import type {
   ProjectStateService,
   ProjectStateServiceOptions,

@@ -41,6 +41,33 @@ import type {
   StudioPlatform,
 } from "../types";
 import { problemDetail, problemMessage } from "@jxsuite/protocol";
+import {
+  conflictFromProblem,
+  decodeSseMessage,
+  deletePrecondition,
+  formatEventId,
+  parseSseBlock,
+  PROJECT_CLIENT_PARAM,
+  PROJECT_EVENTS_PATH,
+  PROJECT_ROOT_PARAM,
+  writeBody,
+  writeIdentityHeaders,
+  writePreconditionHeaders,
+} from "@jxsuite/protocol/project-state-frames";
+import type {
+  ProjectStateClient,
+  ProjectStateListener,
+} from "@jxsuite/protocol/project-state-frames";
+import type {
+  ContentHash,
+  DeleteRequest,
+  DeleteResult,
+  SubscribeRequest,
+  SubscribeResponse,
+  WriteConflict,
+  WriteRequest,
+  WriteResult,
+} from "@jxsuite/protocol/project-state";
 import type { CfProxyEnvelope } from "./cloud";
 import type { UploadResult } from "@jxsuite/protocol";
 
@@ -76,6 +103,111 @@ interface ProjectInfoReply {
 /** The body of an `fs` event on the `/__reload` stream (the server's watcher batches them). */
 interface FsEventBatch {
   events?: FsEvent[];
+}
+
+/** What a conditional write or delete answers on success (`project-state.md` §5). */
+interface ProjectWriteReply {
+  rev: number;
+  hash: ContentHash;
+}
+
+/** What a project stream reader has learned: the answered epoch, once the first frame arrives. */
+interface StreamState {
+  epoch: string | null;
+}
+
+/** Wait for a later task: every continuation the answer to a subscribe queued has run by then. */
+function afterAnswer(): Promise<void> {
+  return new Promise((resume) => {
+    setTimeout(resume, 0);
+  });
+}
+
+/** The end of one event-stream block: a blank line, in any of the three line-break spellings. */
+const SSE_BLOCK_END = /\r\n\r\n|\n\n|\r\r/;
+
+/**
+ * Read the project stream (`project-state.md` §3.2): the first message answers the subscribe, every
+ * later one goes to `listener`, and the end of the stream ends the subscription. Resolves with the
+ * answer; rejects when the stream ends before it.
+ *
+ * @param body The stream's bytes.
+ * @param isCurrent Whether this is still the adapter's subscription: one a later subscribe replaced
+ *   delivers nothing more and reports no end.
+ * @param listener Where the later frames and the end go.
+ */
+function readProjectStream(
+  body: ReadableStream<Uint8Array>,
+  isCurrent: () => boolean,
+  listener: ProjectStateListener,
+): Promise<SubscribeResponse> {
+  return new Promise((answer, refuse) => {
+    const state: StreamState = { epoch: null };
+    let buffer = "";
+    /** Deliver one block; `true` when it was the answer to the subscribe. */
+    const deliver = (block: string): boolean => {
+      const { data, event } = parseSseBlock(block);
+      const message = decodeSseMessage(event, data);
+      if (message?.kind === "subscribe") {
+        const { response } = message;
+        state.epoch = response.epoch;
+        answer(response);
+        return true;
+      }
+      if (message !== null && state.epoch !== null && isCurrent()) {
+        listener.events({ epoch: message.epoch, events: message.events });
+      }
+      return false;
+    };
+    const reader = body.getReader();
+    const text = new TextDecoder();
+    void (async () => {
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          buffer += text.decode(value, { stream: true });
+          for (
+            let end = SSE_BLOCK_END.exec(buffer);
+            end !== null;
+            end = SSE_BLOCK_END.exec(buffer)
+          ) {
+            const block = buffer.slice(0, end.index);
+            buffer = buffer.slice(end.index + end[0].length);
+            if (deliver(block)) {
+              /* Later frames never reach the listener before the caller has the answer (§3.2):
+                 resolving queues the caller's continuation, so whatever arrived in the same chunk
+                 waits for a later task, by which time the caller has applied the answer. */
+              await afterAnswer();
+            }
+          }
+        }
+      } catch (error) {
+        // A replaced subscription's stream is aborted, which is no failure to report.
+        if (isCurrent()) {
+          console.error("[platform] the project stream failed:", error);
+        }
+      }
+      const { epoch } = state;
+      if (epoch === null) {
+        refuse(new Error("The project stream closed before it answered."));
+      } else if (isCurrent()) {
+        listener.ended?.(epoch);
+      }
+    })();
+  });
+}
+
+/** A refused conditional write or delete's conflict, or the failure itself (`project-state.md` §5). */
+async function conflictOrThrow(res: Response, what: string): Promise<WriteConflict> {
+  const body = await readJson<JsonValue>(res).catch((): JsonValue => null);
+  const conflict = res.status === 412 ? conflictFromProblem(body) : null;
+  if (conflict === null) {
+    throw new Error(`${what}: ${problemMessage(body ?? "", res.status)}`);
+  }
+  return conflict;
 }
 
 /** The options object {@link StudioPlatform.createProject} takes. */
@@ -122,6 +254,11 @@ export function createDevServerPlatform() {
    * promise so concurrent first opens share the connection instead of racing two sockets.
    */
   let _collabConnection: Promise<WsCollabConnection> | null = null;
+  /**
+   * The open project stream's abort, `null` when none: the adapter holds one subscription, and a
+   * second `projectState.subscribe` (a client repairing a gap) ends the first.
+   */
+  let _projectStream: AbortController | null = null;
 
   /**
    * Bind the server to `root` — the binding its rootless routes and its static fallback (every
@@ -554,6 +691,100 @@ export function createDevServerPlatform() {
       const connection = await _collabConnection;
       return connection.openDoc(serverPath(docPath));
     },
+
+    /**
+     * The project state service (`project-state.md` §3.2, §5): the dev server's event stream, and
+     * the writes and deletes that name their base. The same client shape the desktop adapter
+     * exposes, and not a `StudioPlatform` member: Studio's content store is what will read it. A
+     * server that predates the stream answers its subscribe with a 404, and the client keeps the
+     * resync reasons of `studio.md` §9.2.
+     */
+    projectState: {
+      /**
+       * Subscribe, and hand every later frame to `listener` until the next subscribe replaces it.
+       * The cursor travels as `Last-Event-ID`, exactly as an `EventSource` reconnecting sends it;
+       * `listener.ended` reports the stream closing (a restart, another project activated, a reader
+       * that fell behind), after which the client subscribes again with its cursor.
+       */
+      async subscribe(
+        request: SubscribeRequest,
+        listener: ProjectStateListener,
+      ): Promise<SubscribeResponse> {
+        _projectStream?.abort();
+        const stream = new AbortController();
+        _projectStream = stream;
+        // The stream serves the server's active project, which must be this tab's first.
+        await _activation;
+        const cursor =
+          request.epoch !== undefined && request.sinceRev !== undefined
+            ? { "Last-Event-ID": formatEventId(request.epoch, request.sinceRev) }
+            : {};
+        // The project the stream must serve: another tab activating its own is refused, not served.
+        const query = new URLSearchParams();
+        if (request.clientId) {
+          query.set(PROJECT_CLIENT_PARAM, request.clientId);
+        }
+        if (_projectRoot) {
+          query.set(PROJECT_ROOT_PARAM, _projectRoot);
+        }
+        const search = query.size > 0 ? `?${query}` : "";
+        const res = await fetch(`${PROJECT_EVENTS_PATH}${search}`, {
+          headers: { Accept: "text/event-stream", ...cursor },
+          signal: stream.signal,
+        });
+        if (!res.ok || res.body === null) {
+          if (_projectStream === stream) {
+            _projectStream = null;
+          }
+          throw new Error(`The project stream is unavailable (${res.status}).`);
+        }
+        return readProjectStream(res.body, () => _projectStream === stream, listener);
+      },
+      /** A write naming the bytes it replaces; a stale base answers its conflict. */
+      async write(write: WriteRequest): Promise<WriteResult> {
+        await _activation;
+        const res = await fetch(
+          `/__studio/file?path=${encodeURIComponent(serverPath(write.path))}`,
+          {
+            body: writeBody(write.contents),
+            headers: {
+              ...writePreconditionHeaders(write.baseHash),
+              ...writeIdentityHeaders(write),
+            },
+            method: "PUT",
+          },
+        );
+        if (!res.ok) {
+          return {
+            conflict: await conflictOrThrow(res, `Failed to write ${write.path}`),
+            ok: false,
+          };
+        }
+        const done = await readJson<ProjectWriteReply>(res);
+        return { hash: done.hash, ok: true, rev: done.rev };
+      },
+      /** A delete naming what it removes; a stale base answers its conflict. */
+      async delete(remove: DeleteRequest): Promise<DeleteResult> {
+        await _activation;
+        const precondition = deletePrecondition(remove.base);
+        const res = await fetch(
+          `/__studio/file?path=${encodeURIComponent(serverPath(remove.path))}`,
+          {
+            ...(precondition.body !== undefined && { body: precondition.body }),
+            headers: { ...precondition.headers, ...writeIdentityHeaders(remove) },
+            method: "DELETE",
+          },
+        );
+        if (!res.ok) {
+          return {
+            conflict: await conflictOrThrow(res, `Failed to delete ${remove.path}`),
+            ok: false,
+          };
+        }
+        const done = await readJson<ProjectWriteReply>(res);
+        return { ok: true, rev: done.rev };
+      },
+    } satisfies ProjectStateClient,
 
     /** @param {string} _path */
     async createDirectory(_path: string) {

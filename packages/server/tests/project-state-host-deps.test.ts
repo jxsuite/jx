@@ -143,6 +143,18 @@ describe("dependenciesInstalled", () => {
     }
     expect(await deps.dependenciesInstalled(root, manifest)).toBe(true);
   });
+
+  test("a package hoisted to an ancestor's node_modules counts, as Node resolves it", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "jx-hoisted-"));
+    dirs.push(workspace);
+    const member = join(workspace, "sites", "member");
+    await mkdir(member, { recursive: true });
+    const manifest = { dependencies: { hoisted: "1" } };
+    expect(await deps.dependenciesInstalled(member, manifest)).toBe(false);
+    await mkdir(join(workspace, "node_modules", "hoisted"), { recursive: true });
+    await writeFile(join(workspace, "node_modules", "hoisted", "package.json"), "{}");
+    expect(await deps.dependenciesInstalled(member, manifest)).toBe(true);
+  });
 });
 
 describe("sourceCollections", () => {

@@ -62,6 +62,12 @@ export type ControlMessage =
    */
   | { type: "doc-dirty"; path: string; dirty: boolean }
   /**
+   * Server → client: a save was refused because the file is no longer what the room was loaded from
+   * or last saved (project-state.md §5): `diskHash` and `docId` name what is there now, both `null`
+   * when nothing is. The room stays dirty; a client that does not know the type skips it.
+   */
+  | { type: "doc-conflict"; path: string; diskHash: string | null; docId: string | null }
+  /**
    * Server → client: a request was refused (codes: read-only, content-not-loaded, too-large,
    * rate-limited, binary-file, unknown-frame).
    */

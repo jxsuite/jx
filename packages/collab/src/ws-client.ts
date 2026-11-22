@@ -20,7 +20,7 @@ import { decodeFrame, encodeFrame } from "./envelope.ts";
 import { createReconnectScheduler } from "./reconnect.ts";
 import type { ReconnectPolicy } from "./reconnect.ts";
 import type { CollabFrame, ControlMessage } from "./envelope.ts";
-import type { CollabHandle, CollabIdentity, CollabStatus } from "./provider.ts";
+import type { CollabConflict, CollabHandle, CollabIdentity, CollabStatus } from "./provider.ts";
 
 /** The subset of the WebSocket API the connection uses (injectable for tests). */
 export interface WsLike {
@@ -94,6 +94,7 @@ interface DocEntry {
   /** Latest room-level dirty state from the server (survives reconnect on the same entry). */
   dirty: boolean;
   dirtyCbs: Set<(dirty: boolean) => void>;
+  conflictCbs: Set<(conflict: CollabConflict) => void>;
 }
 
 export function createWsCollabConnection(options: WsCollabConnectionOptions): WsCollabConnection {
@@ -223,6 +224,15 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
           entry.dirty = message.dirty;
           for (const cb of entry.dirtyCbs) {
             cb(message.dirty);
+          }
+        }
+        return;
+      }
+      case "doc-conflict": {
+        const entry = docs.get(message.path);
+        if (entry) {
+          for (const cb of entry.conflictCbs) {
+            cb({ diskHash: message.diskHash, docId: message.docId });
           }
         }
         return;
@@ -406,6 +416,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         resolveSynced = resolve;
       });
       const entry: DocEntry = {
+        conflictCbs: new Set(),
         dirty: false,
         dirtyCbs: new Set(),
         doc: new Y.Doc(),
@@ -477,6 +488,10 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
             sendFrame({ message: { path, type: "flush" }, type: "control" });
           }),
         identity: () => identity,
+        onConflict: (cb) => {
+          entry.conflictCbs.add(cb);
+          return () => entry.conflictCbs.delete(cb);
+        },
         onDirty: (cb) => {
           entry.dirtyCbs.add(cb);
           // Deliver current state synchronously: the server's open-handshake `doc-dirty` may have

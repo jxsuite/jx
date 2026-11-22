@@ -5,7 +5,6 @@ claims:
   - project-state.md#3.3
 requires:
   - project-state/client-store
-  - project-state/devserver-service
   - project-state/cloud-conformance
 workspaces:
   - packages/studio
@@ -17,7 +16,7 @@ size: S
 
 ## Context
 
-`specs/project-state.md` §3.3 is `Pending`: "Studio still repairs gaps with the `"open"`, `"reconnect"` and `"commit"` resync reasons of `studio.md` §9.2." Every adapter reports them through the `onResync` option of `subscribeFileEvents` (`packages/desktop/src/webview/platform.ts`, `packages/studio/src/platforms/devserver.ts`, `packages/studio/src/platforms/cloud.ts`), the fold of `FsEvent`s into listings lives in `packages/studio/src/files/fs-events.ts`, and that module also suppresses echoes by a 1.5 second window (`RECENT_MS`). The resync path can only go once no adapter needs it: the desktop host (`plan:project-state/desktop-service`), the dev-server host (`plan:project-state/devserver-service`) and the cloud host (`plan:project-state/cloud-conformance`) must each serve the subscription, and the client must already consume it (`plan:project-state/client-store`).
+`specs/project-state.md` §3.3 is `Pending`: "Studio still repairs gaps with the `"open"`, `"reconnect"` and `"commit"` resync reasons of `studio.md` §9.2." Every adapter reports them through the `onResync` option of `subscribeFileEvents` (`packages/desktop/src/webview/platform.ts`, `packages/studio/src/platforms/devserver.ts`, `packages/studio/src/platforms/cloud.ts`), the fold of `FsEvent`s into listings lives in `packages/studio/src/files/fs-events.ts`, and that module also suppresses echoes by a 1.5 second window (`RECENT_MS`). The resync path can only go once no adapter needs it: the desktop host (§10.1) and the dev-server host (§10.2) serve the subscription, the cloud host (`plan:project-state/cloud-conformance`) must too, and the client must already consume it (`plan:project-state/client-store`).
 
 ## Outcome
 

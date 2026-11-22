@@ -32,6 +32,8 @@ import {
 } from "./live-preview.ts";
 import { applyRename } from "./refactor/apply.ts";
 import { findReferences } from "./refactor/find-refs.ts";
+import { isConditionalFileRequest } from "./project-events.ts";
+import type { ProjectEventsService } from "./project-events.ts";
 import {
   addPackage,
   dependenciesNeedInstall,
@@ -129,7 +131,7 @@ const extensionRegistryCache = new Map<
  * @param {string} projectRoot
  * @returns {Promise<ExtensionRegistry>}
  */
-async function getExtensionRegistry(projectRoot: string): Promise<ExtensionRegistry> {
+export async function getExtensionRegistry(projectRoot: string): Promise<ExtensionRegistry> {
   const stamp = projectFileStamp(projectRoot) ?? { mtime: 0, path: "" };
   let projectConfig: ProjectConfig | undefined;
   try {
@@ -384,6 +386,13 @@ export interface StudioApiOptions {
    * path lets the registry reset that room, which deletes it and makes the later flush a no-op.
    */
   onFileMoved?: (absPath: string) => void;
+  /**
+   * The project state service (`project-state.md` §10.2). With it, a `PUT` or `DELETE` of a file
+   * that names a base (`If-Match`, `If-None-Match`) or an issuer (`Jx-Write-Id`) is the conditional
+   * write or delete of §5, the usage query answers from the host's graph once it is built, and the
+   * live preview overlay of the project it serves is keyed by document and client (§11.3).
+   */
+  projectEvents?: ProjectEventsService;
 }
 
 /**
@@ -1020,23 +1029,37 @@ export async function handleStudioApi(
    */
   if (path === "/__studio/preview/overlay") {
     const dir = activeProjectRoot ?? root;
-    let body: { path?: string; contents?: string };
+    let body: { path?: string; contents?: string; clientId?: string };
     try {
-      /* SAFETY: both members are re-checked with isString below before either reaches the
-         overlay store. */
-      body = (await req.json()) as { path?: string; contents?: string };
+      /* SAFETY: every member is re-checked with isString below before it reaches the overlay
+         store. */
+      body = (await req.json()) as { path?: string; contents?: string; clientId?: string };
     } catch {
       return problem("invalidRequest", "Invalid JSON body");
     }
+    /* The project the host serves keys its overlays by document and client (`project-state.md`
+       §11.3), so a rename moves one and a removal drops it; any other is keyed by path. */
+    const keyed = opts.projectEvents?.root === resolve(dir) ? opts.projectEvents : undefined;
+    const clientId = isString(body.clientId) && body.clientId !== "" ? body.clientId : undefined;
+    const owner = clientId === undefined ? {} : { clientId };
     if (req.method === "POST") {
       if (!isString(body.path) || !isString(body.contents)) {
         return problem("invalidRequest", "Missing path or contents");
       }
-      setLivePreviewOverlay(dir, body.path, body.contents);
+      if (keyed) {
+        keyed.setOverlay({ contents: body.contents, path: body.path, ...owner });
+      } else {
+        setLivePreviewOverlay(dir, body.path, body.contents);
+      }
       return new Response(null, { status: 204 });
     }
     if (req.method === "DELETE") {
-      clearLivePreviewOverlay(dir, isString(body.path) ? body.path : undefined);
+      const at = isString(body.path) ? body.path : undefined;
+      if (keyed) {
+        keyed.clearOverlay({ ...owner, ...(at !== undefined && { path: at }) });
+      } else {
+        clearLivePreviewOverlay(dir, at);
+      }
       return new Response(null, { status: 204 });
     }
   }
@@ -1304,6 +1327,9 @@ export async function handleStudioApi(
     } catch (error) {
       return new Response(errorMessage(error), { status: 400 });
     }
+    if (opts.projectEvents && isConditionalFileRequest(req)) {
+      return opts.projectEvents.handleWrite(req, abs);
+    }
     try {
       await mkdir(dirname(abs), { recursive: true });
       await writeFile(abs, await req.text(), "utf8");
@@ -1346,6 +1372,9 @@ export async function handleStudioApi(
       assertAccessible(abs, root, activeProjectRoot);
     } catch (error) {
       return new Response(errorMessage(error), { status: 400 });
+    }
+    if (opts.projectEvents && isConditionalFileRequest(req)) {
+      return opts.projectEvents.handleDelete(req, abs);
     }
     try {
       /* A directory is removed only when it is EMPTY (`rmdir`), never recursively: a folder of
@@ -1441,8 +1470,11 @@ export async function handleStudioApi(
     }
     try {
       const registry = await getFormatRegistry(scanRoot);
+      /* The running host's graph answers once it is indexed and settled (`project-state.md` §12);
+         without one, or for another project, the engine walks the tree. */
+      const graph = (await opts.projectEvents?.references(scanRoot)) ?? null;
       return Response.json(
-        await findReferences({ path: target, registry, root: scanRoot, tagName: tag }),
+        await findReferences({ graph, path: target, registry, root: scanRoot, tagName: tag }),
       );
     } catch (error) {
       return problem("internalError", errorMessage(error));

@@ -11,6 +11,7 @@ import {
   STUDIO_ROUTES,
 } from "../src/index";
 import type { ReadFilesResult } from "../src/index";
+import { PROJECT_EVENTS_PATH } from "../src/project-state-frames";
 
 const entries = Object.entries(STUDIO_ROUTES);
 
@@ -67,6 +68,17 @@ describe("STUDIO_ROUTES", () => {
     ] as const) {
       expect(optional).toContain(name);
     }
+  });
+
+  test("the project stream is optional, and the file routes name their conditional form", () => {
+    expect(STUDIO_ROUTES.projectEvents).toMatchObject({
+      method: "GET",
+      optional: true,
+      path: PROJECT_EVENTS_PATH,
+    });
+    expect(STUDIO_ROUTES.projectEvents.summary).toContain("Last-Event-ID");
+    expect(STUDIO_ROUTES.fileWrite.summary).toContain("If-Match");
+    expect(STUDIO_ROUTES.fileDelete.summary).toContain("Jx-Write-Id");
   });
 
   test("the formats route documents the additive extensions payload", () => {

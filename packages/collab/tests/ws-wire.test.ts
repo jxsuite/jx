@@ -10,7 +10,7 @@ import type { CollabHost } from "../src/ws-room.ts";
 import { createWsCollabConnection } from "../src/ws-client.ts";
 import type { WsCollabConnection, WsLike } from "../src/ws-client.ts";
 import { encodeFrame } from "../src/envelope.ts";
-import type { CollabIdentity } from "../src/provider.ts";
+import type { CollabConflict, CollabIdentity } from "../src/provider.ts";
 import { applyDocOpsToY, LOCAL_ORIGIN } from "../src/op-bridge.ts";
 import { seedStructure, sourceText, structureMap, yDocToJson } from "../src/schema.ts";
 
@@ -350,6 +350,7 @@ describe("lifecycle", () => {
     // A "server" that accepts the socket but swallows every frame: the "open" control goes
     // Nowhere, so no "opened" reply can resolve the open — only the client-side timeout can.
     const silentHost: CollabHost = {
+      conflict: () => {},
       connect: () => ({ close: () => {}, handleMessage: () => {} }),
       destroy: () => {},
       destroyRoomIfEmpty: () => {},
@@ -517,6 +518,35 @@ describe("lifecycle", () => {
     await settle();
     // After unsubscribing, no further callbacks land.
     expect(seen).toEqual([false]);
+  });
+
+  test("a refused save reaches every subscriber's onConflict, until it unsubscribes", async () => {
+    const fx = fixture();
+    const connection = fx.connect();
+    const a = await connection.openDoc("pages/index.json");
+    const b = await fx.connect().openDoc("pages/index.json");
+    await a!.whenSynced;
+    await b!.whenSynced;
+    const seenA: CollabConflict[] = [];
+    const seenB: CollabConflict[] = [];
+    const off = a!.onConflict!((conflict) => seenA.push(conflict));
+    b!.onConflict!((conflict) => seenB.push(conflict));
+    fx.host.conflict("pages/index.json", { diskHash: "sha256-x", docId: "d1" });
+    await settle();
+    expect(seenA).toEqual([{ diskHash: "sha256-x", docId: "d1" }]);
+    expect(seenB).toEqual(seenA);
+    off();
+    fx.host.conflict("pages/index.json", { diskHash: null, docId: null });
+    // One for a path this client never opened is dropped.
+    fx.sockets[0]!.onmessage?.({
+      data: encodeFrame({
+        message: { diskHash: null, docId: null, path: "pages/other.json", type: "doc-conflict" },
+        type: "control",
+      }).buffer,
+    });
+    await settle();
+    expect(seenA).toHaveLength(1);
+    expect(seenB).toHaveLength(2);
   });
 
   test("markPersisted on an unknown path and a doc-dirty for an unopened path are no-ops", async () => {

@@ -10,6 +10,15 @@ import type { CollabPermission } from "./envelope.ts";
 
 export type CollabStatus = "connecting" | "connected" | "offline";
 
+/**
+ * A save the server refused because the file is no longer what the room was loaded from or last
+ * saved (`project-state.md` §5): what is on disk now, both `null` when nothing is.
+ */
+export interface CollabConflict {
+  diskHash: string | null;
+  docId: string | null;
+}
+
 export interface CollabIdentity {
   login: string;
   name?: string;
@@ -45,6 +54,12 @@ export interface CollabHandle {
    * handshake, so the callback must run synchronously to win that race). Returns an unsubscribe.
    */
   onDirty: (cb: (dirty: boolean) => void) => () => void;
+  /**
+   * A save of the room was refused (`doc-conflict`): the file changed under it. The room stays
+   * dirty, and its participants decide whose bytes win (`project-state.md` §6.1). Optional: a
+   * provider whose server never refuses a save has nothing to report. Returns an unsubscribe.
+   */
+  onConflict?: (cb: (conflict: CollabConflict) => void) => () => void;
   destroy: () => void;
 }
 

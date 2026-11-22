@@ -11,7 +11,7 @@
  */
 
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
@@ -105,8 +105,9 @@ export const installPackages: Installer = async (root) => {
 
 /**
  * The default {@link InstalledCheck}: every package named in the manifest's dependency fields has a
- * `package.json` under `node_modules`. Peer dependencies are the consumer's to provide, so they are
- * not required here.
+ * `package.json` under a `node_modules` in the root or one of its ancestors, as Node resolves a
+ * bare specifier, so a workspace member whose dependencies are hoisted to the workspace root counts
+ * as installed. Peer dependencies are the consumer's to provide, so they are not required here.
  */
 export const dependenciesInstalled: InstalledCheck = async (root, manifest) => {
   const names = new Set<string>();
@@ -119,14 +120,28 @@ export const dependenciesInstalled: InstalledCheck = async (root, manifest) => {
     }
   }
   for (const name of names) {
-    try {
-      await stat(join(root, "node_modules", name, "package.json"));
-    } catch {
+    if (!(await resolvesUpward(root, name))) {
       return false;
     }
   }
   return true;
 };
+
+/** Whether `node_modules/<name>/package.json` exists in `from` or any directory above it. */
+async function resolvesUpward(from: string, name: string): Promise<boolean> {
+  for (let dir = from; ;) {
+    try {
+      await stat(join(dir, "node_modules", name, "package.json"));
+      return true;
+    } catch {
+      const parent = dirname(dir);
+      if (parent === dir) {
+        return false;
+      }
+      dir = parent;
+    }
+  }
+}
 
 /**
  * A source glob (`content/*.md`, `docs/**`) as a regular expression over project paths. With

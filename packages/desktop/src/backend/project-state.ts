@@ -12,7 +12,6 @@
  * @docs studio/desktop
  */
 
-import { extname } from "node:path";
 import {
   decodeWireContents,
   encodeDesktopEnded,
@@ -28,115 +27,20 @@ import type {
   SubscribeResponse,
   WireContents,
 } from "@jxsuite/protocol/project-state";
-import { createProjectStateHost, sourceCollections } from "@jxsuite/server/project-state/host";
+import { createProjectStateHost } from "@jxsuite/server/project-state/host";
 import type {
   CollectionResolver,
   ProjectStateHost,
   ProjectStateHostOptions,
 } from "@jxsuite/server/project-state/host";
 import { createOverlayRegistry } from "@jxsuite/server/project-state/overlays";
+import { settledReferences } from "@jxsuite/server/project-state/settle";
 import type { OverlayOwner } from "@jxsuite/server/project-state/overlays";
 import { RpcProblemError } from "@jxsuite/server/project-server";
 import type { RpcConnection } from "@jxsuite/server/project-server";
 import type { GraphReferences } from "@jxsuite/server/refactor";
-import { isJsonObject, isString } from "@jxsuite/schema/guards";
-import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { ProjectSectionData } from "@jxsuite/schema/format-registry";
-import type { ContentLoaderEntry, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
-
-// ─── The collection loader's lists (§8.1) ──────────────────────────────────────────────────────
-
-/** What the collection loader is asked for: every project section an extension loads. */
-export type SectionLoader = (
-  root: string,
-  config: ProjectConfig | undefined,
-  registry: ExtensionRegistry,
-  options: { includeHeld: boolean },
-) => Promise<Record<string, ProjectSectionData>>;
-
-/**
- * Whether `file` is the one `entry` came from: its source-relative path and its locale. An entry of
- * a single-file source names no path, and comes from that file.
- */
-function cameFrom(entry: ContentLoaderEntry, file: string, singleFile: boolean): boolean {
-  const path = entry._meta?.path;
-  if (path === undefined) {
-    return singleFile;
-  }
-  if (file !== path && !file.endsWith(`/${path}`)) {
-    return false;
-  }
-  const locale = entry._meta?.locale?.toLowerCase();
-  return (
-    locale === undefined ||
-    file
-      .slice(0, file.length - path.length)
-      .split("/")
-      .some((segment) => segment.toLowerCase() === locale)
-  );
-}
-
-/**
- * The compiler's section loader, imported when a collection is first resolved: the build pipeline
- * is not loaded for a window that never subscribes.
- */
-const compilerSections: SectionLoader = async (root, config, registry, options) => {
-  const { loadProjectSections } = await import("@jxsuite/compiler/project-sections");
-  return loadProjectSections(root, config, registry, options);
-};
-
-/**
- * Each content type's entry files as the collection loader resolves them (§8.1): the files the
- * type's `source` covers (`sourceCollections`), less the ones the loader left out, so `where` and
- * `hold` count as well as `exclude`. The loader is the project's own `content` section owner,
- * reached through its extension registry; a project that installs none, a type the loader did not
- * answer, or a load that failed falls back to the source's files.
- *
- * @param registryFor The project's extension registry, as the session builds it.
- * @param loadSections The section loader; the compiler's by default.
- */
-export function collectionLoaderResolver(
-  registryFor: () => Promise<ExtensionRegistry>,
-  loadSections: SectionLoader = compilerSections,
-): CollectionResolver {
-  return async (input) => {
-    const candidates = await sourceCollections(input);
-    if (Object.keys(candidates).length === 0) {
-      return candidates;
-    }
-    let section: ProjectSectionData | undefined;
-    try {
-      const sections = await loadSections(input.root, input.config, await registryFor(), {
-        includeHeld: true,
-      });
-      section = sections.content;
-    } catch {
-      return candidates;
-    }
-    if (!(section instanceof Map)) {
-      return candidates;
-    }
-    const resolved: Record<string, readonly string[]> = {};
-    const sources = new Map<string, string>();
-    const content = input.config?.content;
-    if (isJsonObject(content)) {
-      for (const [type, def] of Object.entries(content)) {
-        if (isJsonObject(def) && isString(def.source)) {
-          sources.set(type, def.source);
-        }
-      }
-    }
-    for (const [type, files] of Object.entries(candidates)) {
-      const entries = section.get(type);
-      const singleFile = extname(sources.get(type) ?? "") !== "";
-      resolved[type] =
-        entries === undefined
-          ? files
-          : files.filter((file) => entries.some((entry) => cameFrom(entry, file, singleFile)));
-    }
-    return resolved;
-  };
-}
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 // ─── The service ───────────────────────────────────────────────────────────────────────────────
 
@@ -155,12 +59,6 @@ export interface ProjectWriteParams {
  * event stream to a reader that has stalled is not.
  */
 export const PROJECT_SOCKET_HIGH_WATER = 4 * 1024 * 1024;
-
-/** How long the usage query waits for the host to settle before it walks the tree instead, in ms. */
-const SETTLE_LIMIT_MS = 2000;
-
-/** How long the host must be quiet before the usage query reads its graph, in ms (§12). */
-const SETTLE_QUIET_MS = 100;
 
 export interface ProjectStateServiceOptions {
   root: string;
@@ -204,7 +102,7 @@ export function createProjectStateService(options: ProjectStateServiceOptions) {
   const { root } = options;
   const createHost = options.createHost ?? createProjectStateHost;
   const highWater = options.socketHighWater ?? PROJECT_SOCKET_HIGH_WATER;
-  const settleLimitMs = options.settleLimitMs ?? SETTLE_LIMIT_MS;
+  const { settleLimitMs } = options;
   let starting: Promise<ProjectStateHost> | null = null;
   let host: ProjectStateHost | null = null;
   let closed = false;
@@ -461,20 +359,9 @@ export function createProjectStateService(options: ProjectStateServiceOptions) {
      * while its watcher is degraded, or when it has not settled within a bound, so a change the
      * watcher has not delivered yet is never missed and the caller walks the tree.
      */
-    async references(): Promise<GraphReferences | null> {
+    references(): Promise<GraphReferences | null> {
       const running = host;
-      if (running === null || running.references() === null) {
-        return null;
-      }
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const settled = await Promise.race([
-        running.idle(SETTLE_QUIET_MS).then(() => true),
-        new Promise<false>((resolve) => {
-          timer = setTimeout(resolve, settleLimitMs, false);
-        }),
-      ]);
-      clearTimeout(timer);
-      return settled ? running.references() : null;
+      return running === null ? Promise.resolve(null) : settledReferences(running, settleLimitMs);
     },
     /** Publish a client's unsaved bytes for the document at `path` (§11.3). */
     setOverlay(

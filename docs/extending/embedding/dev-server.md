@@ -6,13 +6,16 @@ spec:
   - server.md#4 # studio filesystem API
   - server.md#4.2 # security
   - server.md#5 # code services
-  - project-state.md#3.2 # the desktop binding
+  - project-state.md#3.2 # the desktop and Server-Sent Events bindings
+  - project-state.md#10.2 # the dev server's project state host
+  - project-state.md#11.3 # collaboration rooms keyed by document
 code:
   - packages/server/src/server.ts
   - packages/server/src/studio-api.ts
   - packages/server/src/resolve.ts
   - packages/server/src/jx-mounts.ts
   - packages/server/src/project-server.ts
+  - packages/server/src/project-events.ts
 ---
 
 # Dev server internals
@@ -27,7 +30,7 @@ code:
 2. `POST /__jx_resolve__`: the `$prototype`/`$src` resolution proxy.
 3. `POST /__jx_server__`: the `timing: "server"` function proxy.
 4. `/_jx/*`: extension server mounts.
-5. `/__studio/*` is the Studio API (skipped when `studio: false`): the collab WebSocket upgrade, `activate`, then the AI, site-import, and code sub-APIs, then `handleStudioApi` for everything else.
+5. `/__studio/*` is the Studio API (skipped when `studio: false`): the collab WebSocket upgrade, the project state stream, `activate`, then the AI, site-import, and code sub-APIs, then `handleStudioApi` for everything else.
 6. Custom `middleware`, if the embedder passed one.
 7. Static files: project files at their natural URLs, the active project's tree, `public/` at the site root, and bare npm specifiers resolved through the active project's `node_modules`, then the root's, and bundled on demand.
 
@@ -41,7 +44,20 @@ Ordering is load-bearing: the privileged endpoints must be claimed before the st
 
 Format and extension behavior is served from a per-project **extension registry**, built by scanning the project's dependencies and cached against the project file's mtime. Edit the manifest and the next request rebuilds the registry. The `formats`, `format`, and `project-schemas` routes all answer from it.
 
-A host embedding `handleStudioApi` directly passes `onFileMoved` alongside `allowedRoots` and `onProjectCreated`. `createDevServer` wires it to the collaboration registry, and a host running its own collab layer must do the same: a live room is keyed by path, so a rename moves the file out from under it and the room's shutdown flush would write its pre-rename content back, recreating the file the rename deleted. It is called with the OLD absolute path, and it is the same hook the file watcher already uses.
+A host embedding `handleStudioApi` directly passes `onFileMoved` alongside `allowedRoots` and `onProjectCreated`, and `projectEvents` to serve the project state routes below. `createDevServer` wires `onFileMoved` to the collaboration registry, and a host running its own collab layer must do the same for every room it keys by path: a rename moves the file out from under such a room, and its shutdown flush would write its pre-rename content back, recreating the file the rename deleted. It is called with the OLD absolute path, and it is the same hook the file watcher already uses. A room `createDevServer` keys by document (below) ignores it.
+
+## The project state stream
+
+The dev server runs the project state host for the active project ([`project-state.md` §10.2](https://github.com/jxsuite/jx/blob/main/specs/project-state.md#102-dev-server)), the same module the desktop backend runs, from `project-events.ts`. It starts on the first request that needs it, so a Studio that never subscribes pays nothing, and it serves `activeProjectRoot ?? root`, like every other route. Activating another project closes it, which ends every open stream, and the next request starts a host over the new project in a new epoch.
+
+- **`GET /__studio/project/events`** is a Server-Sent Events stream, separate from `/__reload`. Its first frame, `event: subscribe`, answers the subscribe that the `Last-Event-ID` header names (`<epoch>:<rev>`): the events since, or a snapshot when there is no cursor or the log no longer holds it. Every later frame is `event: project` with `{ epoch, events }`, and its `id:` names the last revision it carries, so a browser's own reconnection resumes exactly where it stopped. `?clientId=` names the client. `?root=` names the project the client activated, spelled as it posted it to `activate`; while another project is active the stream is refused with `409 conflict`, because every tab shares the server's one active project and no frame says which one a stream describes. The stream sends no `retry:` and closes when the host ends the subscription, or when the reader falls more than 4 MiB behind.
+- **A conditional write or delete** is the ordinary file route with a base. `PUT /__studio/file` carrying `If-Match: "<hash>"` (or `If-None-Match: *` for a new file) and `Jx-Write-Id` writes the body's bytes through the host and answers `{ ok, rev, hash, path }` with the hash as its `ETag`. `DELETE /__studio/file` carrying `If-Match` for a file, or a `{ files }` JSON body for a directory, and `Jx-Write-Id`, deletes through it. A stale base is a `412` `precondition-failed` problem naming the path, the document and the hash on disk. A request that names neither a base nor `Jx-Write-Id` keeps the unconditional, last-writer-wins behaviour, since the server cannot tell over HTTP which client subscribed.
+- **The live preview overlay** (`POST` and `DELETE /__studio/preview/overlay`) of the active project is keyed by document and client, as on the desktop: a rename the host observes moves an overlay, a removal drops it, and activating another project unpublishes the overlays of the one before. A `clientId` in the request body names the client that sets or clears it, and its overlays outlive its last open stream naming the same `clientId` by 30 seconds. An overlay set without one is shared by every client that names none, so any of them may clear it.
+- **The usage query** (`/__studio/references`) answers from the host's graph once the host is indexed and settled, and walks the tree otherwise.
+
+Studio's dev-server adapter exposes the client half as `projectState`, with the `{ subscribe, write, delete }` shape the desktop adapter exposes. The reload stream keeps its `fs` frames meanwhile, so a Studio that does not subscribe sees no change.
+
+**Collaboration rooms inside the active project are keyed by document.** The collaboration registry follows the host's events: a rename the host observes moves a room (a peer still at the old path and one opening the new path share it), a removal closes it, and a save goes through the host's conditional write with the hash the room loaded or last saved, so a stale save is refused and reaches every participant as a `doc-conflict` control message rather than overwriting the disk. Two saves of one room run one after the other, so pressing Save twice, or two peers saving together, is never a conflict with itself. Activating another project saves each room with unsaved edits through the host of the project it belongs to, and then closes it. A room outside the active project is keyed by its path, as before; if a later activation brings its file into the active project, the room is saved and closed, so one file never has two rooms.
 
 ### Which root a path is measured against
 

@@ -16,6 +16,9 @@
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { buildAll } from "./build.ts";
 import { createCollabRegistry } from "./collab.ts";
+import { createProjectEventsService } from "./project-events.ts";
+import type { ProjectEventsOptions } from "./project-events.ts";
+import { PROJECT_EVENTS_PATH } from "@jxsuite/protocol/project-state-frames";
 import { createWatcher, injectSSE } from "./watch.ts";
 import { invalidateReferenceCache } from "./refactor/find-refs.ts";
 import { createFsWatcher } from "./refactor/watcher.ts";
@@ -29,6 +32,7 @@ import {
 import {
   assertAccessible,
   assertCreatableParent,
+  getExtensionRegistry,
   handleStudioApi,
   isOwnedProjectDir,
 } from "./studio-api.ts";
@@ -39,6 +43,7 @@ import {
   serveProjectFile,
 } from "./net-guard.ts";
 import { handleCodeApi } from "./code-api.ts";
+import { clearLivePreviewOverlay, setLivePreviewOverlay } from "./live-preview.ts";
 import { handleAiApi } from "./ai-api.ts";
 import { handleImportApi } from "./import-api.ts";
 import { mediaTypeForPath } from "@jxsuite/schema/media-type";
@@ -95,6 +100,8 @@ export async function createDevServer(options: {
   watch?: boolean | DevWatchOptions;
   studio?: boolean;
   middleware?: (req: Request, url: URL) => Response | null | Promise<Response | null>;
+  /** How the project state service runs its host (`project-state.md` §10.2); its defaults otherwise. */
+  projectState?: ProjectEventsOptions;
 }) {
   const {
     root,
@@ -105,6 +112,7 @@ export async function createDevServer(options: {
     watch = true,
     studio: enableStudio = true,
     middleware,
+    projectState,
   } = options;
 
   if (!root) {
@@ -225,6 +233,18 @@ export async function createDevServer(options: {
     }
   }
 
+  // ─── Project state (/__studio/project/events) ───────────────────────────────
+
+  /* The active project's host (`project-state.md` §10.2): it serves `activeProjectRoot ?? absRoot`,
+     the root every other route resolves against, and starts only when a request needs it. */
+  const projectEvents = createProjectEventsService({
+    publish: setLivePreviewOverlay,
+    registryFor: getExtensionRegistry,
+    unpublish: clearLivePreviewOverlay,
+    ...projectState,
+  });
+  await projectEvents.activate(absRoot);
+
   // ─── Realtime co-editing (/__studio/collab) ─────────────────────────────────
 
   // Created unconditionally (it is inert until an upgrade) so Bun.serve always has real
@@ -232,6 +252,7 @@ export async function createDevServer(options: {
   const collabRegistry = createCollabRegistry({
     absRoot,
     activeProjectRoot: () => activeProjectRoot,
+    projectEvents,
   });
   if (enableStudio && fsWatcher) {
     fsWatcher.on("change", (changedPath: string) => {
@@ -333,6 +354,11 @@ export async function createDevServer(options: {
           });
         }
 
+        // The project state stream (`project-state.md` §3.2), separate from /__reload.
+        if (path === PROJECT_EVENTS_PATH && req.method === "GET") {
+          return projectEvents.handleEvents(req, url, (named) => resolve(absRoot, named));
+        }
+
         // Activate project — tells the server which project root to use for static file fallback.
         // Contain the requested root: it must be under absRoot, an explicitly allowed root, a
         // Project this server just created, or an existing project of the account's own
@@ -348,6 +374,7 @@ export async function createDevServer(options: {
           if (!raw) {
             activeProjectRoot = null;
             await watchActiveProject(null);
+            await projectEvents.activate(absRoot);
             return Response.json({ ok: true, root: null });
           }
           const requested = resolve(absRoot, raw);
@@ -366,6 +393,8 @@ export async function createDevServer(options: {
             await watchActiveProject(requested);
           }
           activeProjectRoot = requested;
+          // Another project ends every subscription and starts a new epoch (`project-state.md` §10.2).
+          await projectEvents.activate(requested);
           return Response.json({ ok: true, root: activeProjectRoot });
         }
 
@@ -409,6 +438,7 @@ export async function createDevServer(options: {
           allowedRoots,
           onFileMoved: (absPath) => collabRegistry.handleExternalChange(absPath),
           onProjectCreated: (created) => createdRoots.push(created),
+          projectEvents,
         });
         if (res) {
           return res;
@@ -557,6 +587,14 @@ export async function createDevServer(options: {
     idleTimeout: 120,
     websocket: collabRegistry.websocket,
   });
+
+  /* Stopping the server stops the project's host too: its watcher and git monitor would otherwise
+     outlive the server that started them, and its open streams would never end. */
+  const stopServer = server.stop.bind(server);
+  server.stop = async (closeActiveConnections?: boolean) => {
+    await projectEvents.close();
+    return stopServer(closeActiveConnections);
+  };
 
   console.log(`\n@jxsuite/server listening on http://${hostname}:${server.port}`);
 

@@ -54,6 +54,7 @@ void mock.module("../src/live-preview.ts", () => ({
 }));
 
 const { handleStudioApi } = await import("../src/studio-api.ts");
+const { createProjectEventsService } = await import("../src/project-events.ts");
 
 const FIXTURES = resolve(import.meta.dir, "_studio_preview_route_fixtures");
 /** A site project: it has a project.json, so it has routes to preview. */
@@ -287,5 +288,43 @@ describe("the unsaved bytes, refused", () => {
     expect(await handleStudioApi(req, url, SITE, null)).toBeNull();
     expect(overlaySets).toEqual([]);
     expect(overlayClears).toEqual([]);
+  });
+
+  /*
+   * The project the host serves keys its overlay by document and client (`project-state.md`
+   * §11.3), so the route hands it to the service rather than the path-keyed store; a client that
+   * names itself owns what it sets.
+   */
+  test("the project the host serves keys its overlay through the service", async () => {
+    const log: string[] = [];
+    const projectEvents = createProjectEventsService({
+      createHost: () => Promise.reject(new Error("not needed")),
+      publish: (root, path, contents) => log.push(`${root} ${path}=${contents}`),
+      unpublish: (root, path) => log.push(`${root} ${path}=`),
+    });
+    await projectEvents.activate(SITE);
+    const send = async (method: "POST" | "DELETE", body: JsonObject, active: string) => {
+      const url = new URL("http://localhost/__studio/preview/overlay");
+      const req = new Request(url, { body: JSON.stringify(body), method });
+      return (await handleStudioApi(req, url, PLAIN, active, { projectEvents }))!.status;
+    };
+    expect(await send("POST", { clientId: "tab-1", contents: "x", path: "a.json" }, SITE)).toBe(
+      204,
+    );
+    expect(await send("POST", { clientId: "", contents: "y", path: "a.json" }, SITE)).toBe(204);
+    // The unnamed client's layer goes, and tab-1's shows again; then tab-1 clears its own.
+    expect(await send("DELETE", { path: "a.json" }, SITE)).toBe(204);
+    expect(await send("DELETE", { clientId: "tab-1" }, SITE)).toBe(204);
+    expect(log).toEqual([
+      `${SITE} a.json=x`,
+      `${SITE} a.json=y`,
+      `${SITE} a.json=x`,
+      `${SITE} a.json=`,
+    ]);
+    expect(overlaySets).toEqual([]);
+    // Another project than the one served keeps the path-keyed store.
+    expect(await send("POST", { contents: "z", path: "c.json" }, PLAIN)).toBe(204);
+    expect(overlaySets).toEqual([{ contents: "z", path: "c.json", root: PLAIN }]);
+    await projectEvents.close();
   });
 });

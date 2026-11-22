@@ -174,3 +174,95 @@ describe("opens abandoned mid-seed", () => {
     expect(host.sourceOf("a.json")).toBeNull();
   });
 });
+
+describe("rooms keyed by document (keyOf)", () => {
+  /** Open `path` on `conn` and wait for the room to answer. */
+  async function open(conn: ReturnType<CollabHost["connect"]>, path: string): Promise<void> {
+    conn.handleMessage(encodeFrame({ message: { path, type: "open" }, type: "control" }));
+    await settle();
+  }
+
+  test("two paths naming one document share its room, each peer answered by its own path", async () => {
+    const loads: [string, string][] = [];
+    const flushed: string[] = [];
+    const host = createCollabHost({
+      keyOf: (path) => (path.endsWith(".md") ? "doc:1" : path),
+      loadSource: (path, key) => {
+        loads.push([path, key]);
+        return Promise.resolve("seed");
+      },
+      onFlush: (key) => {
+        flushed.push(key);
+      },
+    });
+    cleanups.push(() => host.destroy());
+    const old = recordingSocket();
+    const moved = recordingSocket();
+    const both = recordingSocket();
+    const a = host.connect(old.socket, IDENTITY);
+    const b = host.connect(moved.socket, IDENTITY);
+    const c = host.connect(both.socket, IDENTITY);
+    await open(a, "old.md");
+    await open(b, "new.md");
+    await open(c, "old.md");
+    await open(c, "new.md");
+    expect(loads).toEqual([["old.md", "doc:1"]]);
+    expect(host.subscriberCount("doc:1")).toBe(3);
+    expect(host.sourceOf("doc:1")).toBe("seed");
+
+    host.conflict("doc:1", { diskHash: null, docId: "1" });
+    const conflicts = (frames: CollabFrame[]) =>
+      controls(frames).filter((message) => message.type === "doc-conflict");
+    expect(conflicts(old.frames)).toEqual([
+      { diskHash: null, docId: "1", path: "old.md", type: "doc-conflict" },
+    ]);
+    expect(conflicts(moved.frames)).toEqual([
+      { diskHash: null, docId: "1", path: "new.md", type: "doc-conflict" },
+    ]);
+    expect(conflicts(both.frames).map((message) => message.path)).toEqual(["old.md", "new.md"]);
+
+    // A flush names the room by whichever path the peer holds; one it never opened saves nothing,
+    // And is acknowledged all the same.
+    b.handleMessage(encodeFrame({ message: { path: "new.md", type: "flush" }, type: "control" }));
+    b.handleMessage(encodeFrame({ message: { path: "old.md", type: "flush" }, type: "control" }));
+    await settle();
+    expect(flushed).toEqual(["doc:1"]);
+    expect(
+      controls(moved.frames)
+        .filter((message) => message.type === "flush-ack")
+        .map((message) => message.path)
+        .toSorted(),
+    ).toEqual(["new.md", "old.md"]);
+
+    // Closing one of a peer's two paths keeps it in the room; a reset reaches every path.
+    c.handleMessage(encodeFrame({ path: "old.md", type: "doc-close" }));
+    expect(host.subscriberCount("doc:1")).toBe(3);
+    host.resetDoc("doc:1");
+    expect(controls(both.frames).at(-1)).toEqual({ epoch: 1, path: "new.md", type: "doc-reset" });
+    expect(host.sourceOf("doc:1")).toBeNull();
+    host.conflict("doc:1", { diskHash: null, docId: null });
+  });
+
+  test("a path whose room changes key never goes back to a lower epoch", async () => {
+    let key = "doc:1";
+    const host = createCollabHost({
+      keyOf: () => key,
+      loadSource: () => Promise.resolve("seed"),
+    });
+    cleanups.push(() => host.destroy());
+    const peer = recordingSocket();
+    const conn = host.connect(peer.socket, IDENTITY);
+    await open(conn, "a.md");
+    host.resetDoc("doc:1");
+    host.resetDoc("doc:1");
+    key = "path:/a.md";
+    // A frame for the path after the reset is refused at the path's epoch, not the new key's.
+    conn.handleMessage(
+      encodeFrame({ body: new Uint8Array([0]), epoch: 0, path: "a.md", type: "doc-sync" }),
+    );
+    expect(controls(peer.frames).at(-1)).toEqual({ epoch: 1, path: "a.md", type: "doc-reset" });
+    await open(conn, "a.md");
+    const opened = controls(peer.frames).filter((message) => message.type === "opened");
+    expect(opened.map((message) => message.epoch)).toEqual([0, 1]);
+  });
+});
