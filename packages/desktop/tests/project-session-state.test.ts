@@ -8,7 +8,7 @@
 
 import { authorized } from "./_authorized";
 import { afterAll, describe, expect, mock, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { contentHash } from "@jxsuite/protocol/project-state";
@@ -177,6 +177,24 @@ describe("the session's project state", () => {
       expect(() => {
         s.refuseUnconditional("writeFile");
       }).not.toThrow();
+
+      // A rename is one operation: the component's file, its tag and its instances (§9).
+      const renamed = await s.projectRename({
+        dirtyReferrers: [],
+        from: "components/card.json",
+        opId: "op-1",
+        policy: "rewrite-buffer",
+        to: "components/badge.json",
+      });
+      expect(renamed).toMatchObject({ ok: true, opId: "op-1" });
+      expect(existsSync(join(root, "components/badge.json"))).toBe(true);
+      await s.projectRename({
+        dirtyReferrers: [],
+        from: "components/badge.json",
+        opId: "op-2",
+        policy: "rewrite-buffer",
+        to: "components/card.json",
+      });
 
       // The graph's answer names an unreadable document as it reads it, not as JSON.parse does.
       const usages = await s.findReferences({ path: "components/card.json" });

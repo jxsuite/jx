@@ -40,6 +40,8 @@ void mock.module("../src/packages.ts", () => ({
 
 void mock.module("../src/refactor/apply.ts", () => ({
   applyRename: () => Promise.reject(new Error("refactor exploded")),
+  // The project state host's rename imports the planning half; nothing here reaches it.
+  planRename: () => Promise.reject(new Error("refactor exploded")),
 }));
 
 const { handleStudioApi } = await import("../src/studio-api.ts");

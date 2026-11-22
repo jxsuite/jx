@@ -3,9 +3,10 @@
  * (§10.2), through its HTTP binding: every subscription is a `GET /__studio/project/events` read as
  * an event stream, its cursor sent as `Last-Event-ID`, and every write and delete is a `PUT` or
  * `DELETE /__studio/file` naming its base in `If-Match` and its issuer in `Jx-Write-Id`, answered
- * `412` when the base is stale (§3.2, §5). The server is `createDevServer` under Bun, the runtime
- * `jx dev` runs, over real temporary directories, the real chokidar watcher and a real git
- * repository, with the dependency graph (§8) on.
+ * `412` when the base is stale (§3.2, §5), and every rename is a `POST /__studio/project/rename`
+ * (§9). The server is `createDevServer` under Bun, the runtime `jx dev` runs, over real temporary
+ * directories, the real chokidar watcher and a real git repository, with the dependency graph (§8)
+ * on.
  *
  * What has no HTTP binding is driven on the host the server runs: creating a directory (the dev
  * server's protocol creates directories implicitly), the hold release, an install, and making the
@@ -32,6 +33,8 @@ import {
   parseSseBlock,
   PROJECT_CLIENT_PARAM,
   PROJECT_EVENTS_PATH,
+  PROJECT_RENAME_PATH,
+  encodeRenameOperation,
   writeBody,
   writeIdentityHeaders,
   writePreconditionHeaders,
@@ -40,6 +43,8 @@ import type {
   ContentHash,
   DeleteResult,
   ProjectEvent,
+  RenameOperation,
+  RenameOperationResult,
   SubscribeRequest,
   SubscribeResponse,
   WriteConflict,
@@ -56,6 +61,15 @@ import {
   GIT_FIXTURE_CONFIG,
   writeFixture,
 } from "./_project-state-fixture.ts";
+
+/** Each driver host's rename hook, over the HTTP binding (§9). */
+const renaming = new WeakMap<
+  ProjectStateHost,
+  {
+    failStep: (step: number) => void;
+    rename: (operation: RenameOperation) => Promise<RenameOperationResult>;
+  }
+>();
 
 /** How long `settle` waits for a stream to carry what the host has emitted, in ms. */
 const DELIVERY_LIMIT_MS = 10_000;
@@ -178,6 +192,8 @@ async function createServerHost(
   };
   /** The host the running server started, once it has. */
   let host: Host | null = null;
+  /** The step the next rename fails at (§9.1). */
+  let failAt: number | null = null;
   const streams = new Set<StreamSubscription>();
 
   const serve = (hold: boolean) =>
@@ -191,6 +207,12 @@ async function createServerHost(
             installer: fixtureInstaller,
             logCapacity: options.logCapacity ?? 1024,
             onError: () => {},
+            onRenameStep: (step) => {
+              if (step === failAt) {
+                failAt = null;
+                throw new Error(`step ${step} fails`);
+              }
+            },
             watcher,
           });
           return host;
@@ -232,7 +254,7 @@ async function createServerHost(
     }
   };
 
-  return {
+  const driverHost: ProjectStateHost = {
     close: async () => {
       for (const stream of streams) {
         stream.close();
@@ -337,12 +359,33 @@ async function createServerHost(
       return { hash: done.hash, ok: true, rev: done.rev };
     },
   };
+  renaming.set(driverHost, {
+    failStep: (step) => {
+      failAt = step;
+    },
+    rename: async (operation) => {
+      await running();
+      const res = await fetch(`${origin()}${PROJECT_RENAME_PATH}`, {
+        body: JSON.stringify(encodeRenameOperation(operation)),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      expect(res.status).toBe(200);
+      // SAFETY: a 200 from the rename route is a `RenameOperationResult` (`project-events.ts`).
+      return (await res.json()) as RenameOperationResult;
+    },
+  });
+  return driverHost;
 }
 
 const driver: ProjectStateDriver = {
   create: createServerHost,
   graph: { complete: true },
   name: "the dev server over its HTTP binding",
+  rename: {
+    failStep: (host, step) => renaming.get(host)!.failStep(step),
+    rename: (host, operation) => renaming.get(host)!.rename(operation),
+  },
 };
 
 runProjectStateConformance(driver, {

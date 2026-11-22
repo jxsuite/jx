@@ -1,8 +1,9 @@
 /**
  * The dev server's project state service (`specs/project-state.md` §10.2): the host of the active
  * project (`createProjectStateHost`, the module the desktop session runs, §10.1), served as §3.2's
- * Server-Sent Events binding at `GET /__studio/project/events`, and the conditional writes and
- * deletes of §5 on `PUT` and `DELETE /__studio/file`.
+ * Server-Sent Events binding at `GET /__studio/project/events`, the conditional writes and deletes
+ * of §5 on `PUT` and `DELETE /__studio/file`, and the rename cascade of §9 on `POST
+ * /__studio/project/rename`.
  *
  * The host starts on the first request that needs it (a subscription, a conditional write, a
  * collaboration room), so a Studio that never subscribes pays for none of it. Activating another
@@ -18,6 +19,7 @@
 
 import { isAbsolute, relative, resolve } from "node:path";
 import {
+  decodeRenameOperation,
   encodeSseEvents,
   encodeSseSubscribe,
   entityTag,
@@ -28,8 +30,15 @@ import {
   PROJECT_CLIENT_PARAM,
   PROJECT_ROOT_PARAM,
 } from "@jxsuite/protocol/project-state-frames";
-import type { ProjectEvent, ProjectSnapshot, WriteConflict } from "@jxsuite/protocol/project-state";
+import type {
+  ProjectEvent,
+  ProjectSnapshot,
+  RenameOperation,
+  WriteConflict,
+} from "@jxsuite/protocol/project-state";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
+import { toError } from "@jxsuite/schema/parse";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { collectionLoaderResolver } from "./project-state/collections.ts";
 import { createProjectStateHost } from "./project-state/host.ts";
 import { createOverlayRegistry } from "./project-state/overlays.ts";
@@ -481,6 +490,49 @@ export function createProjectEventsService(options: ProjectEventsOptions = {}) {
     });
   }
 
+  /**
+   * A rename as one operation (§9): the body is a `RenameOperation` with project-relative paths,
+   * each rewrite's contents as `WireContents`, and the answer is the host's
+   * `RenameOperationResult`, a refusal included, as `200`. A malformed operation, or a path that is
+   * not project-relative or leaves the project, is a `400`. The paths carry no project, so the
+   * request names one (`?root=`, as the client activated it), and one naming a project other than
+   * the one served is a `409 conflict`, as a stream is. `moved` is told the old path of an applied
+   * rename, as the unconditional route tells the collaboration rooms.
+   */
+  async function handleRename(
+    req: Request,
+    url: URL,
+    rootOf: (named: string) => string = resolve,
+    moved?: (path: string) => void,
+  ): Promise<Response> {
+    const named = url.searchParams.get(PROJECT_ROOT_PARAM);
+    if (named && rootOf(named) !== root) {
+      return problem("conflict", `${named} is not the project this server serves now.`);
+    }
+    let operation: RenameOperation;
+    try {
+      // SAFETY: JSON.parse without a reviver yields a JSON value, which the decoder checks.
+      operation = decodeRenameOperation(JSON.parse(await req.text()) as JsonValue);
+    } catch (error) {
+      return problem("invalidRequest", toError(error).message);
+    }
+    return withHost(async (running) => {
+      try {
+        const result = await running.rename(operation);
+        if (result.ok) {
+          moved?.(operation.from);
+        }
+        return Response.json(result);
+      } catch (error) {
+        const failure = toError(error);
+        return problem(
+          failure instanceof TypeError ? "invalidRequest" : "internalError",
+          failure.message,
+        );
+      }
+    });
+  }
+
   return {
     /** The project the service serves, `null` before the first activation. */
     get root(): string | null {
@@ -494,6 +546,7 @@ export function createProjectEventsService(options: ProjectEventsOptions = {}) {
     handleEvents,
     handleWrite,
     handleDelete,
+    handleRename,
     /**
      * Serve `next` from now on. Activating the project already served changes nothing; activating
      * another closes the host, ending every subscription, and the next request starts a host over

@@ -32,6 +32,15 @@ import {
 /** The host under test, as `createProjectStateHost` answers it. */
 type Host = Awaited<ReturnType<typeof createProjectStateHost>>;
 
+/** Each driver host's rename hook: the running host, and the step its next rename fails at. */
+const renaming = new WeakMap<ProjectStateHost, RenameHook>();
+
+/** How the driver reaches a host's rename and makes its next one fail. */
+interface RenameHook {
+  host: () => Host;
+  failAt: number | null;
+}
+
 async function createDriverHost(
   files: FixtureFiles,
   options: ProjectStateHostOptions,
@@ -48,19 +57,26 @@ async function createDriverHost(
     degrade = sink.error;
     return chokidarProjectWatcher(watched, sink, watchOptions);
   };
+  const hook: RenameHook = { failAt: null, host: () => host };
   const start = (hold: boolean): Promise<Host> =>
     createProjectStateHost({
       hold,
       installer: fixtureInstaller,
       logCapacity: options.logCapacity ?? 1024,
       onError: () => {},
+      onRenameStep: (step) => {
+        if (step === hook.failAt) {
+          hook.failAt = null;
+          throw new Error(`step ${step} fails`);
+        }
+      },
       root,
       watcher,
     });
   let host = await start(options.hold === true);
   const at = (path: string): string => join(root, path);
 
-  return {
+  const driverHost: ProjectStateHost = {
     close: async () => {
       await host.close();
       await rm(base, { force: true, recursive: true });
@@ -145,12 +161,20 @@ async function createDriverHost(
     },
     write: (request) => host.write(request),
   };
+  renaming.set(driverHost, hook);
+  return driverHost;
 }
 
 const driver: ProjectStateDriver = {
   create: createDriverHost,
   graph: { complete: true },
   name: "the desktop and dev-server host",
+  rename: {
+    failStep: (host, step) => {
+      renaming.get(host)!.failAt = step;
+    },
+    rename: (host, operation) => renaming.get(host)!.host().rename(operation),
+  },
 };
 
 runProjectStateConformance(driver, {

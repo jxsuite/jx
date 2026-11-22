@@ -496,6 +496,14 @@ export interface StudioPlatform {
    * `deleteFile` otherwise. Optional, beside `subscribeProjectState`.
    */
   deleteProjectState?: ProjectStateClient["delete"];
+  /**
+   * Rename a file or a directory as one operation (`project-state.md` §9): the host plans the move
+   * and every reference rewrite, applies them from an outbox that rolls back on failure, and leaves
+   * a dirty referrer's file alone for Studio to rewrite in its buffer (§9.2). While its
+   * subscription is served, Studio's rename goes through it, and through `renameFile` otherwise.
+   * Optional, beside `subscribeProjectState`.
+   */
+  renameProjectState?: NonNullable<ProjectStateClient["rename"]>;
   discoverComponents: (dir?: string) => Promise<ComponentMeta[]>;
   /* Resolves once the dependency is added (or removed) and rejects when it could not be. No caller
      reads an answer, and the desktop RPC carries none. */

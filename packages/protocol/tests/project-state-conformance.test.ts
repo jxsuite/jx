@@ -12,11 +12,10 @@ import { contentHash } from "../src/project-state";
 import { createReferenceHost, inScope, referenceDriver } from "./reference-host";
 import type { ReferenceBug } from "./reference-host";
 
-runProjectStateConformance(referenceDriver("reference host", { graph: true, watcher: true }), {
-  describe,
-  expect,
-  test,
-});
+runProjectStateConformance(
+  referenceDriver("reference host", { graph: true, rename: true, watcher: true }),
+  { describe, expect, test },
+);
 
 runProjectStateConformance(
   referenceDriver("reference host without a watcher, links or move pairing", {
@@ -36,11 +35,21 @@ runProjectStateConformance(
   { describe, expect, test },
 );
 
+runProjectStateConformance(
+  referenceDriver("reference host with a partial graph that renames", {
+    graph: true,
+    partialGraph: true,
+    rename: true,
+  }),
+  { describe, expect, test },
+);
+
 /** Every case the suite registers, by its full name, without running any. */
 function collectCases(
   bugs: readonly ReferenceBug[],
   hooks: Pick<ProjectStateDriver, "graph" | "rename"> = {},
   graph = false,
+  rename = false,
 ): Map<string, () => Promise<void>> {
   const cases = new Map<string, () => Promise<void>>();
   const path: string[] = [];
@@ -56,15 +65,20 @@ function collectCases(
     },
   };
   runProjectStateConformance(
-    { ...referenceDriver("broken", { bugs, graph, watcher: true }), ...hooks },
+    { ...referenceDriver("broken", { bugs, graph, rename, watcher: true }), ...hooks },
     api,
   );
   return cases;
 }
 
 /** Whether the case whose name contains `fragment` fails against a host with `bug`. */
-async function fails(bug: ReferenceBug, fragment: string, graph = false): Promise<boolean> {
-  const cases = collectCases([bug], {}, graph);
+async function fails(
+  bug: ReferenceBug,
+  fragment: string,
+  graph = false,
+  rename = false,
+): Promise<boolean> {
+  const cases = collectCases([bug], {}, graph, rename);
   const matching = [...cases].filter(([name]) => name.includes(fragment));
   expect(matching.length).toBe(1);
   try {
@@ -137,22 +151,119 @@ describe("the suite catches a host that breaks the contract", () => {
     }
   });
 
-  test("declaring the rename hook adds a failing case instead of removing one", async () => {
+  /** The §9 cases, by a fragment of each name. */
+  const RENAME_DONE = "a rename moves the file, rewrites its referrers";
+  const ROLLBACK = "a rename either completes or leaves every file as it was (a failure at step 2)";
+  const REFUSE = "a dirty referrer under refuse";
+  const BUFFER = "a dirty referrer under rewrite-buffer";
+  const CLIENT = "a dirty referrer's own client rewrite";
+
+  test.each([
+    ["rename-no-rollback", ROLLBACK],
+    ["rename-ignores-dirty", REFUSE],
+    ["rename-ignores-dirty", BUFFER],
+    ["rename-ignores-dirty", CLIENT],
+    ["rename-new-id", RENAME_DONE],
+  ] as const)("%s fails “%s”", async (bug, fragment) => {
+    expect(await fails(bug, fragment, false, true)).toBe(true);
+  });
+
+  test("a correct rename passes the same §9 cases", async () => {
+    const cases = [...collectCases([], {}, false, true)].filter(([name]) => name.includes("§9 "));
+    expect(cases.length).toBe(6);
+    for (const [, run] of cases) {
+      await run();
+    }
+  });
+
+  test("declaring the rename hook replaces the negative case with every §9 case", async () => {
     const plain = [...collectCases([]).keys()];
     const cases = collectCases([], {
       rename: { failStep: () => null, rename: async () => ({ ok: true }) },
     });
-    expect(cases.size).toBe(plain.length);
     expect([...cases.keys()].some((name) => name.includes("emits no operationApplied"))).toBe(
       false,
     );
-    const [, run] = [...cases].find(([name]) => name.includes("the §9 cases"))!;
+    const renameCases = [...cases].filter(([name]) => name.includes("§9 rename cascade"));
+    expect(renameCases.length).toBe(6);
+    expect(cases.size).toBe(plain.length - 1 + renameCases.length);
+    const [, run] = renameCases.find(([name]) => name.includes(RENAME_DONE))!;
     expect(
       await run().then(
         () => "passed",
         () => "failed",
       ),
     ).toBe("failed");
+  });
+
+  test("the reference host refuses a rename onto a taken path, or one it was not built for", async () => {
+    const host = await createReferenceHost(CONFORMANCE_FIXTURE, { rename: true });
+    const taken = await host.rename({
+      dirtyReferrers: [],
+      from: "media/logo.png",
+      opId: "op",
+      policy: "refuse",
+      to: "pages/index.json",
+    });
+    expect(taken).toMatchObject({ ok: false, paths: ["pages/index.json"], reason: "conflict" });
+    await host.close();
+    const plain = await createReferenceHost(CONFORMANCE_FIXTURE);
+    const refusal = await plain
+      .rename({ dirtyReferrers: [], from: "a", opId: "op", policy: "refuse", to: "b" })
+      .then(
+        () => null,
+        (error: Error) => error.message,
+      );
+    expect(refusal).toContain("rename cascade");
+    await plain.close();
+  });
+
+  test("a reference host with a partial graph needs the client's rewrites, and applies them", async () => {
+    const host = await createReferenceHost(CONFORMANCE_FIXTURE, {
+      graph: true,
+      partialGraph: true,
+      rename: true,
+    });
+    const base = {
+      dirtyReferrers: [],
+      from: "media/logo.png",
+      opId: "op",
+      policy: "refuse" as const,
+      to: "media/brand.png",
+    };
+    expect(await host.rename(base)).toMatchObject({ ok: false, reason: "rewrites-required" });
+    const note = await host.read("content/posts/hello.md");
+    const applied = await host.rename({
+      ...base,
+      rewrites: [
+        {
+          baseHash: await contentHash(note!),
+          contents: "# Hello ![](../../media/brand.png)\n",
+          path: "content/posts/hello.md",
+        },
+      ],
+    });
+    expect(applied.ok).toBe(true);
+    expect(new TextDecoder().decode((await host.read("content/posts/hello.md"))!)).toContain(
+      "brand.png",
+    );
+    await host.close();
+  });
+
+  test("a stale client rewrite rolls the rename back", async () => {
+    const host = await createReferenceHost(CONFORMANCE_FIXTURE, { rename: true });
+    const result = await host.rename({
+      dirtyReferrers: [],
+      from: "media/logo.png",
+      opId: "op",
+      policy: "refuse",
+      rewrites: [{ baseHash: await contentHash("stale"), contents: "x", path: "styles/site.css" }],
+      to: "media/brand.png",
+    });
+    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+    expect(await host.read("media/logo.png")).not.toBe(null);
+    expect(await host.read("media/brand.png")).toBe(null);
+    await host.close();
   });
 
   test("declaring the graph hook on a host with no graph fails every §8 case", async () => {

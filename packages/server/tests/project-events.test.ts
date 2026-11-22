@@ -17,11 +17,18 @@ import {
   parseSseBlock,
   PROJECT_CLIENT_PARAM,
   PROJECT_EVENTS_PATH,
+  PROJECT_ROOT_PARAM,
+  encodeRenameOperation,
   writeIdentityHeaders,
   writePreconditionHeaders,
 } from "@jxsuite/protocol/project-state-frames";
 import { contentHash } from "@jxsuite/protocol/project-state";
-import type { ContentHash, ProjectEvent } from "@jxsuite/protocol/project-state";
+import type {
+  ContentHash,
+  ProjectEvent,
+  RenameOperation,
+  RenameOperationResult,
+} from "@jxsuite/protocol/project-state";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { createProjectEventsService, isConditionalFileRequest } from "../src/project-events.ts";
 import type { ProjectStateHost, ProjectStateHostOptions } from "../src/project-state/host.ts";
@@ -636,6 +643,100 @@ describe("conditional writes and deletes (§5)", () => {
     expect(hosts[0]!.deletes).toEqual([
       { base: { files: { "a.json": H } }, path: "pages", writeId: "w2" },
     ]);
+  });
+});
+
+// ─── The rename cascade (§9) ──────────────────────────────────────────────────
+
+describe("a rename as one operation (§9)", () => {
+  const post = (body: string): Request =>
+    new Request("http://localhost/__studio/project/rename", { body, method: "POST" });
+  const op: RenameOperation = {
+    dirtyReferrers: [],
+    from: "media/a.png",
+    opId: "op",
+    policy: "rewrite-buffer",
+    to: "media/b.png",
+  };
+  const applied: RenameOperationResult = {
+    buffers: [],
+    errors: [],
+    files: ["media/b.png"],
+    from: "media/a.png",
+    isDir: false,
+    ok: true,
+    opId: "op",
+    references: { files: [], filesChanged: 0, refsUpdated: 0 },
+    rev: 9,
+    to: "media/b.png",
+  };
+
+  /** A rename request that names no project, as a client that predates the parameter sends. */
+  const RENAME_URL = new URL("http://x/__studio/project/rename");
+
+  test("reaches the host, answers its result, and tells who follows a move", async () => {
+    const { hosts, svc } = service();
+    await svc.activate(ROOT);
+    await svc.start();
+    const seen: RenameOperation[] = [];
+    hosts[0]!.rename = (operation) => {
+      seen.push(operation);
+      return Promise.resolve(applied);
+    };
+    const moved: string[] = [];
+    const body = JSON.stringify(encodeRenameOperation(op));
+    const named = new URL(`http://x/__studio/project/rename?${PROJECT_ROOT_PARAM}=${ROOT}`);
+    const res = await svc.handleRename(post(body), named, undefined, (path) => moved.push(path));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(applied);
+    expect(seen).toEqual([op]);
+    expect(moved).toEqual(["media/a.png"]);
+    const refused: RenameOperationResult = {
+      message: "no",
+      ok: false,
+      opId: "op",
+      paths: [],
+      reason: "failed",
+    };
+    hosts[0]!.rename = () => Promise.resolve(refused);
+    const again = await svc.handleRename(post(JSON.stringify(op)), RENAME_URL, undefined, (path) =>
+      moved.push(path),
+    );
+    expect(await again.json()).toEqual(refused);
+    expect(moved).toEqual(["media/a.png"]);
+  });
+
+  test("a malformed operation or a bad path is a 400, and a host failure a 500", async () => {
+    const { hosts, svc } = service();
+    await svc.activate(ROOT);
+    const statusOfRename = async (body: string): Promise<number> => {
+      const res = await svc.handleRename(post(body), RENAME_URL);
+      return res.status;
+    };
+    const good = JSON.stringify(op);
+    const badPolicy = JSON.stringify({ ...op, policy: "x" });
+    expect(await statusOfRename("{")).toBe(400);
+    expect(await statusOfRename(badPolicy)).toBe(400);
+    await svc.start();
+    hosts[0]!.rename = () => Promise.reject(new TypeError("Not a project-relative path"));
+    expect(await statusOfRename(good)).toBe(400);
+    hosts[0]!.rename = () => Promise.reject(new Error("disk on fire"));
+    expect(await statusOfRename(good)).toBe(500);
+  });
+
+  test("a rename naming another project than the one served is refused, untouched", async () => {
+    const { hosts, svc } = service();
+    await svc.activate(ROOT);
+    await svc.start();
+    const seen: RenameOperation[] = [];
+    hosts[0]!.rename = (operation) => {
+      seen.push(operation);
+      return Promise.resolve(applied);
+    };
+    const other = new URL(`http://x/__studio/project/rename?${PROJECT_ROOT_PARAM}=/other`);
+    const res = await svc.handleRename(post(JSON.stringify(op)), other);
+    expect(res.status).toBe(409);
+    expect(seen).toEqual([]);
   });
 });
 

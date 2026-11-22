@@ -25,6 +25,8 @@ import type {
   DocKind,
   ProjectEvent,
   ProjectEventType,
+  RenameOperation,
+  RenameOperationResult,
   SubscribeRequest,
   SubscribeResponse,
   WireContents,
@@ -418,6 +420,11 @@ export interface ProjectStateClient {
   ) => Promise<SubscribeResponse>;
   write: (request: WriteRequest) => Promise<WriteResult>;
   delete: (request: DeleteRequest) => Promise<DeleteResult>;
+  /**
+   * A rename as one operation (§9): a host that does not perform the rename cascade leaves it out,
+   * and a refusal answers its reason rather than throwing.
+   */
+  rename?: (operation: RenameOperation) => Promise<RenameOperationResult>;
 }
 
 /** Check that `events` continue from `lastRev` (§3.2). An empty list continues trivially. */
@@ -503,6 +510,99 @@ export function createSubscriptionCursor(clientId?: string): SubscriptionCursor 
       return advance(params.epoch, params.events);
     },
   };
+}
+
+// ─── Rename operations (§9) ────────────────────────────────────────────────────────────────────
+
+/**
+ * A {@link RenameOperation} as a JSON frame carries it: each rewrite's contents as
+ * {@link WireContents}.
+ */
+export interface WireRenameOperation extends Omit<RenameOperation, "rewrites"> {
+  rewrites?: { path: string; baseHash: ContentHash; contents: WireContents }[];
+}
+
+/** The desktop socket's request for a rename (§3.2, §9). */
+export const PROJECT_RENAME_METHOD = "projectRename";
+
+/** The dev server's route for a rename: `POST` a {@link WireRenameOperation} (§9, §10.2). */
+export const PROJECT_RENAME_PATH = "/__studio/project/rename";
+
+const DIRTY_POLICIES: ReadonlySet<JsonValue | undefined> = new Set(["refuse", "rewrite-buffer"]);
+
+function isWireContents(value: JsonValue | undefined): value is WireContents & JsonValue {
+  return (
+    isString(value) || (isRecord(value) && value.encoding === "base64" && isString(value.data))
+  );
+}
+
+/** Encode a rename for a JSON frame. */
+export function encodeRenameOperation(operation: RenameOperation): WireRenameOperation {
+  const { rewrites, ...rest } = operation;
+  return rewrites === undefined
+    ? rest
+    : {
+        ...rest,
+        rewrites: rewrites.map(({ baseHash, contents, path }) => ({
+          baseHash,
+          contents: encodeWireContents(contents),
+          path,
+        })),
+      };
+}
+
+/**
+ * Decode a rename a frame carries, throwing a `TypeError` for one that is malformed: an empty
+ * `opId`, a policy this contract does not name, a dirty referrer without a buffer revision, or a
+ * rewrite without a base hash.
+ */
+export function decodeRenameOperation(value: JsonValue | undefined): RenameOperation {
+  if (
+    !isRecord(value) ||
+    !isString(value.opId) ||
+    value.opId === "" ||
+    !isString(value.from) ||
+    !isString(value.to) ||
+    !DIRTY_POLICIES.has(value.policy) ||
+    !Array.isArray(value.dirtyReferrers)
+  ) {
+    throw new TypeError("A rename names an opId, from, to, a policy and its dirty referrers.");
+  }
+  const dirtyReferrers = value.dirtyReferrers.map((item) => {
+    if (!isRecord(item) || !isString(item.path) || !isRevision(item.bufferRev)) {
+      throw new TypeError("A dirty referrer names its path and buffer revision.");
+    }
+    return { bufferRev: item.bufferRev, path: item.path };
+  });
+  const operation: RenameOperation = {
+    dirtyReferrers,
+    from: value.from,
+    opId: value.opId,
+    // SAFETY: checked against the two policies just above.
+    policy: value.policy as RenameOperation["policy"],
+    to: value.to,
+  };
+  if (value.rewrites !== undefined) {
+    if (!Array.isArray(value.rewrites)) {
+      throw new TypeError("A rename's rewrites are a list.");
+    }
+    operation.rewrites = value.rewrites.map((item) => {
+      if (
+        !isRecord(item) ||
+        !isString(item.path) ||
+        !isContentHash(item.baseHash) ||
+        !isWireContents(item.contents)
+      ) {
+        throw new TypeError("A rewrite names its path, the hash it replaces and its contents.");
+      }
+      return {
+        baseHash: item.baseHash,
+        contents: decodeWireContents(item.contents),
+        path: item.path,
+      };
+    });
+  }
+  return operation;
 }
 
 // ─── Desktop: the window's RPC WebSocket (§3.2, RFC 6455 text frames) ────────────────────────────

@@ -21,6 +21,7 @@ import {
 } from "@jxsuite/compiler/format-host";
 import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
 import { projectCommitArgs, projectRelativePath, readGitPrefix } from "@jxsuite/protocol/git-scope";
+import { PROJECT_RENAME_PATH } from "@jxsuite/protocol/project-state-frames";
 import { handleDataApi } from "./data-api.ts";
 import { containedPath } from "./net-guard.ts";
 import { startSitePreview } from "./site-preview.ts";
@@ -1390,6 +1391,24 @@ export async function handleStudioApi(
         ? problem("conflict", "The folder is not empty.")
         : problem("internalError", errorMessage(error));
     }
+  }
+
+  // A rename as one operation (project-state.md §9): project-relative paths, served by the host
+  if (path === PROJECT_RENAME_PATH && req.method === "POST") {
+    const events = opts.projectEvents;
+    if (!events) {
+      return problem("notFound", "This server does not serve the project state.");
+    }
+    return events.handleRename(
+      req,
+      url,
+      (named) => resolve(root, named),
+      (moved) => {
+        if (events.root !== null) {
+          opts.onFileMoved?.(resolve(events.root, moved));
+        }
+      },
+    );
   }
 
   // Rename file

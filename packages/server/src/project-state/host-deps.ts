@@ -14,6 +14,7 @@ import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
+import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 
 /** The project's document formats, as its loaded extensions register them (§2.2). */
@@ -24,6 +25,12 @@ export interface ProjectFormats {
   parse: (extension: string, text: string) => Promise<JsonValue>;
   /** Project-relative asset mounts, through which a rooted reference resolves. */
   mounts: readonly AssetMount[];
+  /**
+   * The registry behind `parse`, whose formats also write a document back; a rename rewrites a
+   * document in a registered format through it (§9). Without one such a document is named in the
+   * rename's report rather than rewritten.
+   */
+  registry?: FormatRegistry;
 }
 
 /** The formats of a project whose extensions could not be loaded: none beyond the native ones. */
@@ -91,6 +98,7 @@ export const loadInstalledFormats: ExtensionLoader = async (root, config) => {
          shape before reading it, so such a leaf is skipped rather than misread. */
       return (await entry.call("parse", text)) as JsonValue;
     },
+    registry: formats,
   };
 };
 

@@ -15,6 +15,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { isUnder } from "./paths.ts";
 import { rewriteDocRefs, rewriteTagName } from "./refs.ts";
 import { documentGlob, fwd, loadDoc, skipScanPath } from "./scan.ts";
+import type { LoadedDoc } from "./scan.ts";
 import { invalidateReferenceCache } from "./find-refs.ts";
 import { refactorMounts } from "./mounts.ts";
 import type { RefChange } from "./refs.ts";
@@ -86,12 +87,140 @@ export async function applyRename(opts: ApplyRenameOptions): Promise<RenameRepor
   }
 }
 
+/** One document the planning half would rewrite, and what it would write. */
+export interface PlannedRewrite {
+  /** The document's absolute POSIX path where the plan read it. */
+  abs: string;
+  /** The file references it rewrote. */
+  changes: RefChange[];
+  /** How many nodes carry the component tag it renamed. */
+  tagCount: number;
+  /**
+   * The rewritten text, or `null` when no write-back path the format declares can express the
+   * change: a tag rename in a format with no serializer, or a format with neither path.
+   */
+  contents: string | null;
+}
+
+/** What a rename would do to the project's documents, before anything is written. */
+export interface RenamePlan {
+  /** The component tag derived from the new filename, when the renamed file is a component. */
+  tagRename: { from: string; to: string } | null;
+  /** Why a component's tag is left as it was. */
+  tagSkipped?: string;
+  /** Every document with something to rewrite, in the order the plan read them. */
+  rewrites: PlannedRewrite[];
+  /** Documents that could not be read or parsed, by absolute POSIX path. */
+  errors: { abs: string; error: string }[];
+}
+
+export interface PlanRenameOptions {
+  /** Absolute project root. */
+  root: string;
+  /** Absolute path of the renamed file or directory before the move. */
+  absFrom: string;
+  /** Absolute path of the renamed file or directory after the move. */
+  absTo: string;
+  /** Project-relative asset mounts, for rewriting rooted references through the mount lane. */
+  mounts: readonly AssetMount[];
+  /**
+   * Where `documents` and `renamed` are read: `"after"` when the move has already happened (what
+   * {@link applyRename} does), `"before"` when it has not (the project state host plans first and
+   * moves as the first step of its outbox, `project-state.md` §9.1).
+   */
+  phase: "before" | "after";
+  /**
+   * The renamed file itself, parsed, for a component's tag; `null` for a directory or a
+   * non-document.
+   */
+  renamed: LoadedDoc | null;
+  /** The candidate referrers, absolute POSIX paths in the phase's locations. */
+  documents: Iterable<string> | AsyncIterable<string>;
+  /** Read and parse one candidate. */
+  load: (abs: string) => Promise<LoadedDoc>;
+}
+
+/**
+ * The planning half of a rename: for every candidate document, the rewritten references and, for a
+ * component, the renamed tag, as the bytes that would be written. Nothing is written. Pure but for
+ * `load`, so a caller decides where the documents come from and what to do with the plan.
+ */
+export async function planRename(opts: PlanRenameOptions): Promise<RenamePlan> {
+  const root = fwd(opts.root);
+  const absFrom = fwd(opts.absFrom);
+  const absTo = fwd(opts.absTo);
+  const plan: RenamePlan = { errors: [], rewrites: [], tagRename: null };
+
+  // For a component file rename, derive the new tag from the new filename (Pillar C).
+  const oldTag = isJsonObject(opts.renamed?.doc) ? opts.renamed.doc.tagName : undefined;
+  const newTag = deriveTag(absTo);
+  if (isString(oldTag) && oldTag.includes("-") && newTag !== oldTag) {
+    if (newTag.includes("-")) {
+      plan.tagRename = { from: oldTag, to: newTag };
+    } else {
+      plan.tagSkipped = `Tag "${oldTag}" left unchanged: "${newTag}" is not a valid custom-element name`;
+    }
+  }
+  const { tagRename } = plan;
+
+  for await (const candidate of opts.documents) {
+    const fp = fwd(candidate);
+    try {
+      const { doc, rewrite, serialize } = await opts.load(fp);
+      let docOldDir: string;
+      let docNewDir: string;
+      if (opts.phase === "after") {
+        docNewDir = dirname(fp);
+        docOldDir = isUnder(fp, absTo) ? dirname(absFrom + fp.slice(absTo.length)) : docNewDir;
+      } else {
+        docOldDir = dirname(fp);
+        docNewDir = isUnder(fp, absFrom) ? dirname(absTo + fp.slice(absFrom.length)) : docOldDir;
+      }
+      const { changes } = rewriteDocRefs(doc, {
+        docNewDir,
+        docOldDir,
+        mounts: opts.mounts,
+        newAbs: absTo,
+        oldAbs: absFrom,
+        root,
+      });
+      const tagCount = tagRename ? rewriteTagName(doc, tagRename.from, tagRename.to).count : 0;
+      if (changes.length === 0 && tagCount === 0) {
+        continue;
+      }
+      /*
+       * Two ways to write a document back, and the narrower one is not a fallback for a broken
+       * format — it is the only honest promise a load-only format can make. A CSV collection has a
+       * parser and deliberately no serializer, so a reference living in one used to be COUNTED and
+       * then reported as a remainder the author had to repair by hand (issue 246). `rewrite`
+       * replaces the authored values in the file's own bytes and changes nothing else, which is all
+       * a rename ever needed.
+       *
+       * `serialize` still wins where it exists: a full round trip can express a change a list of
+       * value edits cannot. A TAG rename is exactly such a change, so a document carrying one and
+       * no serializer is still named in the report rather than half-written.
+       */
+      const contents =
+        serialize === null
+          ? tagCount === 0 && rewrite !== null
+            ? await rewrite(changes)
+            : null
+          : await serialize(doc);
+      plan.rewrites.push({ abs: fp, changes, contents, tagCount });
+    } catch (error) {
+      plan.errors.push({ abs: fp, error: errorMessage(error) });
+    }
+  }
+  return plan;
+}
+
 /** The refactor pass itself: see {@link applyRename}. */
 async function rewriteReferences(opts: ApplyRenameOptions): Promise<RenameReport> {
   const root = fwd(opts.root);
   const absFrom = fwd(opts.absFrom);
   const absTo = fwd(opts.absTo);
   const mounts = opts.mounts ?? (await refactorMounts(opts.root));
+  const rel = (abs: string): string => fwd(relative(root, abs));
 
   let isDir = false;
   try {
@@ -110,95 +239,76 @@ async function rewriteReferences(opts: ApplyRenameOptions): Promise<RenameReport
     to: fwd(relative(opts.root, opts.absTo)),
   };
 
-  // For a component file rename, derive the new tag from the new filename (Pillar C).
-  let tagRename: { from: string; to: string } | null = null;
+  let renamed: LoadedDoc | null = null;
   if (!isDir) {
     try {
-      const { doc } = await loadDoc(absTo, opts.registry);
-      const oldTag = isJsonObject(doc) ? doc.tagName : undefined;
-      const newTag = deriveTag(absTo);
-      if (isString(oldTag) && oldTag.includes("-") && newTag !== oldTag) {
-        if (newTag.includes("-")) {
-          tagRename = { from: oldTag, to: newTag };
-        } else {
-          report.tagSkipped = `Tag "${oldTag}" left unchanged: "${newTag}" is not a valid custom-element name`;
-        }
-      }
+      renamed = await loadDoc(absTo, opts.registry);
     } catch {
       // Not a parseable component — skip tag derivation.
     }
   }
 
-  let tagFilesChanged = 0;
-  let tagRefsUpdated = 0;
-
-  for await (const match of scanFiles(documentGlob(opts.registry), opts.root)) {
-    if (skipScanPath(match)) {
-      continue;
-    }
-    const fp = fwd(resolve(opts.root, match));
-    try {
-      const { doc, rewrite, serialize } = await loadDoc(fp, opts.registry);
-      const docNewDir = dirname(fp);
-      const docOldDir = isUnder(fp, absTo) ? dirname(absFrom + fp.slice(absTo.length)) : docNewDir;
-
-      const { changes } = rewriteDocRefs(doc, {
-        docNewDir,
-        docOldDir,
-        mounts,
-        newAbs: absTo,
-        oldAbs: absFrom,
-        root,
-      });
-      const tagCount = tagRename ? rewriteTagName(doc, tagRename.from, tagRename.to).count : 0;
-
-      if (changes.length === 0 && tagCount === 0) {
-        continue;
+  async function* documents(): AsyncGenerator<string> {
+    for await (const match of scanFiles(documentGlob(opts.registry), opts.root)) {
+      if (!skipScanPath(match)) {
+        yield fwd(resolve(opts.root, match));
       }
-      /*
-       * Two ways to write a document back, and the narrower one is not a fallback for a broken
-       * format — it is the only honest promise a load-only format can make. A CSV collection has a
-       * parser and deliberately no serializer, so a reference living in one used to be COUNTED and
-       * then reported as a remainder the author had to repair by hand (issue 246). `rewrite`
-       * replaces the authored values in the file's own bytes and changes nothing else, which is all
-       * a rename ever needed.
-       *
-       * `serialize` still wins where it exists: a full round trip can express a change a list of
-       * value edits cannot. A TAG rename is exactly such a change, so a document carrying one and
-       * no serializer is still named in the report rather than half-written.
-       */
-      const written =
-        serialize === null
-          ? tagCount === 0 && rewrite !== null
-            ? await rewrite(changes)
-            : null
-          : await serialize(doc);
-      if (written === null) {
-        report.errors.push({ error: `No serializer for "${match}"`, path: fwd(match) });
-        continue;
-      }
-      await writeFile(fp, written);
-
-      if (changes.length > 0) {
-        report.references.files.push({ changes, count: changes.length, path: fwd(match) });
-        report.references.filesChanged += 1;
-        report.references.refsUpdated += changes.length;
-      }
-      if (tagCount > 0) {
-        tagFilesChanged += 1;
-        tagRefsUpdated += tagCount;
-      }
-    } catch (error) {
-      report.errors.push({ error: errorMessage(error), path: fwd(match) });
     }
   }
 
-  if (tagRename) {
+  const plan = await planRename({
+    absFrom,
+    absTo,
+    documents: documents(),
+    load: (fp) => loadDoc(fp, opts.registry),
+    mounts,
+    phase: "after",
+    renamed,
+    root,
+  });
+  if (plan.tagSkipped !== undefined) {
+    report.tagSkipped = plan.tagSkipped;
+  }
+
+  let tagFilesChanged = 0;
+  let tagRefsUpdated = 0;
+  const errors = new Map(plan.errors.map((entry) => [entry.abs, entry.error]));
+  for (const planned of plan.rewrites) {
+    const path = rel(planned.abs);
+    if (planned.contents === null) {
+      report.errors.push({ error: `No serializer for "${path}"`, path });
+      continue;
+    }
+    try {
+      await writeFile(planned.abs, planned.contents);
+    } catch (error) {
+      errors.set(planned.abs, errorMessage(error));
+      continue;
+    }
+    if (planned.changes.length > 0) {
+      report.references.files.push({
+        changes: planned.changes,
+        count: planned.changes.length,
+        path,
+      });
+      report.references.filesChanged += 1;
+      report.references.refsUpdated += planned.changes.length;
+    }
+    if (planned.tagCount > 0) {
+      tagFilesChanged += 1;
+      tagRefsUpdated += planned.tagCount;
+    }
+  }
+  for (const [abs, error] of errors) {
+    report.errors.push({ error, path: rel(abs) });
+  }
+
+  if (plan.tagRename) {
     report.tag = {
       filesChanged: tagFilesChanged,
-      from: tagRename.from,
+      from: plan.tagRename.from,
       refsUpdated: tagRefsUpdated,
-      to: tagRename.to,
+      to: plan.tagRename.to,
     };
   }
   return report;
