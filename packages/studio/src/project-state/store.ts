@@ -17,8 +17,8 @@
  * path whose hash matches is the write's echo, whatever its `origin` says: a write that went
  * through the platform's plain `writeFile` reaches the host only through its watcher, which reports
  * it as `"external"`. A write that names its id through the contract is recognised by the id
- * ({@link ContentStore.noteWriteId}). Either replaces the 1.5 second window of `studio.md` §9.2 for
- * a platform whose host answers a subscription.
+ * ({@link ContentStore.noteWriteId}). No time window is kept: when its echo arrives does not
+ * matter.
  *
  * The store holds state and answers questions; it subscribes to nothing. `subscription.ts` feeds
  * it, so no cache ever reads file events on its own (§11.1).
@@ -61,11 +61,38 @@ export interface StoreChange {
    * documents' previous hashes is stale.
    */
   docIds: DocId[];
-  /** The paths those documents had before the change and have after it, once each. */
+  /**
+   * The paths those documents had before the change and have after it, once each. For a snapshot,
+   * only the paths whose bytes moved or that left: a document that left by identity alone (a new
+   * epoch names the same bytes at the same path under a new id) is in {@link docIds} only, so a
+   * reader of the bytes is told nothing, while a cache keyed by `DocId` re-keys.
+   */
   paths: string[];
   /** Whether the change replaced the whole state (a snapshot) rather than patching it. */
   snapshot: boolean;
+  /**
+   * A snapshot's account of the file set: the paths it holds that the store did not hold before
+   * (`added`) and the paths the store held that it does not (`removed`), each with whether it is a
+   * directory. A rename the snapshot summarises is one of each. Empty for an event, which reports
+   * its own path; the file tree folds both (`files/fs-events.ts`).
+   */
+  added: StoredPath[];
+  removed: StoredPath[];
 }
+
+/** A path the store holds, and whether it is a directory. */
+export interface StoredPath {
+  path: string;
+  isDir: boolean;
+}
+
+/**
+ * The key a derivation of one document is held under: its `DocId` and the hash of the bytes it was
+ * derived from (`project-state.md` §11.1). Two equal keys name the same bytes of the same document,
+ * so a cache entry whose key is still the document's key is current, wherever the document has
+ * moved.
+ */
+export type DerivationKey = `${DocId}@${ContentHash}`;
 
 /** Bytes a write may name: what `writeFile` and `uploadFile` take. */
 export type OwnWriteContents = string | Uint8Array | ArrayBuffer | Blob;
@@ -88,6 +115,19 @@ export interface ContentStore {
    * write asking what it replaces.
    */
   pendingWriteAt: (path: string, except?: ContentHash) => ContentHash | undefined;
+  /**
+   * The key of the bytes at `path` now ({@link DerivationKey}): the document's id and the hash of
+   * the newest write Studio noted there, else of the bytes the host reported. `undefined` when the
+   * store indexes no document there or holds no hash for it, which no cache can be keyed by.
+   */
+  keyAt: (path: string) => DerivationKey | undefined;
+  /**
+   * Moves whenever the set of documents or the bytes of any one of them changes: a document added,
+   * removed or relabelled, or a new hash. A derivation that reads every document of the project
+   * (the usage counts) is keyed by it, since any document may gain or lose a reference; a
+   * `docChanged` that only fills in what the host learned about the same bytes leaves it alone.
+   */
+  readonly generation: number;
   /** The contents held for one `(docId, hash)`, if any. */
   contents: (docId: DocId, hash: ContentHash) => StoredContents | undefined;
   /** The contents of the bytes at `path` now, if the store holds them. */
@@ -192,6 +232,9 @@ export function createContentStore(): ContentStore {
   let formats: string | null = null;
   let readiness: ReadinessState | null = null;
   let git: GitSummary | null = null;
+  let generation = 0;
+  /** Set by a relabel within the change being applied, so it moves {@link ContentStore.generation}. */
+  let relabelled = false;
 
   /** Hold contents under a document: only the bytes it has now are ever kept. */
   const keep = (docId: DocId, hash: ContentHash, contents: StoredContents) => {
@@ -224,6 +267,7 @@ export function createContentStore(): ContentStore {
     if (previous && previous.path !== doc.path && byPath.get(previous.path) === doc.docId) {
       byPath.delete(previous.path);
       paths.add(previous.path);
+      relabelled = true;
     }
     docs.set(doc.docId, doc);
     byPath.set(doc.path, doc.docId);
@@ -271,6 +315,7 @@ export function createContentStore(): ContentStore {
         doc.path = next;
         byPath.set(next, doc.docId);
         paths.add(next);
+        relabelled = true;
       }
     }
   };
@@ -291,6 +336,15 @@ export function createContentStore(): ContentStore {
   };
 
   const announce = (change: StoreChange): StoreChange => {
+    if (
+      change.docIds.length > 0 ||
+      change.added.length > 0 ||
+      change.removed.length > 0 ||
+      relabelled
+    ) {
+      generation += 1;
+    }
+    relabelled = false;
     for (const listener of listeners) {
       listener(change);
     }
@@ -313,6 +367,14 @@ export function createContentStore(): ContentStore {
     },
     pendingWriteAt(path, except) {
       return notes.get(path)?.findLast((hash) => hash !== except);
+    },
+    keyAt(path) {
+      const doc = store.docAt(path);
+      const hash = doc && !doc.isDir ? (store.pendingWriteAt(path) ?? doc.hash) : undefined;
+      return doc && hash !== undefined ? `${doc.docId}@${hash}` : undefined;
+    },
+    get generation() {
+      return generation;
     },
     contents(docId, hash) {
       return held.get(docId)?.get(hash);
@@ -345,21 +407,52 @@ export function createContentStore(): ContentStore {
     applySnapshot(snapshot) {
       const change = new Set<DocId>();
       const paths = new Set<string>();
+      const before = new Map<string, boolean>();
+      for (const doc of docs.values()) {
+        before.set(doc.path, doc.isDir);
+      }
       const kept = new Map<DocId, ContentHash | undefined>();
+      const atPath = new Map<string, ProjectSnapshot["files"][number]>();
       for (const file of snapshot.files) {
         kept.set(file.docId, file.hash);
+        atPath.set(file.path, file);
       }
-      // Everything the snapshot does not name, by id and by hash, is gone (§3.1, §11.1).
+      /** Bytes held under a document the snapshot renamed by id only, moved to its new id. */
+      const carried = new Map<DocId, [ContentHash, StoredContents]>();
+      /* Everything the snapshot does not name, by id and by hash, is gone (§3.1, §11.1): every
+         derivation keyed by it is stale. A document whose id is gone while the same bytes sit at
+         its path under a new id (a new epoch mints every id again) is gone by identity only: its
+         path is not reported, since nothing a reader of the bytes holds moved. A file the snapshot
+         names without a hash is not reported either: what it holds is unknown until the
+         `docChanged` that names it. */
       for (const doc of docs.values()) {
-        if (!kept.has(doc.docId) || kept.get(doc.docId) !== doc.hash) {
-          change.add(doc.docId);
+        if (kept.has(doc.docId) && kept.get(doc.docId) === doc.hash) {
+          continue;
+        }
+        change.add(doc.docId);
+        const successor = kept.has(doc.docId) ? undefined : atPath.get(doc.path);
+        const sameBytes =
+          successor !== undefined &&
+          successor.isDir === doc.isDir &&
+          (successor.hash === undefined || successor.hash === doc.hash);
+        if (!sameBytes) {
           paths.add(doc.path);
+        } else if (doc.hash !== undefined && successor.hash === doc.hash) {
+          const contents = held.get(doc.docId)?.get(doc.hash);
+          if (contents !== undefined) {
+            carried.set(successor.docId, [doc.hash, contents]);
+          }
         }
       }
       for (const docId of held.keys()) {
         const hash = kept.get(docId);
         if (hash === undefined || !held.get(docId)!.has(hash)) {
           held.delete(docId);
+        }
+      }
+      for (const [docId, [hash, contents]] of carried) {
+        if (!held.has(docId)) {
+          keep(docId, hash, contents);
         }
       }
       docs.clear();
@@ -384,7 +477,27 @@ export function createContentStore(): ContentStore {
       }
       ({ components, formats, readiness } = snapshot);
       git = snapshot.git ?? null;
-      return announce({ docIds: [...change], paths: [...paths], snapshot: true });
+      const added: StoredPath[] = [];
+      const after = new Set<string>();
+      for (const file of snapshot.files) {
+        after.add(file.path);
+        if (!before.has(file.path)) {
+          added.push({ isDir: file.isDir, path: file.path });
+        }
+      }
+      const removed: StoredPath[] = [];
+      for (const [path, isDir] of before) {
+        if (!after.has(path)) {
+          removed.push({ isDir, path });
+        }
+      }
+      return announce({
+        added,
+        docIds: [...change],
+        paths: [...paths],
+        removed,
+        snapshot: true,
+      });
     },
     applyEvent(event) {
       const change = new Set<DocId>();
@@ -457,7 +570,13 @@ export function createContentStore(): ContentStore {
           break;
         }
       }
-      return announce({ docIds: [...change], paths: [...paths], snapshot: false });
+      return announce({
+        added: [],
+        docIds: [...change],
+        paths: [...paths],
+        removed: [],
+        snapshot: false,
+      });
     },
     noteOwnWrite(path, contents) {
       const noted = (async () => {
@@ -546,6 +665,8 @@ export function createContentStore(): ContentStore {
       formats = null;
       readiness = null;
       git = null;
+      generation += 1;
+      relabelled = false;
     },
   };
   return store;

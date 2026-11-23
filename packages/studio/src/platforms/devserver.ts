@@ -26,7 +26,6 @@ import type {
   ExtensionCatalogEntry,
   ExtensionsInfo,
   FsEvent,
-  FsResyncReason,
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
@@ -358,7 +357,7 @@ export function createDevServerPlatform() {
    * The project state service (`project-state.md` §3.2, §5): the dev server's event stream, and the
    * writes and deletes that name their base. The same client shape the desktop adapter exposes; its
    * subscribe is also the adapter's `subscribeProjectState`. A server that predates the stream
-   * answers its subscribe with a 404, and the client keeps the resync reasons of `studio.md` §9.2.
+   * answers its subscribe with a 404, and Studio follows no other writer on it (`studio.md` §9.2).
    */
   const projectState = {
     /**
@@ -713,16 +712,12 @@ export function createDevServerPlatform() {
      * project-relative, and drops events for sibling projects outside the active root.
      *
      * `EventSource` reconnects by itself, and the dev server does not replay what it sent while the
-     * stream was down — a restarted `bun run dev` is the usual cause. So every `open` after the
-     * first reports a `"reconnect"` resync: one re-list of the cached tree is cheap next to an
-     * author editing a file the sidebar says is not there. The first `open` reports `"open"`, as
-     * every other transport does: a listing made before the stream joined raced it, and a change
-     * broadcast before then reached nobody.
+     * stream was down. Nothing here repairs that: the tree's gap is the project state stream's to
+     * replay (`project-state.md` §3.3), which resubscribes with its cursor on its own. A reconnect
+     * is usually a restarted server, which comes back bound to no project, so every `open` after
+     * the first claims this tab's binding back.
      */
-    subscribeFileEvents(
-      handler: (events: FsEvent[]) => void,
-      options?: { onResync?: (reason: FsResyncReason) => void },
-    ) {
+    subscribeFileEvents(handler: (events: FsEvent[]) => void) {
       if (typeof EventSource === "undefined") {
         return () => {};
       }
@@ -731,11 +726,7 @@ export function createDevServerPlatform() {
       es.addEventListener("open", () => {
         opens += 1;
         if (opens > 1) {
-          // A reconnect is usually a restarted server, which comes back bound to no project.
           reclaimBinding();
-          options?.onResync?.("reconnect");
-        } else {
-          options?.onResync?.("open");
         }
       });
       es.addEventListener("fs", (ev: MessageEvent<string>) => {
@@ -813,8 +804,8 @@ export function createDevServerPlatform() {
 
     /**
      * The subscribe half of {@link projectState}, as the `StudioPlatform` member Studio's content
-     * store reads (`studio.md` §3.4). The reload stream's file events and resync reasons stay
-     * beside it.
+     * store reads (`studio.md` §3.4). The reload stream's file events stay beside it, for the
+     * tree.
      */
     subscribeProjectState: projectState.subscribe,
     /** The write half, with which Studio saves a tab against its base hash (§6.1). */

@@ -25,8 +25,8 @@ import {
   localRevisionOf,
   noteListing,
   resetAssetVersions,
+  versionOf,
 } from "../src/files/asset-versions";
-import { isRecentLocal } from "../src/files/fs-events";
 import { setMediaChangedHandler } from "../src/files/media-upload";
 import type { StudioPlatform } from "../src/types";
 
@@ -183,7 +183,8 @@ describe("saving", () => {
     let markedFirst = false;
     install({
       uploadFile: async (path: string, body: string | Blob | ArrayBuffer) => {
-        markedFirst = isRecentLocal(path);
+        // Marked as Studio's own: the version naming the bytes it replaces is already forgotten.
+        markedFirst = versionOf(path) === undefined;
         writes.push(path);
         if (body instanceof ArrayBuffer) {
           disk.set(path, new Uint8Array(body));
@@ -191,6 +192,10 @@ describe("saving", () => {
         return { path };
       },
     });
+    noteListing(
+      [{ name: "hero.jpg", path: "public/hero.jpg", type: "file", version: "before" }],
+      beginListing(),
+    );
     expect(
       await saveMediaRecord("public/hero.jpg", {
         alt: " New alt ",

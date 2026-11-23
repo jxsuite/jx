@@ -12,10 +12,9 @@
  * source → clear/re-baseline what succeeded, keep failures dirty with errors, mark stale rows.
  */
 import { effect, onScopeDispose, reactive, toRaw } from "../reactivity";
-import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
 import { setHistoryDelegate } from "../tabs/transact";
-import { isRecentLocal } from "../files/fs-events";
+import { onForeignDocumentChange } from "../project-state/foreign";
 import { showConfirmDialog } from "../ui/layers";
 import { showProgressModal } from "../ui/progress-modal";
 import { errorMessage } from "@jxsuite/schema/parse";
@@ -533,26 +532,16 @@ export function createGridController(tab: Tab, source: GridSource): GridControll
       },
     });
 
-    const platform = getPlatform();
-    if (platform.subscribeFileEvents && source.backingPaths) {
-      const unsubscribe = platform.subscribeFileEvents((events) => {
-        const backing = source.backingPaths!();
-        const hitKeys = new Set<string>();
-        for (const event of events) {
-          if (event.isDir) {
-            continue;
-          }
-          const path = event.path.replaceAll("\\", "/");
-          const rowKey = backing.get(path);
-          if (rowKey !== undefined && !isRecentLocal(path)) {
-            hitKeys.add(rowKey);
-          }
-        }
-        if (hitKeys.size === 0) {
+    /* Rows another writer changed on disk, as the project state subscription attributes them: the
+       grid's own commits are recognised by their bytes and never reach it (`studio.md` §9.2). */
+    if (source.backingPaths) {
+      const unsubscribe = onForeignDocumentChange((changed) => {
+        const rowKey = source.backingPaths!().get(changed.replaceAll("\\", "/"));
+        if (rowKey === undefined) {
           return;
         }
         if (buffer.isDirty()) {
-          const keys = hitKeys.has("*") ? state.rows.map((row) => row.key) : [...hitKeys];
+          const keys = rowKey === "*" ? state.rows.map((row) => row.key) : [rowKey];
           buffer.markStale(keys);
           notify.warn("Grid rows changed on disk — marked stale; refresh to reload.", {
             key: "grid.stale",

@@ -33,7 +33,6 @@ import {
   pickAndUploadTo,
   refreshProjectDirectoriesFor,
   reloadFileInTab,
-  reloadTabsIfChanged,
 } from "../src/files/files";
 import { shell } from "../src/shell";
 import { problems, resetNotifications } from "../src/services/notify";
@@ -1183,40 +1182,13 @@ describe("reloadFileInTab", () => {
       expect(tab.doc.content.frontmatter).toMatchObject({ title: "Two" });
       expect(tab.doc.document).not.toBe(before);
     });
-
-    test("reloadTabsIfChanged reloads each path it is given, unchanged ones untouched", async () => {
-      const { state } = installFsPlatform({
-        "pages/a.json": JSON.stringify({ tagName: "div" }),
-        "pages/b.json": JSON.stringify({ tagName: "div" }),
-      });
-      siteState();
-      const tabA = openTab({
-        document: { tagName: "div" },
-        documentPath: "pages/a.json",
-        id: "pages/a.json",
-      });
-      const tabB = openTab({
-        document: { tagName: "div" },
-        documentPath: "pages/b.json",
-        id: "pages/b.json",
-      });
-      const beforeA = tabA.doc.document;
-      state.files.set("pages/b.json", JSON.stringify({ tagName: "aside" }));
-
-      reloadTabsIfChanged(["pages/a.json", "pages/b.json"]);
-      await flush();
-      await flush();
-
-      expect(tabA.doc.document).toBe(beforeA);
-      expect(tabB.doc.document.tagName).toBe("aside");
-    });
   });
 
   /*
    * Whether to reload is decided about the tab as it was when the read started, and the read is a
-   * round trip. A reconnect resync re-reads every clean tab at the moment the author returns to the
-   * window — exactly when the first keystrokes land — so an edit made during the read must survive
-   * it, not be replaced by the disk copy with `dirty` cleared.
+   * round trip. A reconnect replays other writers' changes to the clean tabs at the moment the author
+   * returns to the window — exactly when the first keystrokes land — so an edit made during the
+   * read must survive it, not be replaced by the disk copy with `dirty` cleared.
    */
   describe("a tab that moves while its file is being read", () => {
     /** Hold `readFile` until the test lets it go, so the test can act inside the round trip. */

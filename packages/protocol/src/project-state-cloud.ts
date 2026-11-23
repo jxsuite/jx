@@ -60,8 +60,8 @@ export const CLOUD_EVENTS_PATH = "/events";
 
 /**
  * The capability route: `GET` answers a {@link CloudProjectStateInfo} when the session serves the
- * contract. A session that predates it answers `404`, and its client keeps the resync reasons of
- * `studio.md` §9.2.
+ * contract. A session that predates it answers `404`, and its client follows no other writer on
+ * that session (`studio.md` §9.2).
  */
 export const CLOUD_PROJECT_STATE_PATH = "/project-state";
 
@@ -340,7 +340,7 @@ interface OpenSubscription {
  * A client of the cloud binding over `transport` (§3.2): one subscription at a time, each on a
  * socket of its own, replaced by the next `subscribe`. The first `subscribe` asks the capability
  * route and rejects when the session does not serve the contract, which a client store reads as
- * "keep the resync path" (`studio.md` §3.4).
+ * "not served" (`studio.md` §3.4).
  */
 export function createCloudProjectStateClient(
   transport: CloudProjectStateTransport,
@@ -353,7 +353,7 @@ export function createCloudProjectStateClient(
       const res = await transport.fetch(CLOUD_PROJECT_STATE_PATH, { method: "GET" });
       /* Only a session that has no such route says it does not serve the contract. Any other
          failure (a 5xx while the session hydrates, an expired sign-in) is no answer, so the next
-         subscribe asks again rather than keeping the resync path for the life of the page. */
+         subscribe asks again rather than going without live updates for the life of the page. */
       if (res.status === 404 || res.status === 405) {
         return null;
       }

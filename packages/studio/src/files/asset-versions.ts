@@ -128,6 +128,14 @@ const dirtiedPaths = new Map<string, number>();
 /** The sequence number at which each directory prefix (`dir/`) was last forgotten. */
 const dirtiedPrefixes = new Map<string, number>();
 /**
+ * Whether listings may vouch for versions at all. Off while no project state subscription is served
+ * (`studio.md` §9.2): nothing then says when the file events had a gap, and a version kept across
+ * one could let an immutable cache answer with the old bytes, so no version a listing offers is
+ * taken.
+ */
+let listingsVouch = true;
+
+/**
  * Studio's own repaint keys, by normalized project path: a token minted when Studio has just
  * written a path's bytes itself, which every asset URL builder appends as `"r"` (see
  * {@link noteLocalWrite}). A map of its own, so nothing that reads a backend version changes
@@ -217,7 +225,7 @@ function dirtiedSince(path: string, since: number): boolean {
  * predate the change that forgot it.
  */
 export function noteListing(entries: readonly DirEntry[], since: number): void {
-  if (since < floor) {
+  if (since < floor || !listingsVouch) {
     return;
   }
   let changed = false;
@@ -414,14 +422,29 @@ export function assetVersionsSnapshot(): Readonly<Record<string, string>> {
 }
 
 /**
+ * Take, or stop taking, the versions listings offer ({@link listingsVouch}). Turning it off forgets
+ * every version held, as {@link forgetAllVersions} does.
+ */
+export function vouchForListings(on: boolean): void {
+  if (listingsVouch === on) {
+    return;
+  }
+  listingsVouch = on;
+  if (!on) {
+    forgetAllVersions();
+  }
+}
+
+/**
  * Forget EVERY version, and ignore every listing begun before this call when it lands.
  *
- * For a gap in the event stream: a reconnect, or the stream's first open after listings were
- * already noted (§9.2). The events that would have forgotten individual paths are gone, and the
- * versions at risk are not only the file tree's — the Library walk, the media picker and media
- * metadata note directories the tree never loaded, and a re-list of the tree cannot reach them. A
- * version Studio can no longer vouch for has to go, because an immutable response for it is never
- * re-asked. Listings begun after this call vouch afresh.
+ * For a gap: the project state subscription stopped being live, so the store's hashes no longer
+ * stand for the versions and events may be missed until it answers again (§9.2). The events that
+ * would have forgotten individual paths are not here, and the versions at risk are not only the
+ * file tree's — the Library walk, the media picker and media metadata note directories the tree
+ * never loaded, and a re-list of the tree cannot reach them. A version Studio can no longer vouch
+ * for has to go, because an immutable response for it is never re-asked. Listings begun after this
+ * call vouch afresh.
  *
  * Raising the floor, rather than stamping paths, is what covers a listing that was in flight across
  * the gap: it has no forget recorded against it, and would otherwise put the old version back.

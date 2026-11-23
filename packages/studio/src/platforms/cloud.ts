@@ -36,7 +36,6 @@ import type {
   ExtensionCatalogEntry,
   ExtensionsInfo,
   FsEvent,
-  FsResyncReason,
   GitBranchesResult,
   GitCommitBranchResult,
   GitLogEntry,
@@ -971,9 +970,9 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
    * every other one is) and its socket.
    *
    * Its first subscribe asks the session's capability route, and a session that predates it (`404`)
-   * rejects the subscribe, which Studio reads as "not served" and keeps the resync reasons of
-   * {@link StudioPlatform.subscribeFileEvents} alone (`studio.md` §3.4). The members exist only for
-   * a bound session: the hub has no session to subscribe to.
+   * rejects the subscribe, which Studio reads as "not served": it follows no other writer on that
+   * session and asks again later (`studio.md` §9.2). The members exist only for a bound session:
+   * the hub has no session to subscribe to.
    */
   const projectState: CloudProjectStateClient | null = project
     ? createCloudProjectStateClient({
@@ -1235,18 +1234,13 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
      * (`@jxsuite/collab/reconnect`): every Studio on a gateway loses it at the same deploy, and a
      * laptop that wakes onto a network should not sit out a 30-second timer first.
      *
-     * Two things the event stream cannot say on its own are reported through `onResync`. A socket
-     * that came back missed every batch sent while it was gone, and the DO does not replay them —
-     * so every open after the first is a `"reconnect"`. The first open is an `"open"`: the
-     * session's listings carry content versions, the boot's first listings race the handshake, and
-     * a change broadcast before this socket joined (a first connect that fails during a gateway
-     * deploy can stretch that to a whole backoff) reached nobody. And a commit lands with a
-     * `committed` notice and no per-file events, so it is a `"commit"`.
+     * Nothing here repairs a gap: a socket that came back missed every batch sent while it was
+     * gone, and that is the project state subscription's to say (`project-state.md` §3.3), which
+     * replays what was missed on its own socket. A `{kind:"git"}` notice (a commit, which lands
+     * with no per-file event, or another status change) is handed on as an empty batch, so git
+     * status follows another session's commit whether or not the session serves the subscription.
      */
-    subscribeFileEvents(
-      handler: (events: FsEvent[]) => void,
-      options?: { onResync?: (reason: FsResyncReason) => void },
-    ) {
+    subscribeFileEvents(handler: (events: FsEvent[]) => void) {
       // No project means an empty base, so the bare `/events` URL hits no gateway route.
       // That fails in a reconnect loop; mirror `collab`'s guard and degrade to no-op on the hub.
       if (!project || typeof WebSocket === "undefined" || typeof location === "undefined") {
@@ -1254,7 +1248,6 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       }
       let socket: WebSocket | null = null;
       let closed = false;
-      let everOpened = false;
       const connect = () => {
         const scheme = location.protocol === "https:" ? "wss" : "ws";
         const ws = new WebSocket(`${scheme}://${location.host}${base}/events`);
@@ -1270,14 +1263,14 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           }
           if (payload.kind === "fs" && payload.events?.length) {
             handler(payload.events);
-          } else if (payload.kind === "git" && payload.event === "committed") {
-            options?.onResync?.("commit");
+          } else if (payload.kind === "git") {
+            /* A commit, or another status change, lands with no per-file event: an empty batch
+               is how a platform says the repository moved and nothing else did. */
+            handler([]);
           }
         });
         ws.addEventListener("open", () => {
           scheduler.opened();
-          options?.onResync?.(everOpened ? "reconnect" : "open");
-          everOpened = true;
         });
         ws.addEventListener("close", () => {
           if (!closed) {

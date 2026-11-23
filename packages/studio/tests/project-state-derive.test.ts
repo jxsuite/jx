@@ -242,7 +242,9 @@ describe("createStoreDerivations", () => {
       ],
     ]);
     expect(calls[0]).toBe("dependents pages/a.json,pages/b.md,posts/a.md x-card");
-    expect(calls[2]).toBe("derived pages/a.json,pages/b.md,posts/a.md false");
+    // No document's bytes moved, so the usage answers (keyed by the store's generation) stay.
+    expect(calls[1]).toBe("derived pages/a.json,pages/b.md,posts/a.md false");
+    expect(calls).not.toContain("usages");
     // A change no known document depends on names none, and still reaches the unindexed ones.
     feed(store, derive, [
       [
@@ -448,5 +450,136 @@ describe("a snapshot and the content versions derived from the store", () => {
       deriveVersionsFrom(null);
       resetAssetVersions();
     }
+  });
+});
+
+describe("the store keys the derivations (project-state.md §11.1)", () => {
+  test("a docChanged that fills in the same bytes keeps the usage answers", () => {
+    const store = createContentStore();
+    store.applySnapshot(snapshotOf());
+    const { calls, targets } = recorder();
+    const derive = createStoreDerivations(store, targets);
+    feed(store, derive, [
+      [
+        ev({
+          docId: "d3",
+          hash: A,
+          indexed: true,
+          kind: "page",
+          path: "pages/a.json",
+          type: "docChanged",
+        }),
+        false,
+      ],
+    ]);
+    expect(calls).toEqual(["document pages/a.json", "derived pages/a.json false", "repaint"]);
+    feed(store, derive, [
+      [
+        ev({
+          docId: "d3",
+          hash: B,
+          indexed: true,
+          kind: "page",
+          path: "pages/a.json",
+          type: "docChanged",
+        }),
+        false,
+      ],
+    ]);
+    expect(calls).toContain("usages");
+  });
+
+  test("a snapshot that only moved files drops them as one structural change", () => {
+    const store = createContentStore();
+    store.applySnapshot(snapshotOf());
+    const { calls, targets } = recorder();
+    const derive = createStoreDerivations(store, targets);
+    const change = store.applySnapshot(
+      snapshotOf({
+        files: [
+          {
+            docId: "d1",
+            hash: A,
+            indexed: true,
+            isDir: false,
+            kind: "component",
+            path: "x-card.json",
+          },
+          { docId: "d2", indexed: true, isDir: true, kind: "other", path: "pages" },
+          { docId: "d3", hash: A, indexed: true, isDir: false, kind: "page", path: "pages/b.json" },
+        ],
+      }),
+    );
+    derive.snapshot(change);
+    expect(calls).toEqual(["usages", "derived pages/b.json,pages/a.json true", "repaint"]);
+  });
+});
+
+describe("what the canvas holds survives a snapshot wherever the bytes did", () => {
+  const docChanged = (docId: string, path: string, hash: ContentHash) =>
+    ev({ docId, hash, indexed: true, kind: "component", path, type: "docChanged" });
+
+  test("a first snapshot is what Studio read: a refill of those bytes changes no document", () => {
+    const store = createContentStore();
+    const { calls, targets } = recorder();
+    const derive = createStoreDerivations(store, targets);
+    derive.snapshot(store.applySnapshot(snapshotOf()));
+    feed(store, derive, [[docChanged("d1", "x-card.json", A), false]]);
+    expect(calls.filter((call) => call.startsWith("document"))).toEqual([]);
+  });
+
+  test("a new epoch's ids, or a file named without its hash, keep what the canvas holds", () => {
+    const store = createContentStore();
+    const { calls, targets } = recorder();
+    const derive = createStoreDerivations(store, targets);
+    derive.snapshot(store.applySnapshot(snapshotOf()));
+    // The host restarts into a new epoch and has not hashed the page yet.
+    derive.snapshot(
+      store.applySnapshot(
+        snapshotOf({
+          files: [
+            {
+              docId: "n1",
+              hash: A,
+              indexed: true,
+              isDir: false,
+              kind: "component",
+              path: "x-card.json",
+            },
+            { docId: "n2", indexed: true, isDir: true, kind: "other", path: "pages" },
+            { docId: "n3", indexed: false, isDir: false, kind: "page", path: "pages/a.json" },
+          ],
+        }),
+      ),
+    );
+    expect(calls).toEqual([]);
+    // Its indexing pass names the same bytes again: no document changed.
+    feed(store, derive, [
+      [docChanged("n1", "x-card.json", A), false],
+      [docChanged("n3", "pages/a.json", A), false],
+    ]);
+    expect(calls.filter((call) => call.startsWith("document"))).toEqual([]);
+    // A rename carries what the canvas holds; other bytes after it are news.
+    feed(store, derive, [
+      [
+        ev({
+          docId: "n1",
+          from: "x-card.json",
+          isDir: false,
+          to: "y-card.json",
+          type: "fileRenamed",
+        }),
+        false,
+      ],
+      [docChanged("n1", "y-card.json", A), false],
+      [ev({ docId: "n2", isDir: true, path: "pages", type: "fileRemoved" }), false],
+      [ev({ docId: "n4", hash: A, isDir: false, path: "pages/a.json", type: "fileAdded" }), false],
+      [docChanged("n4", "pages/a.json", A), false],
+      [docChanged("n1", "y-card.json", B), false],
+    ]);
+    expect(calls.filter((call) => call.startsWith("document"))).toEqual([
+      "document pages/a.json",
+      "document y-card.json",
+    ]);
   });
 });

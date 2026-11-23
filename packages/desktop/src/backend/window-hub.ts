@@ -437,18 +437,12 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     /* The same object the handlers closed over, completed: `findWindowByRoot(…, window)` compares by
        identity, and a copy here would make a window dedupe against itself. */
     windows.set(id, Object.assign(window, { partition, server }));
-    /* Registering the sink is what starts the watcher; re-rooting the session re-arms it. Each time
-       a watcher on the window's root is ready, the page is told to re-list (`studio.md` §9.2): the
-       watcher announces nothing written before its scan finished, and a project created or opened
-       a moment ago is exactly a folder written in that window. */
-    session.setFileEventSink(
-      (events) => {
-        server.push("onFileEvents", { events });
-      },
-      () => {
-        server.push("onFileResync", { reason: "open" });
-      },
-    );
+    /* Registering the sink is what starts the watcher; re-rooting the session re-arms it. What it
+       announces nothing about (a project written before its scan finished) reaches the page as the
+       project state subscription's snapshot (`project-state.md` §3.3). */
+    session.setFileEventSink((events) => {
+      server.push("onFileEvents", { events });
+    });
     claimAuthorizationRedirect(server);
     send({
       id,

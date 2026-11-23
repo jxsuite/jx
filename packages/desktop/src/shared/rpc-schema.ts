@@ -597,8 +597,6 @@ export interface StudioRPC {
       projectEvents: ProjectEventsParams;
       /** The host ended a subscription; the client subscribes again (`project-state.md` §3.2). */
       projectEnded: { epoch: string };
-      /** The watcher on the window's root is ready: re-list what is cached (`studio.md` §9.2). */
-      onFileResync: { reason: "open" };
     };
   }>;
 }

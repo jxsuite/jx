@@ -11,6 +11,8 @@
 
 import { setProjectSchemasForMonaco } from "../services/monaco-lazy";
 import { getPlatform } from "../platform";
+import { contentStore } from "../project-state/store";
+import { projectStateLive } from "../project-state/subscription";
 import type {
   ExtensionCatalogEntry,
   ExtensionsInfo,
@@ -119,6 +121,17 @@ const PROJECT_JXN_FORMAT: StudioFormat = {
 
 let _formats: StudioFormat[] = [];
 let _loaded: Promise<StudioFormat[]> | null = null;
+/**
+ * The host's format-set token (`formats`, `project-state.md` §4.4) the registry was loaded under,
+ * or `null` when no subscription was live. The registry is keyed by it (§11.1): while the store
+ * follows the host, a load under another token fetches again.
+ */
+let _token: string | null = null;
+
+/** The store's format-set token while the subscription is live, `null` otherwise. */
+function formatSetToken(): string | null {
+  return projectStateLive() ? contentStore.formats : null;
+}
 /* Bumped by every `refreshFormats()`, so a fetch that was still in flight when the registry was
    dropped cannot write the previous answer back over the one fetched after it. */
 let _generation = 0;
@@ -168,7 +181,14 @@ export function onFormatsChanged(listener: () => void): () => void {
 
 /** Load (and cache) the project's format registry from the platform. */
 export function loadFormats(): Promise<StudioFormat[]> {
+  const token = formatSetToken();
+  if (_loaded && token !== null && token !== _token) {
+    // Loaded under another format set: the registry it holds is not this one's.
+    _generation += 1;
+    _loaded = null;
+  }
   if (!_loaded) {
+    _token = token;
     const generation = _generation;
     _loaded = (async () => {
       let formats: StudioFormat[];
@@ -197,6 +217,7 @@ export function loadFormats(): Promise<StudioFormat[]> {
 export function refreshFormats() {
   _generation += 1;
   _loaded = null;
+  _token = null;
   _formats = [];
   _extensionsLoaded = null;
   _extensions = [];
@@ -207,6 +228,7 @@ export function refreshFormats() {
 /** Seed the registry directly (tests and hosts that preload format metadata). */
 export function setFormats(formats: StudioFormat[]) {
   _generation += 1;
+  _token = formatSetToken();
   _formats = formats;
   _loaded = Promise.resolve(formats);
   noteFormats(formats);

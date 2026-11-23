@@ -87,57 +87,16 @@ describe("the session watches a project", () => {
   });
 });
 
-/**
- * The watcher announces nothing written before its scan finished, and a project being created or
- * opened is written exactly then. Its readiness is told to the hub, which tells the page to
- * re-list.
- */
-describe("the session says when its watcher is live", () => {
-  const flush = () => Bun.sleep(0);
-
-  test("the watching hook runs once the scan is done, not before", async () => {
+describe("the session's watcher and its sink", () => {
+  test("a re-root onto the folder already watched keeps the watcher", async () => {
     const session = createProjectSession(authorized(PROJECT));
-    const told: string[] = [];
-    session.setFileEventSink(
-      () => {},
-      () => told.push("watching"),
-    );
-    await flush();
-    expect(told).toEqual([]);
+    session.setFileEventSink(() => {});
     finishScan();
-    await flush();
-    expect(told).toEqual(["watching"]);
-    await session.dispose();
-  });
-
-  test("a re-root onto the folder already watched keeps the watcher and announces again", async () => {
-    const session = createProjectSession(authorized(PROJECT));
-    const watching = mock(() => {});
-    session.setFileEventSink(() => {}, watching);
-    finishScan();
-    await flush();
     // What creating a project does: the session binds the folder, then Studio binds the window.
     session.setProjectRoot(authorized(PROJECT));
-    await flush();
+    await Bun.sleep(0);
     expect(watched).toEqual([PROJECT]);
     expect(closed).not.toHaveBeenCalled();
-    expect(watching).toHaveBeenCalledTimes(2);
-    await session.dispose();
-  });
-
-  test("a watcher replaced before its scan finished announces nothing", async () => {
-    const session = createProjectSession(authorized(PROJECT));
-    const told: string[] = [];
-    session.setFileEventSink(
-      () => {},
-      () => told.push("watching"),
-    );
-    const firstScan = finishScan;
-    capturingLogs(() => session.setProjectRoot(authorized(BARE)));
-    firstScan();
-    await flush();
-    expect(closed).toHaveBeenCalledTimes(1);
-    expect(told).toEqual([]);
     await session.dispose();
   });
 

@@ -73,7 +73,16 @@ describe("content store", () => {
         { git },
       ),
     );
-    expect(change).toEqual({ docIds: [], paths: [], snapshot: true });
+    expect(change).toEqual({
+      added: [
+        { isDir: true, path: "pages" },
+        { isDir: false, path: "pages/a.json" },
+      ],
+      docIds: [],
+      paths: [],
+      removed: [],
+      snapshot: true,
+    });
     expect(store.docAt("pages/a.json")?.docId).toBe("d1");
     expect(store.document("d0")?.isDir).toBe(true);
     expect(store.hashAt("pages/a.json")).toBe(await h("A"));
@@ -477,5 +486,155 @@ describe("content store", () => {
       ev({ docId: "d7", hash: await h("L"), isDir: false, path: "later.json", type: "fileAdded" }),
     );
     expect(contentStore.contentsAt("later.json")).toBeUndefined();
+  });
+});
+
+describe("the keys a derivation is held under (project-state.md §11.1)", () => {
+  test("a key names the document and its bytes, and follows a rename", async () => {
+    const store = createContentStore();
+    store.applySnapshot(
+      await snapshot([
+        ["pages", "d0", null],
+        ["pages/a.json", "d1", "A"],
+      ]),
+    );
+    expect(store.keyAt("pages/a.json")).toBe(`d1@${await h("A")}`);
+    // A directory and a path the store does not index have none.
+    expect(store.keyAt("pages")).toBeUndefined();
+    expect(store.keyAt("nowhere.json")).toBeUndefined();
+    store.applyEvent(
+      ev({
+        docId: "d1",
+        from: "pages/a.json",
+        isDir: false,
+        to: "pages/b.json",
+        type: "fileRenamed",
+      }),
+    );
+    expect(store.keyAt("pages/b.json")).toBe(`d1@${await h("A")}`);
+    expect(store.keyAt("pages/a.json")).toBeUndefined();
+  });
+
+  test("Studio's own write keys the path by the bytes it is about to hold", async () => {
+    const store = createContentStore();
+    store.applySnapshot(await snapshot([["a.json", "d1", "A"]]));
+    await store.noteOwnWrite("a.json", "B");
+    expect(store.keyAt("a.json")).toBe(`d1@${await h("B")}`);
+  });
+
+  test("the generation moves with the bytes and the set, and not with what the host fills in", async () => {
+    const store = createContentStore();
+    store.applySnapshot(await snapshot([["a.json", "d1", "A"]]));
+    const first = store.generation;
+    // Same bytes, newly indexed: nothing a reader of every document could see moved.
+    store.applyEvent(
+      ev({
+        docId: "d1",
+        hash: await h("A"),
+        indexed: true,
+        kind: "page",
+        path: "a.json",
+        type: "docChanged",
+      }),
+    );
+    expect(store.generation).toBe(first);
+    store.applyEvent(await fc("a.json", "d1", "B"));
+    const rewritten = store.generation;
+    expect(rewritten).toBeGreaterThan(first);
+    store.applyEvent(
+      ev({ docId: "d1", from: "a.json", isDir: false, to: "b.json", type: "fileRenamed" }),
+    );
+    const renamed = store.generation;
+    expect(renamed).toBeGreaterThan(rewritten);
+    store.applyEvent(
+      ev({ docId: "d2", hash: await h("C"), isDir: false, path: "c.json", type: "fileAdded" }),
+    );
+    expect(store.generation).toBeGreaterThan(renamed);
+    const added = store.generation;
+    // A snapshot of the same state moves nothing; one that drops a file does.
+    store.applySnapshot(
+      await snapshot([
+        ["b.json", "d1", "B"],
+        ["c.json", "d2", "C"],
+      ]),
+    );
+    expect(store.generation).toBe(added);
+    store.applySnapshot(await snapshot([["b.json", "d1", "B"]]));
+    expect(store.generation).toBeGreaterThan(added);
+    const dropped = store.generation;
+    store.reset();
+    expect(store.generation).toBeGreaterThan(dropped);
+  });
+
+  test("a snapshot that replaced earlier state reports what it added and removed, a rename as both", async () => {
+    const store = createContentStore();
+    store.applySnapshot(
+      await snapshot([
+        ["pages", "d0", null],
+        ["pages/a.json", "d1", "A"],
+        ["pages/gone.json", "d2", "G"],
+      ]),
+    );
+    const change = store.applySnapshot(
+      await snapshot([
+        ["pages", "d0", null],
+        ["pages/moved.json", "d1", "A"],
+        ["pages/new.json", "d3", "N"],
+      ]),
+    );
+    expect(change.added).toEqual([
+      { isDir: false, path: "pages/moved.json" },
+      { isDir: false, path: "pages/new.json" },
+    ]);
+    expect(change.removed).toEqual([
+      { isDir: false, path: "pages/a.json" },
+      { isDir: false, path: "pages/gone.json" },
+    ]);
+    // An event reports its own path, so it carries no account of the set.
+    const event = store.applyEvent(await fc("pages/new.json", "d3", "N2"));
+    expect(event.added).toEqual([]);
+    expect(event.removed).toEqual([]);
+  });
+});
+
+describe("a snapshot of a new epoch (project-state.md §3.1, §11.1)", () => {
+  test("the same bytes under new ids are an identity change only, and their contents carry", async () => {
+    const store = createContentStore();
+    store.applySnapshot(
+      await snapshot([
+        ["pages", "d0", null],
+        ["pages/a.json", "d1", "A"],
+        ["pages/b.json", "d2", "B"],
+        ["pages/c.json", "d3", "C"],
+      ]),
+    );
+    store.put("pages/a.json", await h("A"), "A");
+    const next = await snapshot([
+      ["pages", "n0", null],
+      ["pages/a.json", "n1", "A"],
+      ["pages/b.json", "n2", "B2"],
+      ["pages/c.json", "n3", "C"],
+    ]);
+    // The host has not hashed `c` again yet: unknown bytes are not reported either.
+    const { hash: _hash, ...unhashed } = next.files[3]!;
+    const change = store.applySnapshot({ ...next, files: [...next.files.slice(0, 3), unhashed] });
+    expect(change.docIds.toSorted()).toEqual(["d0", "d1", "d2", "d3"]);
+    expect(change.paths).toEqual(["pages/b.json"]);
+    expect(change.added).toEqual([]);
+    expect(change.removed).toEqual([]);
+    expect(store.keyAt("pages/a.json")).toBe(`n1@${await h("A")}`);
+    expect(store.contentsAt("pages/a.json")).toBe("A");
+  });
+
+  test("a path whose document left with no successor, or turned into a directory, is reported", async () => {
+    const store = createContentStore();
+    store.applySnapshot(
+      await snapshot([
+        ["a.json", "d1", "A"],
+        ["b", "d2", "B"],
+      ]),
+    );
+    const change = store.applySnapshot(await snapshot([["b", "n2", null]]));
+    expect(change.paths.toSorted()).toEqual(["a.json", "b"]);
   });
 });

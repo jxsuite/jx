@@ -1651,33 +1651,30 @@ describe("filesystem events drop the derived caches", () => {
 });
 
 describe("a component rewritten on disk", () => {
-  test("a watcher change event re-reads it and rewrites its registry entry", async () => {
-    /* The live component lane (`services/live-components.ts`) is wired to the watcher's change
-       events: a definition an editor or git rewrote reaches the registry the instances read, as a
-       save in Studio does, without reopening the project. */
+  test("a watcher change alone redefines nothing without a served subscription", async () => {
+    /* The live component lane (`services/live-components.ts`) follows the project state
+       subscription's `docChanged`, which says whether a change is Studio's own. The watcher's bare
+       `change` cannot say so, and this shell's platform serves no subscription, so the registry is
+       left as it was (`studio.md` §9.2). */
     expect(fsWatcher, "the boot must subscribe to the backend watcher").not.toBeNull();
     const { componentRegistry } = await import("../src/files/components");
     closeAllTabs();
-    // The lane reads the open project's root at change time; earlier tests may have left one.
-    const rootBefore = workspace.projectRoot;
-    workspace.projectRoot ??= "/recent/site";
-    try {
-      state.files.set(
-        "components/disk-card.json",
-        JSON.stringify({ state: { headline: { default: "" } }, tagName: "disk-card" }),
-      );
-      fsWatcher!([{ isDir: false, path: "components/disk-card.json", type: "change" }]);
-      // The watcher batches for 50 ms before it flushes; then the file is read.
-      await new Promise((resolve) => {
-        setTimeout(resolve, 80);
-      });
-      await waitFor(() => componentRegistry.some((c) => c.tagName === "disk-card"));
-      const entry = componentRegistry.find((c) => c.tagName === "disk-card");
-      expect(entry?.path).toBe("components/disk-card.json");
-      expect(entry?.props).toEqual([{ default: "", name: "headline" }]);
-    } finally {
-      workspace.projectRoot = rootBefore;
-    }
+    state.files.set(
+      "components/disk-card.json",
+      JSON.stringify({ state: { headline: { default: "" } }, tagName: "disk-card" }),
+    );
+    const reads = state.calls.filter((c) => c[0] === "readFile").length;
+    fsWatcher!([{ isDir: false, path: "components/disk-card.json", type: "change" }]);
+    // The watcher batches for 50 ms before it flushes.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 80);
+    });
+    expect(componentRegistry.some((c) => c.tagName === "disk-card")).toBe(false);
+    expect(
+      state.calls
+        .slice(reads)
+        .some((c) => c[0] === "readFile" && c[1] === "components/disk-card.json"),
+    ).toBe(false);
   });
 });
 

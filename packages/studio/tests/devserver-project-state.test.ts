@@ -22,6 +22,8 @@ import type {
   SubscribeResponse,
 } from "@jxsuite/protocol/project-state";
 import { createDevServerPlatform } from "../src/platforms/devserver";
+import { startProjectStateSubscription } from "../src/project-state/subscription";
+import { createContentStore } from "../src/project-state/store";
 
 const H = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" as const;
 
@@ -132,6 +134,52 @@ describe("projectState.subscribe (§3.2)", () => {
     stream.close();
     await turn();
     expect(seen.ended).toEqual(["e1"]);
+  });
+
+  /* `project-state.md` §3.3: a stream that closes (a restarted `bun run dev`, a reader that fell
+     behind) is repaired by subscribing again with the cursor, and by nothing else. */
+  test("a reconnect is a subscribe with { epoch, sinceRev }, and lists nothing", async () => {
+    const streams = [handStream(), handStream()];
+    let served = 0;
+    answer = () => {
+      const stream = streams[served]!;
+      served += 1;
+      return new Response(stream.body);
+    };
+    const platform = createDevServerPlatform();
+    const sub = startProjectStateSubscription({
+      retryDelay: () => 0,
+      store: createContentStore(),
+      subscribe: platform.subscribeProjectState!,
+    });
+    await turn();
+    streams[0]!.push(
+      encodeSseSubscribe({
+        epoch: "e1",
+        kind: "snapshot",
+        rev: 4,
+        snapshot: { components: [], files: [], formats: "", readiness: "ready" },
+      }),
+    );
+    streams[0]!.push(encodeSseEvents("e1", [changed(5)]));
+    for (let i = 0; i < 10 && !sub.live; i += 1) {
+      await turn();
+    }
+    expect(sub.live).toBe(true);
+    streams[0]!.close();
+    for (let i = 0; i < 10 && calls.length < 2; i += 1) {
+      await turn();
+    }
+    expect(calls).toHaveLength(2);
+    expect(header(calls[0]!, "Last-Event-ID")).toBeNull();
+    expect(header(calls[1]!, "Last-Event-ID")).toBe("e1:5");
+    // Both requests are the stream's: no listing went out.
+    expect(calls.map((call) => call.url.pathname)).toEqual([
+      PROJECT_EVENTS_PATH,
+      PROJECT_EVENTS_PATH,
+    ]);
+    sub.stop();
+    streams[1]!.close();
   });
 
   test("frames that arrive with the answer reach the listener only after the caller has it", async () => {

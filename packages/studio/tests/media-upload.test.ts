@@ -40,7 +40,6 @@ import {
   resetAssetVersions,
   versionOf,
 } from "../src/files/asset-versions";
-import { isRecentLocal } from "../src/files/fs-events";
 import { resetMediaRecords } from "../src/files/media-record";
 import { embedXmp, extractXmp } from "@jxsuite/site/xmp-containers";
 import { readMediaRecord, writeMediaRecord } from "@jxsuite/site/xmp-packet";
@@ -453,9 +452,14 @@ describe("replaceAsset", () => {
     // §3.4: Replace used to skip both, so its own watcher echo read as a foreign change and an
     // Unversioned URL stayed byte-identical over new bytes.
     const order: string[] = [];
+    noteListing(
+      [{ name: "hero.jpg", path: "public/media/hero.jpg", type: "file", version: "before" }],
+      beginListing(),
+    );
     installMockPlatform({
       uploadFile: (path: string) => {
-        order.push(isRecentLocal(path) ? "marked" : "unmarked");
+        // Marked as Studio's own: the version naming the bytes it replaces is already forgotten.
+        order.push(versionOf(path) === undefined ? "marked" : "unmarked");
         expect(localRevisionOf(path)).toBeUndefined();
         return Promise.resolve({ path });
       },

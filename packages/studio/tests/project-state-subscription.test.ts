@@ -228,19 +228,44 @@ describe("startProjectStateSubscription", () => {
     sub.stop();
   });
 
-  test("a host that refuses the first subscribe leaves it unavailable, and never retries", async () => {
+  test("a host that refuses the first subscribe is unavailable until a later attempt answers", async () => {
     const host = fakeHost();
     host.failures.push(new Error("404"));
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const delays: number[] = [];
     const sub = startProjectStateSubscription({
-      retryDelay: () => 0,
+      retryDelay: (attempt) => {
+        delays.push(attempt);
+        return 0;
+      },
       store: createContentStore(),
-      subscribe: host.subscribe,
+      subscribe: async (request, listener) => {
+        if (host.requests.length > 0) {
+          await gate;
+        }
+        return host.subscribe(request, listener);
+      },
     });
     await settle(sub);
     expect(sub.unavailable).toBe(true);
     expect(sub.answered).toBe(false);
     expect(sub.live).toBe(false);
     expect(host.requests).toHaveLength(1);
+    // It is asked again, as a dropped one is: only an answer says what the host serves.
+    expect(delays).toEqual([0]);
+    release();
+    for (let i = 0; i < 10 && !sub.live; i += 1) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+    expect(sub.unavailable).toBe(false);
+    expect(sub.answered).toBe(true);
+    expect(sub.live).toBe(true);
+    sub.stop();
   });
 
   test("a resubscribe that fails after an answer is retried with a growing delay", async () => {

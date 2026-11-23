@@ -727,10 +727,8 @@ export function createProjectSession(
     const root = requireRoot();
     const preview = await startLivePreview(root);
     /* An origin now exists, and it wants filesystem events whether or not a shell subscribed for
-       the sidebar. Re-arming is idempotent, and it announces nothing when the watcher it finds is
-       the one already running: the window has re-listed since it was ready, and an announcement is
-       a full re-list and a cache flush in Studio for every Open in Browser. */
-    startWatching({ announce: false });
+       the sidebar. Re-arming is idempotent: the watcher already running is kept. */
+    startWatching();
     const reused = params.route ? await navigateLivePreview(root, params.route) : false;
     return {
       errors: preview.errors,
@@ -922,14 +920,6 @@ export function createProjectSession(
   // ─── Filesystem watching (pushes change events to the webview over RPC) ───────
 
   let fileEventSink: ((events: FsEventPayload[]) => void) | null = null;
-  /**
-   * Told each time a watcher on the active root is ready (its initial scan finished), and again on
-   * a re-root that keeps the watcher it has. The hub turns it into an `"open"` resync, because the
-   * watcher announces nothing that was written before it was ready: a starter scaffolded, a
-   * dependency installed or a page added while the scan ran is in no event, and only a re-list
-   * after this point shows it.
-   */
-  let watchingSink: (() => void) | null = null;
   let watcherHandle: FsWatcherHandle | null = null;
   /** The root `watcherHandle` watches, so a re-root onto the same folder can keep it. */
   let watchedRoot: string | null = null;
@@ -952,15 +942,6 @@ export function createProjectSession(
   /** The last root refused below — so the refusal is logged once, not once per re-arm. */
   let unwatchableRoot: string | null = null;
 
-  /** Say the watcher is live once its scan is done, unless it was replaced in the meantime. */
-  function announceWhenReady(handle: FsWatcherHandle): void {
-    void handle.ready.then(() => {
-      if (watcherHandle === handle) {
-        watchingSink?.();
-      }
-    });
-  }
-
   /**
    * Start watching the active project, or refuse and say so once.
    *
@@ -978,12 +959,11 @@ export function createProjectSession(
    *
    * A re-root onto the folder already watched keeps that watcher rather than restarting it.
    * Creating a project re-roots twice onto the same folder (the session binds it, then Studio binds
-   * the window to it), and a restart there would open a second unannounced window during its scan.
-   * Either way the watcher's readiness is announced, so the client re-lists after every re-root and
-   * every sink registration. `announce: false` is for a caller that only needs the watcher running
-   * (a live preview): it starts one if there is none, and re-announces nothing if there is.
+   * the window to it), and a restart there would lose the events of its scan. What the watcher
+   * announces nothing about (a file written before its scan finished) the window learns from the
+   * project state subscription's snapshot (`project-state.md` §3.3), not from this watcher.
    */
-  function startWatching({ announce = true }: { announce?: boolean } = {}): void {
+  function startWatching(): void {
     /* Two consumers now, and either is reason enough. The sidebar's sink was the original one; a
        live preview origin is the second, and it wants to know about a git checkout or an external
        editor whether or not a shell happens to be subscribed. */
@@ -1002,9 +982,6 @@ export function createProjectSession(
     }
     unwatchableRoot = null;
     if (watcherHandle && watchedRoot === projectRoot) {
-      if (announce) {
-        announceWhenReady(watcherHandle);
-      }
       return;
     }
     void stopWatching();
@@ -1029,7 +1006,6 @@ export function createProjectSession(
     );
     watcherHandle = handle;
     watchedRoot = root;
-    announceWhenReady(handle);
   }
 
   /** The window is gone: let go of the project, and accept no other. */
@@ -1038,16 +1014,9 @@ export function createProjectSession(
     closed = true;
   }
 
-  /**
-   * Register (or clear) the sink for the active project's batched filesystem events, and the hook
-   * told when a watcher is ready (see `watchingSink`).
-   */
-  function setFileEventSink(
-    sink: ((events: FsEventPayload[]) => void) | null,
-    onWatching: (() => void) | null = null,
-  ): void {
+  /** Register (or clear) the sink for the active project's batched filesystem events. */
+  function setFileEventSink(sink: ((events: FsEventPayload[]) => void) | null): void {
     fileEventSink = sink;
-    watchingSink = sink ? onWatching : null;
     startWatching();
   }
 

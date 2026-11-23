@@ -7,6 +7,7 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import {
+  createSubscriptionCursor,
   encodeDesktopEnded,
   encodeDesktopEvents,
   preconditionFailedProblem,
@@ -63,6 +64,21 @@ const server = Bun.serve({
       if (msg.method === "findReferences") {
         // The socket drops mid-request, as an idle timeout or a suspended window drops it.
         ws.close();
+        return;
+      }
+      if (msg.method === "projectSubscribe" && msg.params?.clientId === "cursor") {
+        // The first subscribe holds nothing; a later one names where it left off.
+        if (!("epoch" in msg.params)) {
+          ws.send(JSON.stringify({ id: msg.id, result: { ...SNAPSHOT, epoch: "e3" } }));
+          ws.send(encodeDesktopEvents("e3", [changed]));
+        } else {
+          ws.send(
+            JSON.stringify({
+              id: msg.id,
+              result: { epoch: "e3", events: [], kind: "events", rev: 2 },
+            }),
+          );
+        }
         return;
       }
       if (msg.method === "projectSubscribe" && msg.params?.clientId === "stays") {
@@ -297,5 +313,32 @@ describe("projectState", () => {
     await Bun.sleep(1200);
     expect(ended).toEqual(["e2"]);
     expect(await platform.getProjectRoot()).toEqual({ root: "/p" });
+  });
+
+  /* `project-state.md` §3.3: the socket that comes back carries no resync reason. The subscription
+     it took with it is ended, and the client's next subscribe names its cursor; nothing is
+     re-listed. */
+  test("a reconnect is a subscribe with { epoch, sinceRev }, and lists nothing", async () => {
+    const cursor = createSubscriptionCursor("cursor");
+    let ended = 0;
+    const listener = {
+      ended: () => {
+        ended += 1;
+      },
+      events: (params: ProjectEventsParams) => {
+        cursor.frame(params);
+      },
+    };
+    cursor.answer(await platform.subscribeProjectState(cursor.request(), listener));
+    await Bun.sleep(20);
+    const before = received.length;
+    await expect(platform.findReferences({ path: "a.json" })).rejects.toThrow();
+    await until(() => ended > 0);
+    cursor.answer(await platform.subscribeProjectState(cursor.request(), listener));
+    const sent = received.slice(before);
+    expect(sent.filter((frame) => frame.method === "projectSubscribe")).toEqual([
+      { method: "projectSubscribe", params: { clientId: "cursor", epoch: "e3", sinceRev: 2 } },
+    ]);
+    expect(sent.some((frame) => frame.method === "listDirectory")).toBe(false);
   });
 });

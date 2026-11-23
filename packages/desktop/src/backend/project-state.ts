@@ -6,8 +6,7 @@
  * The host (`createProjectStateHost`, `@jxsuite/server/project-state/host`) starts on the first
  * request that needs it, a subscription, a conditional write or a rename (§9), so a window whose
  * Studio never subscribes pays for none of it. It keeps its own watcher beside the session's: the
- * session's still feeds `onFileEvents` and `onFileResync`, which Studio reads until every host
- * serves the subscription (§3.3).
+ * session's still feeds `onFileEvents`, which Studio's file tree reads beside the subscription.
  *
  * @docs studio/desktop
  */

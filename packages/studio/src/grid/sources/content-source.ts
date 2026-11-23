@@ -26,7 +26,7 @@ import { workspace } from "../../workspace/workspace";
 import { applyHoldFilter, holdSwitch, includingHeld } from "../../content/hold-state";
 import type { HoldBearer } from "../../content/hold-state";
 import { getGridController } from "../grid-controller";
-import { isRecentLocal, markLocalMutation, markLocalWrite } from "../../files/fs-events";
+import { markLocalMutation, markLocalWrite } from "../../files/fs-events";
 import {
   defaultContentFormat,
   documentExtensions,
@@ -520,7 +520,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
         } catch {
           onDisk = null;
         }
-        if (onDisk !== entry.rawText && !isRecentLocal(path)) {
+        if (onDisk !== entry.rawText) {
           outcome(false, "File changed on disk — refresh to reload", true);
           continue;
         }

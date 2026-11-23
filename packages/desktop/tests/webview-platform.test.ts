@@ -950,118 +950,48 @@ describe("chromium desktop platform", () => {
   });
 
   /**
-   * The launcher pushes `onFileEvents` to the sockets open at that moment and replays nothing, so a
-   * socket that drops and comes back has lost whatever was pushed in between, and says so with a
-   * `"reconnect"`. A stream that had something to say before anyone subscribed (here, its own first
-   * open and the batches earlier tests pushed) is a gap of the same kind, told as `"open"`.
+   * The launcher pushes `onFileEvents` to the sockets open at that moment and replays nothing. The
+   * adapter reports no gap: the project state subscription replays what a dropped socket missed
+   * (`project-state.md` §3.3), so a socket that comes back simply carries batches again, and a
+   * batch nobody was subscribed for is dropped.
    */
-  test("a late subscriber is told `open`, and a socket that comes back `reconnect`", async () => {
-    const reasons: string[] = [];
-    const unsubscribe = platform.subscribeFileEvents!(() => {}, {
-      onResync: (reason) => reasons.push(reason),
-    });
+  test("a socket that comes back carries batches again, and reports nothing else", async () => {
+    const batches: unknown[][] = [];
+    const unsubscribe = platform.subscribeFileEvents!((events) => batches.push(events));
     try {
-      // The platform opened in beforeAll, long before this subscriber existed.
-      await until(() => reasons.length > 0);
-      expect(reasons).toEqual(["open"]);
-
       // The server drops every socket, as an idle timeout or a suspended window would.
+      const dropped = clients.length;
       for (const client of clients.splice(0)) {
         client.close();
       }
-      await until(() => reasons.length > 1);
-      expect(reasons).toEqual(["open", "reconnect"]);
+      await until(() => clients.length >= dropped);
       // The socket that came back carries requests again.
       await expect(platform.readFile("a.json")).resolves.toBe("file content here");
-    } finally {
-      unsubscribe();
-    }
-
-    // Unsubscribed: a later reconnect has no one to tell.
-    for (const client of clients.splice(0)) {
-      client.close();
-    }
-    await until(() => clients.length >= 2);
-    await expect(platform.readFile("a.json")).resolves.toBe("file content here");
-    expect(reasons).toEqual(["open", "reconnect"]);
-  });
-
-  test("a subscriber with nothing missed is told nothing", async () => {
-    await drainResyncGap(platform);
-    const reasons: string[] = [];
-    const first = platform.subscribeFileEvents!(() => {}, {
-      onResync: (reason) => reasons.push(reason),
-    });
-    first();
-    const unsubscribe = platform.subscribeFileEvents!(() => {}, {
-      onResync: (reason) => reasons.push(reason),
-    });
-    await Bun.sleep(20);
-    expect(reasons).toEqual([]);
-    unsubscribe();
-  });
-
-  /**
-   * The launcher's watcher announces nothing written before its initial scan finished, which is
-   * exactly when a project being created or opened is written. Its `onFileResync` is the re-list.
-   */
-  test("the launcher's watcher being ready reaches the subscriber as an `open` resync", async () => {
-    const reasons: string[] = [];
-    const unsubscribe = platform.subscribeFileEvents!(() => {}, {
-      onResync: (reason) => reasons.push(reason),
-    });
-    try {
-      await Bun.sleep(5);
-      reasons.length = 0;
-      pushToClient({ method: "onFileResync", params: { reason: "open" } });
-      await until(() => reasons.length > 0);
-      // Every shell on the socket acts on it; this file has more than one platform connected.
-      expect(reasons[0]).toBe("open");
+      pushToClient({
+        method: "onFileEvents",
+        params: { events: [{ isDir: false, path: "pages/back.json", type: "add" }] },
+      });
+      await until(() => batches.length > 0);
+      expect(batches[0]).toEqual([{ isDir: false, path: "pages/back.json", type: "add" }]);
     } finally {
       unsubscribe();
     }
   });
 
-  test("a batch nobody received is a gap the next subscriber is told about", async () => {
-    // Drain any gap left by earlier tests, so the one below is this test's own.
-    await drainResyncGap(platform);
+  test("a batch nobody was subscribed for is dropped, not replayed to the next subscriber", async () => {
     pushToClient({
       method: "onFileEvents",
       params: { events: [{ isDir: false, path: "pages/new.json", type: "add" }] },
     });
-    pushToClient({ method: "onFileResync", params: {} });
     await Bun.sleep(40);
-    const reasons: string[] = [];
     const batches: unknown[][] = [];
-    const unsubscribe = platform.subscribeFileEvents!((events) => batches.push(events), {
-      onResync: (reason) => reasons.push(reason),
-    });
+    const replaced = platform.subscribeFileEvents!((events) => batches.push(events));
+    // A subscriber replaced by another is not the one a later batch reaches.
+    const unsubscribe = platform.subscribeFileEvents!(() => {});
+    replaced();
     try {
-      await until(() => reasons.length > 0);
-      // One re-list answers every missed batch; the batch itself is not replayed as a delta.
-      expect(reasons).toEqual(["open"]);
+      await Bun.sleep(20);
       expect(batches).toEqual([]);
-    } finally {
-      unsubscribe();
-    }
-  });
-
-  test("a subscriber replaced before it was told hands the gap to the next one", async () => {
-    await drainResyncGap(platform);
-    pushToClient({ method: "onFileResync", params: { reason: "open" } });
-    await Bun.sleep(40);
-    const early: string[] = [];
-    // Replaced in the same turn, before the microtask that would have told it ran.
-    platform.subscribeFileEvents!(() => {}, { onResync: (reason) => early.push(reason) })();
-    const reasons: string[] = [];
-    await Bun.sleep(5);
-    const unsubscribe = platform.subscribeFileEvents!(() => {}, {
-      onResync: (reason) => reasons.push(reason),
-    });
-    try {
-      await until(() => reasons.length > 0);
-      expect(early).toEqual([]);
-      expect(reasons).toEqual(["open"]);
     } finally {
       unsubscribe();
     }
@@ -1167,13 +1097,6 @@ describe("chromium desktop platform", () => {
 });
 
 /** Wait for a condition a pushed frame or a pending request will make true. */
-/** Subscribe until any gap earlier tests left is reported, so the next subscriber starts clean. */
-async function drainResyncGap(target: ReturnType<typeof createDesktopPlatform>): Promise<void> {
-  const unsubscribe = target.subscribeFileEvents!(() => {}, { onResync: () => {} });
-  await Bun.sleep(5);
-  unsubscribe();
-}
-
 async function until(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!predicate() && Date.now() < deadline) {

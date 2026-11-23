@@ -5,7 +5,6 @@ import { setPreviewNavigateHandler } from "@jxsuite/studio/preview-navigate";
 import type {
   CreateProjectDestination,
   FsEvent,
-  FsResyncReason,
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
@@ -92,8 +91,6 @@ type StudioRequests = StudioRPC["bun"]["requests"];
  */
 interface PushParams {
   events?: FsEvent[];
-  /** `onFileResync`'s: why the cached tree must be re-read. */
-  reason?: FsResyncReason;
   settings?: Record<string, string>;
 }
 
@@ -184,22 +181,10 @@ export function createDesktopPlatform() {
       "onFileEvents",
       (params) => {
         const { events } = params;
+        // Nobody subscribed drops it: the project state subscription is what replays a gap.
         if (events && events.length > 0) {
-          if (fileEventHandler) {
-            fileEventHandler(events);
-          } else {
-            // Nobody to hand it to, and a delta cannot wait: the next subscriber re-lists instead.
-            missedFileEvents = true;
-          }
+          fileEventHandler?.(events);
         }
-      },
-    ],
-    [
-      /* The launcher's watcher on this window's root is ready, so the page re-lists what it has
-         cached: nothing written before that moment (a scaffold, an install) was ever an event. */
-      "onFileResync",
-      (params) => {
-        reportResync(params.reason ?? "open");
       },
     ],
     [
@@ -255,31 +240,6 @@ export function createDesktopPlatform() {
 
   // The studio sidebar's live-sync subscriber, if any. Set via subscribeFileEvents below.
   let fileEventHandler: ((events: FsEvent[]) => void) | null = null;
-  /*
-   * The same subscriber's resync hook. The launcher's `push` sends to the sockets open at that
-   * moment and replays nothing to one that comes back, so every `onFileEvents` frame sent while
-   * this socket was down is gone — and events are deltas, which no later delta repairs. A
-   * reconnect is therefore reported, and Studio re-reads what it has cached (`studio.md` §9.2).
-   */
-  let resyncHandler: ((reason: FsResyncReason) => void) | null = null;
-  /** Whether the socket has opened before: only a RE-open follows a gap in the event stream. */
-  let everOpened = false;
-  /**
-   * Whether the stream had something to say while nobody was subscribed: a batch, or a resync.
-   * Either is a gap the next subscriber cannot patch from deltas, so it is told `"open"` instead. A
-   * flag rather than a buffer, because a re-list answers any number of missed batches at once and a
-   * buffer of deltas would need a bound below which it is still a gap.
-   */
-  let missedFileEvents = false;
-
-  /** Tell the subscriber the stream has a gap, or remember there is one for the next subscriber. */
-  function reportResync(reason: FsResyncReason): void {
-    if (resyncHandler) {
-      resyncHandler(reason);
-    } else {
-      missedFileEvents = true;
-    }
-  }
   /** The settings kernel's subscriber, so another window's change reaches this one. */
   let settingsHandler: ((settings: Record<string, string>) => void) | null = null;
   let documentHandler: ((path: string) => void) | null = null;
@@ -349,12 +309,9 @@ export function createDesktopPlatform() {
       ws.addEventListener("open", () => {
         reconnectMs = RECONNECT_MIN_MS;
         connectionHandler?.({ online: true });
-        /* The first open is an `"open"` exactly as the cloud transport's is: a listing made before it
-           raced the handshake, and nothing pushed before it reached this page. */
-        reportResync(everOpened ? "reconnect" : "open");
-        everOpened = true;
         resolve();
-        // The old socket took its subscription with it (see ProjectStateListener).
+        /* The old socket took its subscription with it (see ProjectStateListener): Studio
+           subscribes again with its cursor, and the events it missed are replayed. */
         if (projectEpoch !== null) {
           endProjectSubscription(projectEpoch);
         }
@@ -731,7 +688,7 @@ export function createDesktopPlatform() {
 
     /**
      * The subscribe half of {@link projectState}, as the `StudioPlatform` member Studio's content
-     * store reads (`studio.md` §3.4). The file events and their resync reasons stay beside it.
+     * store reads (`studio.md` §3.4). The file events stay beside it, for the tree alone.
      */
     subscribeProjectState(
       subscribeRequest: SubscribeRequest,
@@ -764,34 +721,14 @@ export function createDesktopPlatform() {
      * file written by a terminal — or by the AI assistant — stayed invisible until then.
      *
      * The socket can drop and come back (see the transport above), and frames pushed in between are
-     * lost, so every re-open is reported as `onResync("reconnect")`. The first open, the launcher's
-     * `onFileResync` (its watcher on a new root is ready), and a subscription made after the stream
-     * already had something to say while nobody listened are each reported as `onResync("open")`.
+     * lost. Nothing here repairs that: the project state subscription replays what was missed
+     * (`project-state.md` §3.3).
      */
-    subscribeFileEvents(
-      handler: (events: FsEvent[]) => void,
-      options?: { onResync?: (reason: FsResyncReason) => void },
-    ) {
+    subscribeFileEvents(handler: (events: FsEvent[]) => void) {
       fileEventHandler = handler;
-      const onResync = options?.onResync ?? null;
-      resyncHandler = onResync;
-      if (onResync && missedFileEvents) {
-        missedFileEvents = false;
-        // After the caller has its unsubscribe in hand, as every other report it receives is.
-        queueMicrotask(() => {
-          if (resyncHandler === onResync) {
-            onResync("open");
-          } else {
-            reportResync("open");
-          }
-        });
-      }
       return () => {
         if (fileEventHandler === handler) {
           fileEventHandler = null;
-        }
-        if (resyncHandler === onResync) {
-          resyncHandler = null;
         }
       };
     },

@@ -645,30 +645,6 @@ describe("file operations", () => {
     }
   });
 
-  test("subscribeFileEvents reports an open resync first, then a reconnect on every later open", () => {
-    const original = eventSourceSlot.EventSource;
-    eventSourceSlot.EventSource = FakeEventSource;
-    try {
-      const p = createDevServerPlatform();
-      const reasons: string[] = [];
-      const stop = p.subscribeFileEvents(() => {}, {
-        onResync: (reason) => reasons.push(reason),
-      });
-      const es = FakeEventSource.last;
-      // EventSource reconnects on its own and fires `open` each time it does; the server replays
-      // Nothing it sent while the stream was down. The first open is the stream joining after the
-      // First listings were made, which re-lists too, though more narrowly than a reconnect.
-      es?.emit("open", "");
-      expect(reasons).toEqual(["open"]);
-      es?.emit("open", "");
-      es?.emit("open", "");
-      expect(reasons).toEqual(["open", "reconnect", "reconnect"]);
-      stop();
-    } finally {
-      eventSourceSlot.EventSource = original;
-    }
-  });
-
   test("a reconnect re-binds the server to this tab's project (a restart comes back unbound)", () => {
     const original = eventSourceSlot.EventSource;
     eventSourceSlot.EventSource = FakeEventSource;

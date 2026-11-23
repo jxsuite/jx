@@ -103,6 +103,8 @@ const PACKAGE: ComponentEntry = {
 };
 
 let host: HTMLElement;
+/** What the installed platform was asked, in order. */
+let platformState: ReturnType<typeof installMockPlatform>["state"];
 
 /* SAFETY: the Site panel's afterRender reads neither `deps` nor `doc` (`registerSitePanel` mounts
    against the host alone), so an empty object stands in for the Navigator's deps. */
@@ -117,7 +119,10 @@ async function project(
      server's npm discovery, which sends `package` with no `path`, a shape `ComponentMeta` cannot
      express but the registry reads (the same cast `tests/elements-panel.test.ts` makes). */
   const discoverComponents = (async () => [CARD, PACKAGE]) as StudioPlatform["discoverComponents"];
-  installMockPlatform({ discoverComponents, ...overrides }, { ...FILES, ...extraFiles });
+  platformState = installMockPlatform(
+    { discoverComponents, ...overrides },
+    { ...FILES, ...extraFiles },
+  ).state;
   setProjectState({
     dirs: new Map(),
     expanded: new Set(),
@@ -766,13 +771,84 @@ describe("staying current", () => {
       noteReadiness();
       await flush(10);
       expect(scans).toBe(settled + 1);
-      /* A move keeps the host's set of tags and changes the path the registry reads the definition
-         from, so a batch that added, removed or moved a definition still re-scans. */
+      /* A move keeps the host's set of tags, and the registry is keyed by the store: the entries
+         whose definition moved are relabelled from it, with no scan (`refreshStaleComponents`). */
       invalidateSiteIndex(["components/card.json", "components/ui/card.json"], true);
       await flush(10);
-      expect(scans).toBe(settled + 2);
+      expect(scans).toBe(settled + 1);
     } finally {
       stopProjectStateSync();
+    }
+  });
+
+  test("while live, a change to contents alone re-reads only the dynamic pages whose bytes moved", async () => {
+    const { startLiveProjectState } = await import("./live-project-state");
+    const live = await startLiveProjectState(
+      Object.fromEntries(
+        Object.entries(FILES).map(([path, text], index) => [path, [`d${index}`, text]]),
+      ),
+    );
+    try {
+      await paint();
+      expect(rowLabels("pages")).toContain("Posts");
+      // The reads an index costs: a walk lists directories, a dynamic page is read.
+      const calls = () =>
+        platformState.calls.filter(
+          ([method]) => method === "listDirectory" || method === "readFile",
+        );
+      const before = calls().length;
+      // Another writer rewrites a static page: the file set stands, and no dynamic page moved.
+      await live.change("pages/about.json", '{"tagName":"section"}');
+      invalidateSiteIndex(["pages/about.json"], false);
+      await flush(10);
+      expect(calls().slice(before)).toEqual([]);
+      // The dynamic page itself: read again, alone, and nothing is walked.
+      const next = '{"tagName":"article","$paths":{"contentType":"news"}}';
+      await getPlatform().writeFile("pages/blog/[slug].json", next);
+      const written = calls().length;
+      await live.change("pages/blog/[slug].json", next);
+      invalidateSiteIndex(["pages/blog/[slug].json"], false);
+      await flush(10);
+      expect(calls().slice(written)).toEqual([["readFile", "pages/blog/[slug].json"]]);
+      // A structural change walks the file set again.
+      invalidateSiteIndex(["pages/new.json"], true);
+      await flush(10);
+      expect(
+        calls()
+          .slice(written)
+          .some(([method]) => method === "listDirectory"),
+      ).toBe(true);
+    } finally {
+      live.stop();
+    }
+  });
+
+  test("while live, a moved component definition is relabelled without a scan, and the panel repaints", async () => {
+    let scans = 0;
+    await project({
+      /* SAFETY: the same cast `project()` makes: the registry keeps this answer as
+         `ComponentEntry[]`, and the fixture card is one. */
+      discoverComponents: (async () => {
+        scans += 1;
+        return [CARD];
+      }) as StudioPlatform["discoverComponents"],
+    });
+    const { startLiveProjectState } = await import("./live-project-state");
+    const live = await startLiveProjectState({ [CARD.path!]: ["dc", "{}"] });
+    try {
+      // Read under the store, so each entry remembers the key of its definition.
+      await loadComponentRegistry();
+      await paint();
+      const settled = scans;
+      await live.rename(CARD.path!, "components/ui/site-card.json");
+      invalidateSiteIndex([CARD.path!, "components/ui/site-card.json"], true);
+      await flush(10);
+      expect(scans).toBe(settled);
+      expect(part("component-card").length).toBeGreaterThan(0);
+      const { componentPathOf } = await import("../src/files/components");
+      expect(componentPathOf("site-card")).toBe("components/ui/site-card.json");
+    } finally {
+      live.stop();
     }
   });
 
