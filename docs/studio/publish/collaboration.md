@@ -62,9 +62,9 @@ Open the **[Command palette](/docs/studio/interface/commands)** and type `Collab
 
 ## Syncing is not saving
 
-Your edits reach your collaborators instantly, but the file on disk still changes only when someone saves. The explicit **Save** is unchanged. What _is_ shared is the unsaved state itself: the moment anyone edits, the file counts as unsaved for the whole session, and one person saving saves the shared result for everyone. Committing in **[Source control](/docs/studio/publish/source-control)** saves open co-edited files first, so a commit always captures what the session currently sees.
+Your edits reach your collaborators instantly, but the file on disk still changes only when someone saves. The explicit **Save** is unchanged. What _is_ shared is the unsaved state itself: the moment anyone edits, the file counts as unsaved for the whole session, and one person saving saves the shared result for everyone. Committing in **[Source control](/docs/studio/publish/source-control)** saves open co-edited files first, so a commit captures what the session currently sees, except for a file whose session is waiting on the changed-on-disk question below, which the commit takes as it is on disk.
 
-A save never overwrites a change it has not seen. On the dev server, a session remembers the exact bytes it loaded or last saved, and its save is written only if the file on disk is still those bytes. When a change made outside the session (another editor, a script, a git checkout) reaches a session with no unsaved edits, the session resets onto the new content, as described under [Falling back to solo](#falling-back-to-solo). When the session has unsaved edits, it keeps them: the file stays unsaved for everyone in the session, and [Problems](/docs/studio/interface/problems-and-progress) says that the file changed on disk. A save that lands before the outside change has reached the session finds the same thing and writes nothing.
+A save never overwrites a change it has not seen. On the dev server and on Jx Cloud, a session remembers the exact bytes it loaded or last saved, and its save is written only if the file on disk is still those bytes. When a change made outside the session (another editor, a script, a git checkout, or on Jx Cloud a pull, a discard, or a save from a tab that is not in the session) reaches a session with no unsaved edits, the session resets onto the new content, as described under [Falling back to solo](#falling-back-to-solo). When the session has unsaved edits, it keeps them: the file stays unsaved for everyone in the session, and [Problems](/docs/studio/interface/problems-and-progress) says that the file changed on disk. A save that lands before the outside change has reached the session finds the same thing and writes nothing.
 
 Saving the session then asks first, with the same three answers as a document of your own (see [When the file changes on disk](/docs/studio/interface/tabs#when-the-file-changes-on-disk)):
 
@@ -74,7 +74,7 @@ Saving the session then asks first, with the same three answers as a document of
 
 The notice clears once the session saves, takes the disk copy, or you leave it.
 
-Renaming or moving a co-edited file inside the open project keeps the session. Everyone who had it open stays in it, opening it at its new path joins the same session with its unsaved edits, and the next save lands at the new path. Deleting the file ends the session.
+Renaming or moving a co-edited file inside the open project, on the dev server or on Jx Cloud, keeps the session. Everyone who had it open stays in it, opening it at its new path joins the same session with its unsaved edits, and the next save lands at the new path. Deleting the file ends the session.
 
 Opening another project on the same dev server, from any tab, ends the sessions of the project before it. Each one with unsaved edits is saved first. If that save is refused because the file changed on disk in the meantime, those unsaved edits are lost.
 

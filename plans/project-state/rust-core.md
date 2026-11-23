@@ -3,8 +3,7 @@ status: drafted
 disposition: defer
 claims:
   - project-state.md#13.2
-requires:
-  - project-state/cloud-conformance
+requires: []
 size: S
 ---
 

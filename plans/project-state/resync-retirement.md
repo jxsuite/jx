@@ -4,8 +4,7 @@ disposition: implement
 claims:
   - project-state.md#3.3
   - project-state.md#11.1
-requires:
-  - project-state/cloud-conformance
+requires: []
 workspaces:
   - packages/studio
   - packages/desktop
@@ -16,7 +15,7 @@ size: M
 
 ## Context
 
-`specs/project-state.md` §3.3 is `Pending`: "Studio still repairs gaps with the `"open"`, `"reconnect"` and `"commit"` resync reasons of `studio.md` §9.2." Every adapter reports them through the `onResync` option of `subscribeFileEvents` (`packages/desktop/src/webview/platform.ts`, `packages/studio/src/platforms/devserver.ts`, `packages/studio/src/platforms/cloud.ts`), the fold of `FsEvent`s into listings lives in `packages/studio/src/files/fs-events.ts`, and that module also suppresses echoes by a 1.5 second window (`RECENT_MS`). The resync path can only go once no adapter needs it: the desktop host (§10.1) and the dev-server host (§10.2) serve the subscription, the cloud host (`plan:project-state/cloud-conformance`) must too, and the client already consumes it: Studio's content store, its derived caches and each tab's buffer state follow the subscription (§6.1, §11.1). Every write and delete Studio makes already names a base once the host has answered (`packages/studio/src/files/based-writes.ts` routes the platform's `writeFile`, `uploadFile` and `deleteFile`, §5); on a platform whose host does not answer, they fall back to the echo window this plan deletes.
+`specs/project-state.md` §3.3 is `Pending`: "Studio still repairs gaps with the `"open"`, `"reconnect"` and `"commit"` resync reasons of `studio.md` §9.2." Every adapter reports them through the `onResync` option of `subscribeFileEvents` (`packages/desktop/src/webview/platform.ts`, `packages/studio/src/platforms/devserver.ts`, `packages/studio/src/platforms/cloud.ts`), the fold of `FsEvent`s into listings lives in `packages/studio/src/files/fs-events.ts`, and that module also suppresses echoes by a 1.5 second window (`RECENT_MS`). The resync path can only go once no adapter needs it: the desktop host (§10.1), the dev-server host (§10.2) and the cloud host (§10.3) serve the subscription, and the client already consumes it: Studio's content store, its derived caches and each tab's buffer state follow the subscription (§6.1, §11.1). Every write and delete Studio makes already names a base once the host has answered (`packages/studio/src/files/based-writes.ts` routes the platform's `writeFile`, `uploadFile` and `deleteFile`, §5); on a platform whose host does not answer, they fall back to the echo window this plan deletes.
 
 `specs/project-state.md` §11.1 is `Partial`: "the other caches (usage counts, component discovery, the Site panel's index, the format registry) are not keyed by the document and hash they were derived from. They read through the platform, keyed by path, and the events above drop each one when the bytes it read change." They are kept current by `packages/studio/src/project-state/derive.ts` while the subscription is live and by the watcher's batches otherwise, which is the second invalidation path this plan removes.
 
