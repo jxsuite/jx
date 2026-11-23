@@ -2,9 +2,9 @@
 
 ## One Backend-Owned Model of a Project, Served by Every Studio Host
 
-**Version:** 0.1.0-draft\
+**Version:** 0.1.16-draft\
 **Status:** Partial\
-**Updated:** 2026-11-21\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 ---
@@ -385,8 +385,24 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.16-draft** (2026-11-23) — The reference walk moves to @jxsuite/protocol/refs, re-exported by the server, so Studio and the cloud host walk with it without depending on a backend.
+- **0.1.15-draft** (2026-11-23) — The cloud binding is specified whole: a capability route, the subscribe exchange and its end on /events, and the conditional writes, deletes and rename on /project-state routes; the persisted log's schema and replay window are fixed; Studio honours a partial graph and supplies its own rewrites.
+- **0.1.14-draft** (2026-11-23) — The cloud host serves the contract: its Durable Object persists the log in SQLite (13.1), reports a partial graph and announces a change only an unindexed document could depend on as an incomplete invalidation naming none (8.2), and passes the suite through the cloud binding (10.3); a capability answer other than 404 or 405 is asked again (3.2); the cloud's rooms still flush without a base, so 11.3 is Partial.
+- **0.1.13-draft** (2026-11-23) — §9 Implemented: the rename cascade plans the move and every reference rewrite, applies them from an in-memory outbox that rolls back on failure (the directories a move created included, and an incomplete rollback named in `unrestored`), honours the dirty-referrer policies (a dirty document's client rewrite is never written), refuses without client rewrites only while a format is not known yet, allows a rename that changes only the case of a name, and answers a RenameOperationResult; the desktop binding serves it as projectRename and the dev server as POST /__studio/project/rename, which names its project; §10.4 gains the §9 cases, identity kept across the move included.
+- **0.1.12-draft** (2026-11-23) — 11.2 is Implemented: one preview realm, canvas.html?realm=preview, draws every out-of-canvas preview from documents the content store hands it by DocId, answers markup snapshots the shell shows in each card's shadow root, and is replaced when a definition its registry holds changes, including one a request in flight defined; the realm's own failures are marked lost, definitions are made one at a time, the settle wait is bounded, and the shell makes each snapshot inert before mounting it.
+- **0.1.11-draft** (2026-11-23) — Studio's content store and its subscription ship: documents keyed by DocId with relabelable paths, contents by (docId, hash), gaps repaired by resubscribing, and own writes recognised by hash or by write id.
+- **0.1.10-draft** (2026-11-23) — A co-edited tab whose file changes under unsaved edits stays dirty and conflicted, and its save asks before the room writes.
+- **0.1.9-draft** (2026-11-23) — While Studio's subscription is live its caches follow the content store, each invalidated only by the store event that makes it stale.
+- **0.1.8-draft** (2026-11-23) — Studio tabs carry a buffer state against a base hash: every write and delete Studio makes names a base, a refused or externally changed buffer is conflicted and asks the author before anything is written, and a co-edited tab reads its room's state. Section 6 is Implemented; §11.1 is Partial until the caches outside the store are keyed by document and hash.
+- **0.1.7-draft** (2026-11-23) — The dev server runs the project state host for its active project and serves the Server-Sent Events binding and conditional file writes (§10.2, §3.2); collaboration rooms are keyed by document, follow renames, save with a base and are saved before an activation closes them, and the dev server keys the preview overlay by document and client (§11.3, §5); a binding that cannot tie a request to a subscription keeps the unconditional write for every request without a base (§5).
+- **0.1.6-draft** (2026-11-23) — The desktop backend hosts the project state service (§10.1): projectSubscribe, projectWrite and projectDelete over the window socket, one subscription per socket with a projectEnded push when the host ends it, a socket that falls too far behind included (§3.2), unconditional writes and deletes refused to a socket that subscribed (§5), the usage query answered from a settled, undegraded graph (§12), and the conformance case for an extension-registered format (§2.2); the live preview overlay is keyed by document and client and dropped with its file by path (§11.3), collaboration rooms are still open.
+- **0.1.5-draft** (2026-11-23) — §10.1 names the host module the desktop session will run, and the conformance run that holds it; the section stays Pending until the session serves it.
+- **0.1.4-draft** (2026-11-23) — §2.4 records a file's size and time only outside the filesystem's timestamp tick and never for an own write; §4.2 never pairs a move of the configuration or a dependency input; §4.8 states how a subscribe during a restart is answered; §5 states that a failed write leaves no temporary file or pending echo, that a write through an in-root link writes its target and keeps permissions, and that an unreadable file refuses a write or delete.
+- **0.1.3-draft** (2026-11-23) — The host's dependency graph ships: createDependencyGraph in @jxsuite/server/project-state/graph, content-collection edges from the collection loader's resolved entry list kept current per entry, collections listed in any state scope and in `$paths`, data-consumer edges from the configuration's `imports` to the documents whose `$prototype` names them, and the §10.4 graph cases in the published conformance suite.
+- **0.1.2-draft** (2026-11-23) — The contract's frame codecs and conformance suite ship in the protocol package: §2, §3, §3.2, §4, §5, §7 and §10.4 are Implemented (§2.2 keeps the classification of an extension-registered format open, and the §2, §5 and §10.4 markers name the rules pinned outside the suite), the dev server's Last-Event-ID carries the epoch and the revision, and batched frames are allowed on every binding.
+- **0.1.1-draft** (2026-11-23) — Reference extraction is a pure subpath export that Bun imports as source and every other host (a Durable Object's Worker, a browser, the desktop backend's Node bundle) bundles.
 - **0.1.0-draft** (2026-11-21) — Initial specification: the project state contract (identity and hashes, revisions and replay, subscription, events, write preconditions, the two dirty notions, readiness, the dependency graph, the rename cascade, hosts and conformance, clients, reference extraction, persistence).
 
 ---
 
-_Jx Project State Specification v0.1.0-draft_
+_Jx Project State Specification v0.1.16-draft_

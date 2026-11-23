@@ -1,5 +1,45 @@
 # Changelog
 
+## [13.2.0](https://github.com/jxsuite/jx/compare/studio-v13.1.0...studio-v13.2.0) (2026-11-23)
+
+
+### Features
+
+* **protocol,studio:** the cloud binding of project state, and Studio's half of it ([#732](https://github.com/jxsuite/jx/issues/732)) ([7206f61](https://github.com/jxsuite/jx/commit/7206f614d16d9807952c4073c68064b226aa4d93))
+* **server:** a rename is one operation that completes or rolls back ([#731](https://github.com/jxsuite/jx/issues/731)) ([5fb6a0a](https://github.com/jxsuite/jx/commit/5fb6a0a35b6e91fd98641c261e9084e78f25400f))
+* **server:** the dev server serves project state and keys collab rooms by document ([#728](https://github.com/jxsuite/jx/issues/728)) ([bf16222](https://github.com/jxsuite/jx/commit/bf162221a5b26a169ab36a6fc378b9bd974c85df))
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+* **studio:** every bindable row carries the value-source switcher ([#733](https://github.com/jxsuite/jx/issues/733)) ([936a693](https://github.com/jxsuite/jx/commit/936a693550dea6482cb19e2558b2c3c50e15fde5))
+* **studio:** one content store keyed by document and hash, with buffers held against a base ([#729](https://github.com/jxsuite/jx/issues/729)) ([0db299c](https://github.com/jxsuite/jx/commit/0db299cdcb24c3ee3a490b10039a5fc28560be72))
+* **studio:** previews draw in one isolated preview realm ([#730](https://github.com/jxsuite/jx/issues/730)) ([3121fd9](https://github.com/jxsuite/jx/commit/3121fd928e6cb9a711fd20486d8bc88c01a9dc2b))
+* **studio:** progress view while a project opens, and a dialog when it fails ([#707](https://github.com/jxsuite/jx/issues/707)) ([517588a](https://github.com/jxsuite/jx/commit/517588a5e8db46ceff237ecd20c86b6549627b0b))
+
+
+### Bug Fixes
+
+* **studio,desktop,server,runtime:** project state stays current after open, install and edits ([#721](https://github.com/jxsuite/jx/issues/721)) ([b096332](https://github.com/jxsuite/jx/commit/b09633266ab45d19abd3c722bcfa43ee1b97b1e3))
+* **studio,desktop:** report a missing recent project, and open no blank Untitled tab ([#713](https://github.com/jxsuite/jx/issues/713)) ([1d825c2](https://github.com/jxsuite/jx/commit/1d825c22dbadf437130ddf61676de4a4d2ef5f29))
+* **studio:** a preview is bounded by its card ([#734](https://github.com/jxsuite/jx/issues/734)) ([099bcf2](https://github.com/jxsuite/jx/commit/099bcf2f150d8bf44c46b0e31eb57282cd67ac2e))
+* **studio:** Convert to Component wraps the selection instead of replacing its root ([#720](https://github.com/jxsuite/jx/issues/720)) ([0589a29](https://github.com/jxsuite/jx/commit/0589a2979df4b3091b9bc1ffed75fc8845566fb0))
+* **studio:** grid paste marks cells dirty; Download/Upload in Grid and Code views ([#716](https://github.com/jxsuite/jx/issues/716)) ([ab80820](https://github.com/jxsuite/jx/commit/ab808205d154ad20577cf0190260daf13428143a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.2
+    * @jxsuite/collab bumped to 0.13.0
+    * @jxsuite/create bumped to 1.8.7
+    * @jxsuite/erase bumped to 0.3.6
+    * @jxsuite/formulas bumped to 0.0.39
+    * @jxsuite/markup bumped to 1.0.15
+    * @jxsuite/protocol bumped to 6.7.0
+    * @jxsuite/runtime bumped to 9.0.2
+    * @jxsuite/schema bumped to 8.2.0
+    * @jxsuite/site bumped to 4.1.1
+    * @jxsuite/ui bumped to 0.16.0
+
 ## [13.1.0](https://github.com/jxsuite/jx/compare/studio-v13.0.0...studio-v13.1.0) (2026-11-17)
 
 

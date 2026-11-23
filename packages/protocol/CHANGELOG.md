@@ -1,5 +1,25 @@
 # Changelog
 
+## [6.7.0](https://github.com/jxsuite/jx/compare/protocol-v6.6.1...protocol-v6.7.0) (2026-11-23)
+
+
+### Features
+
+* **desktop:** project-state host serves the desktop session ([#727](https://github.com/jxsuite/jx/issues/727)) ([fb12d93](https://github.com/jxsuite/jx/commit/fb12d9371e0a1245594480b9c1f185393b87a122))
+* **protocol,studio:** the cloud binding of project state, and Studio's half of it ([#732](https://github.com/jxsuite/jx/issues/732)) ([7206f61](https://github.com/jxsuite/jx/commit/7206f614d16d9807952c4073c68064b226aa4d93))
+* **protocol:** project-state frame codecs and conformance suite ([#724](https://github.com/jxsuite/jx/issues/724)) ([e05fff3](https://github.com/jxsuite/jx/commit/e05fff3f6c26bef609d3e27a949c8fe92b102c45))
+* **server:** a rename is one operation that completes or rolls back ([#731](https://github.com/jxsuite/jx/issues/731)) ([5fb6a0a](https://github.com/jxsuite/jx/commit/5fb6a0a35b6e91fd98641c261e9084e78f25400f))
+* **server:** project-state dependency graph ([#725](https://github.com/jxsuite/jx/issues/725)) ([04ae064](https://github.com/jxsuite/jx/commit/04ae0649ae1ad72d0712bd10d5d24d84a4a65ad3))
+* **server:** the dev server serves project state and keys collab rooms by document ([#728](https://github.com/jxsuite/jx/issues/728)) ([bf16222](https://github.com/jxsuite/jx/commit/bf162221a5b26a169ab36a6fc378b9bd974c85df))
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.2.0
+
 ## [6.6.1](https://github.com/jxsuite/jx/compare/protocol-v6.6.0...protocol-v6.6.1) (2026-11-17)
 
 

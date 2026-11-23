@@ -2,9 +2,9 @@
 
 ## Real-Time Co-Editing for Jx Projects
 
-**Version:** 0.2.12-draft\
+**Version:** 0.2.14-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 ---
@@ -132,6 +132,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.14-draft** (2026-11-23) — A room whose file changes under unsaved edits keeps them and reports doc-conflict; flush takes a baseHash and revert discards the room.
+- **0.2.13-draft** (2026-11-23) — A room is keyed by whatever its host's keyOf names while peers keep addressing it by path, and a refused save reaches every participant as the additive doc-conflict control message (§2).
 - **0.2.12-draft** (2026-11-13) — §3.1: a document's own scripts are stored as one Y.Text per side inside a Y.Map, so two authors typing in one script both keep what they typed; the table also names a function's string body as text, which the marker records as not built yet.
 - **0.2.11-draft** (2026-11-08) — §3.1: a format file is mirrored into the shared text over the room's current text, so a peer's comment survives.
 - **0.2.10-draft** (2026-10-29) — The desktop adapter's path follows its move to src/webview/, and the removed Chromium launcher is no longer named.
@@ -150,4 +152,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/collab` Specification v0.2.12-draft — a stub, subject to expansion._
+_Jx `@jxsuite/collab` Specification v0.2.14-draft — a stub, subject to expansion._
