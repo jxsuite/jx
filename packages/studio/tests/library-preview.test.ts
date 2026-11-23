@@ -38,7 +38,7 @@ const {
   renderDocPreview,
 } = await import("../src/browse/library-preview");
 const { rendersWith } = await import("../src/preview-realm/ask");
-const { mountPreview, shownPreview } = await import("../src/browse/preview-root");
+const { mountPreview, previewRootOf, shownPreview } = await import("../src/browse/preview-root");
 const { setPreviewRealmFactory } = await import("../src/preview-realm/client");
 const { inProcessRealm } = await import("./preview-realm-double");
 const { componentRegistry } = await import("../src/files/components");
@@ -105,7 +105,7 @@ describe("createPreviewCache", () => {
     cache.set("a", first);
     cache.set("b", element("b"));
     expect(shownPreview(island)).toBeNull();
-    expect(island.shadowRoot?.childElementCount).toBe(0);
+    expect(previewRootOf(island)?.childElementCount).toBe(0);
     island.remove();
   });
 

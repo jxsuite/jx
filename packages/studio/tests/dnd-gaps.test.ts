@@ -145,6 +145,7 @@ const { componentRegistry } = await import("../src/files/components");
 const { previewRealm } = await import("../src/preview-realm/client");
 const { activeTab } = await import("../src/workspace/workspace");
 const dnd = await import("../src/panels/dnd");
+const { previewRootOf } = await import("../src/browse/preview-root");
 
 // Shell refs: dnd reads store.leftPanel which initShellRefs populates from #left-panel.
 const leftPanel = document.createElement("div");
@@ -618,7 +619,7 @@ describe("registerComponentsDnD", () => {
       "[data-component-tag='my-card'] .element-card-preview",
     )!;
     // Drawn by the preview realm and shown in the box's own shadow root, never defined here.
-    expect(preview.shadowRoot?.querySelector("my-card")?.textContent).toBe("preview");
+    expect(previewRootOf(preview)?.querySelector("my-card")?.textContent).toBe("preview");
     expect(customElements.get("my-card")).toBeUndefined();
 
     const data = draggables[0]!.getInitialData();
@@ -649,7 +650,7 @@ describe("registerComponentsDnD", () => {
     await raf();
     await flush();
     expect(previewRenders).toBe(2);
-    expect(preview?.shadowRoot?.textContent).toBe("preview");
+    expect((preview ? previewRootOf(preview) : null)?.textContent).toBe("preview");
   });
 
   test("a card is asked once per registry entry and realm, and again after a save or a replaced realm", async () => {
@@ -664,8 +665,10 @@ describe("registerComponentsDnD", () => {
       await flush();
     };
     const shown = () =>
-      leftPanel.querySelector("[data-component-tag='my-card'] .element-card-preview")?.shadowRoot
-        ?.textContent;
+      previewRootOf(
+        leftPanel.querySelector("[data-component-tag='my-card'] .element-card-preview") ??
+          document.createElement("div"),
+      )?.textContent;
     // While the answer is pending a pass asks nothing more.
     const { promise: gate, resolve: open } = Promise.withResolvers<null>();
     answerGate = gate;
@@ -718,7 +721,7 @@ describe("registerComponentsDnD", () => {
     await flush();
     answerText = "preview";
     const preview = leftPanel.querySelector("[data-component-tag='my-card'] .element-card-preview");
-    expect(preview?.shadowRoot?.textContent).toBe("new");
+    expect((preview ? previewRootOf(preview) : null)?.textContent).toBe("new");
   });
 });
 

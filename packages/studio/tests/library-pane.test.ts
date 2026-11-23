@@ -134,6 +134,7 @@ const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { argsSchema, stringProperty } = await import("../src/commands/command-args");
+const { previewRootOf } = await import("../src/browse/preview-root");
 
 /**
  * What the home's buttons ran. **New** runs `file.new` and **Fields** runs `settings.open`, rather
@@ -519,7 +520,7 @@ describe("mounting", () => {
     const slot = host.querySelector<HTMLElement>(
       '[part="doc-preview"][data-path="pages/index.json"]',
     );
-    expect(slot?.shadowRoot?.childElementCount).toBe(1);
+    expect((slot ? previewRootOf(slot) : null)?.childElementCount).toBe(1);
     stale.remove();
   });
 
@@ -550,7 +551,7 @@ describe("mounting", () => {
     await mount();
     await flush();
     expect(parts("card").length).toBe(2);
-    expect(part("doc-preview")?.shadowRoot?.firstElementChild ?? null).toBeNull();
+    expect(part("doc-preview")?.shadowRoot ?? null).toBeNull();
   });
 
   test("a preview that failed is not re-read on every repaint, and is retried once its inputs move", async () => {
@@ -570,7 +571,7 @@ describe("mounting", () => {
     await flush();
     const slot = () =>
       host.querySelector<HTMLElement>('[part="doc-preview"][data-path="pages/index.json"]');
-    expect(slot()?.shadowRoot?.childElementCount ?? 0).toBe(0);
+    expect(previewRootOf(slot() ?? document.createElement("div"))?.childElementCount ?? 0).toBe(0);
     const afterFailure = reads.filter((path) => path === "pages/index.json").length;
     // A repaint under the same inputs asks nothing: it would only fail again.
     setLibrarySearch("");
@@ -581,7 +582,7 @@ describe("mounting", () => {
     invalidatePreviews();
     await flush();
     await flush();
-    expect(slot()?.shadowRoot?.childElementCount).toBe(1);
+    expect(previewRootOf(slot() ?? document.createElement("div"))?.childElementCount).toBe(1);
   });
 
   test("a preview that failed while its inputs moved is asked again at once", async () => {
@@ -612,7 +613,7 @@ describe("mounting", () => {
     rejectFirst(new Error("not written yet"));
     await flush();
     await flush();
-    expect(slot()?.shadowRoot?.childElementCount).toBe(1);
+    expect(previewRootOf(slot() ?? document.createElement("div"))?.childElementCount).toBe(1);
   });
 
   test("a preview that failed after its card left view is remembered, not re-read when it returns", async () => {
@@ -669,7 +670,7 @@ describe("mounting", () => {
       '[part="doc-preview"][data-path="pages/index.json"]',
     );
     expect(slot).not.toBeNull();
-    expect(slot!.shadowRoot?.childElementCount).toBe(1);
+    expect(previewRootOf(slot!)?.childElementCount).toBe(1);
     expect(slot!.childElementCount).toBe(0);
   });
 });

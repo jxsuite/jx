@@ -5,7 +5,13 @@
  */
 import "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
-import { makeInert, mountPreview, shownPreview, unmountPreview } from "../src/browse/preview-root";
+import {
+  makeInert,
+  mountPreview,
+  shownPreview,
+  unmountPreview,
+  previewRootOf,
+} from "../src/browse/preview-root";
 import type { PreviewSnapshot } from "../src/preview-realm/host";
 
 afterEach(() => {
@@ -32,7 +38,9 @@ describe("mountPreview", () => {
     mountPreview(box, snapshot);
     expect(document.querySelector("#equipment")).toBeNull();
     expect(box.childElementCount).toBe(0);
-    expect(box.shadowRoot?.querySelector("#equipment")?.textContent).toBe("Available Equipment");
+    expect(previewRootOf(box)?.querySelector("#equipment")?.textContent).toBe(
+      "Available Equipment",
+    );
     expect(shownPreview(box)).toBe(snapshot);
   });
 
@@ -51,7 +59,7 @@ describe("mountPreview", () => {
       ].join(""),
       sheet: null,
     });
-    const root = box.shadowRoot!;
+    const root = previewRootOf(box)!;
     const img = root.querySelector("img");
     expect(img?.getAttribute("onerror")).toBeNull();
     expect(img?.getAttribute("alt")).toBe("kept");
@@ -85,16 +93,18 @@ describe("mountPreview", () => {
     mountPreview(first, snapshot);
     mountPreview(second, snapshot);
     expect(document.querySelectorAll("#equipment")).toHaveLength(0);
-    expect(first.shadowRoot?.firstElementChild).not.toBe(second.shadowRoot?.firstElementChild);
+    expect(previewRootOf(first)?.firstElementChild).not.toBe(
+      previewRootOf(second)?.firstElementChild,
+    );
   });
 
   test("a refill replaces the render in the same root", () => {
     const box = island();
     mountPreview(box, render("a"));
-    const root = box.shadowRoot;
+    const root = previewRootOf(box);
     const next = render("b");
     mountPreview(box, next);
-    expect(box.shadowRoot).toBe(root);
+    expect(previewRootOf(box)).toBe(root);
     expect(root?.childElementCount).toBe(1);
     expect(root?.firstElementChild?.id).toBe("b");
     expect(shownPreview(box)).toBe(next);
@@ -104,7 +114,7 @@ describe("mountPreview", () => {
     const realm = new CSSStyleSheet();
     const box = island();
     mountPreview(box, render("x", realm));
-    const sheets = box.shadowRoot?.adoptedStyleSheets ?? [];
+    const sheets = previewRootOf(box)?.adoptedStyleSheets ?? [];
     expect(sheets[0]).toBe(realm);
     expect(sheets).toHaveLength(2);
     const [hidden, fallback] = [...(sheets[1]?.cssRules ?? [])];
@@ -116,7 +126,47 @@ describe("mountPreview", () => {
        snapshot with no sheet of its own adopts the preview rules alone. */
     const again = island();
     mountPreview(again, render("y"));
-    expect(again.shadowRoot?.adoptedStyleSheets).toEqual([sheets[1]!]);
+    expect(previewRootOf(again)?.adoptedStyleSheets).toEqual([sheets[1]!]);
+  });
+
+  test("a preview is bounded by its island, on an element no project rule can select", () => {
+    /* A page's fixed header (`position: fixed; top: 0`) is placed against the viewport unless an
+       ancestor is its containing block; a shadow boundary, `overflow: hidden` and the surfaces'
+       `zoom` are none of those, so a component card once drew its nav over the Command Bar. */
+    const box = island();
+    mountPreview(box, render("fixed"));
+    const outer = box.shadowRoot!;
+    const [bound, fill] = [...(outer.adoptedStyleSheets[0]?.cssRules ?? [])];
+    expect(outer.adoptedStyleSheets).toHaveLength(1);
+    expect(bound instanceof CSSStyleRule ? bound.selectorText : null).toBe(":host");
+    const style = bound instanceof CSSStyleRule ? bound.style : null;
+    expect(style?.getPropertyValue("contain")).toBe("layout paint style");
+    // Important, so an outer rule a surface writes on the island cannot switch it off.
+    expect(style?.getPropertyPriority("contain")).toBe("important");
+    expect(
+      fill instanceof CSSStyleRule ? fill.style.getPropertyValue("min-block-size") : null,
+    ).toBe("100%");
+    /* The island's root holds one element, and the preview's root is that element's: a project
+       rule the preview carries (a site's `body` re-pointed to `:host`, an authored `:host(...)`)
+       selects that element at most, which the island contains, and never the island itself. */
+    expect(outer.childElementCount).toBe(1);
+    const inner = outer.firstElementChild;
+    if (!(inner instanceof HTMLElement)) {
+      throw new TypeError("the island's root holds no element");
+    }
+    expect(previewRootOf(box)).toBe(inner.shadowRoot);
+    expect(previewRootOf(box)?.querySelector("#fixed")).not.toBeNull();
+    expect(outer.querySelector("#fixed")).toBeNull();
+    // Inert from the mount, so no surface has to remember to mark its island.
+    expect(inner.inert).toBe(true);
+    // A refill keeps both roots.
+    mountPreview(box, render("again"));
+    expect(box.shadowRoot).toBe(outer);
+    expect(outer.firstElementChild).toBe(inner);
+  });
+
+  test("an island with nothing mounted has no preview root", () => {
+    expect(previewRootOf(island())).toBeNull();
   });
 
   test("an island in a document with no window takes the realm's rules alone", () => {
@@ -124,8 +174,9 @@ describe("mountPreview", () => {
     const box = detached.createElement("div");
     detached.body.append(box);
     mountPreview(box, render("z"));
+    expect(previewRootOf(box)?.adoptedStyleSheets).toEqual([]);
     expect(box.shadowRoot?.adoptedStyleSheets).toEqual([]);
-    expect(box.shadowRoot?.querySelector("#z")).not.toBeNull();
+    expect(previewRootOf(box)?.querySelector("#z")).not.toBeNull();
   });
 });
 
@@ -140,7 +191,7 @@ describe("unmountPreview", () => {
     mountPreview(moved, other);
     unmountPreview(snapshot);
     expect(shownPreview(showing)).toBeNull();
-    expect(showing.shadowRoot?.childElementCount).toBe(0);
+    expect(previewRootOf(showing)?.childElementCount).toBe(0);
     expect(shownPreview(moved)).toBe(other);
     // Once let go, it is let go: a second unmount has nothing to do.
     expect(() => {

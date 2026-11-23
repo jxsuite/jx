@@ -11,7 +11,7 @@ import {
   loadProjectPreviewSheets,
   projectPreviewSheets,
 } from "../src/browse/preview-style";
-import { mountPreview } from "../src/browse/preview-root";
+import { mountPreview, previewRootOf } from "../src/browse/preview-root";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /* SAFETY: `./harness`, imported first, registers happy-dom's GlobalRegistrator, which copies the
@@ -103,7 +103,7 @@ describe("loadProjectPreviewSheets", () => {
     const island = document.createElement("div");
     document.body.append(island);
     mountPreview(island, { html: "<p></p>", sheet: null });
-    expect(island.shadowRoot?.adoptedStyleSheets.slice(0, 2)).toEqual(sheets);
+    expect(previewRootOf(island)?.adoptedStyleSheets.slice(0, 2)).toEqual(sheets);
     restore();
   });
 

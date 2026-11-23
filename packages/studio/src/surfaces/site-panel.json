@@ -159,12 +159,18 @@
       }
     },
     "& [part=\"card-preview\"]": {
-      "$description": "A live render on the light document surface the Insert panel's element cards use (`--canvas-*` does not follow the theme, because what is drawn here is a page's part, and a site's dark text on the dark chrome read as an empty black box). It is drawn at half size, so a component laid out for a page shows its face rather than a clipped corner of one oversized glyph. The render is in the island's own shadow root (`mountPreview` in `browse/library-preview.ts`), so no rule here can reach its elements: the half size is the island's `zoom`, which lays the render out twice as wide and draws it at half, and the 128px height is the 64px box at that zoom. The broken-image rule went into the root with it.",
+      "$description": "A live render on the light document surface the Insert panel's element cards use (`--canvas-*` does not follow the theme, because what is drawn here is a page's part, and a site's dark text on the dark chrome read as an empty black box). It is drawn at half size, so a component laid out for a page shows its face rather than a clipped corner of one oversized glyph. The render is in a shadow root inside the island's own (`mountPreview` in `browse/preview-root.ts`), so no rule here can reach its elements: the half size is the island's `zoom`, which lays the render out twice as wide and draws it at half, and the 128px height is the 64px box at that zoom. Neither the zoom nor the `overflow` bounds the render: a `position: fixed` element is placed against neither, and the bound is the containment `mountPreview` puts on every island, which no rule here can switch off (studio.md §9.1.2).",
       "position": "relative",
       "height": "128px",
       "zoom": "0.5",
       "overflow": "hidden",
       "pointerEvents": "none",
+      "background": "white",
+      "color": "var(--canvas-fg-2)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"card-preview\"]::part(preview)": {
+      "$description": "The light surface, declared on the element the render's root is attached to (`PREVIEW_PART` in `browse/preview-root.ts`). The site's own `body` rules reach that element as `:host`, and this rule is the outer one there, so the card stays on the light surface and in the chrome's text whatever the site's page background is, exactly as the island's own rule did when the render's root was the island's.",
       "background": "white",
       "color": "var(--canvas-fg-2)",
       "fontSize": "var(--jx-text-md)"

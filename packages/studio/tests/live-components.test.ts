@@ -16,7 +16,7 @@ import {
   evictPreview,
   onPreviewsInvalidated,
 } from "../src/browse/library-preview";
-import { mountPreview, shownPreview } from "../src/browse/preview-root";
+import { mountPreview, shownPreview, previewRootOf } from "../src/browse/preview-root";
 
 /* SAFETY: `./with-dom.js` registers happy-dom's GlobalRegistrator, which copies the window's members
    onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
@@ -239,7 +239,7 @@ describe("evictPreview", () => {
     expect(b.has("components/site-card.json")).toBe(false);
     expect(b.has("components/other.json")).toBe(true);
     expect(shownPreview(box)).toBeNull();
-    expect(box.shadowRoot?.childElementCount).toBe(0);
+    expect(previewRootOf(box)?.childElementCount).toBe(0);
   });
 
   test("tells the panes to repaint when it dropped something, and only then", () => {
