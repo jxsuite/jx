@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.9.54-draft\
+**Version:** 0.9.55-draft\
 **Status:** Partial\
-**Updated:** 2026-11-15\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 ---
@@ -3173,6 +3173,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.9.55-draft** (2026-11-23) — Describe Jx as a serializable framework: the JSON data model, JSON Schema as the authoritative definition, and .json or .jxn as first-class spellings, rather than as a plain-JSON format.
 - **0.9.54-draft** (2026-11-15) — §16.10 Adopting a Prerendered Instance, Pending: an upgrade replaces the prerendered nodes in one synchronous pass, and what adoption needs is stated. The §15.2 and §10.3 markers say what a component's prerender now writes.
 - **0.9.53-draft** (2026-11-15) — 8.1 the interpreter writes a property's first empty string, so an empty title, lang or dir is an empty attribute in every tier.
 - **0.9.52-draft** (2026-11-15) — 10.1, 10.3, 10.4: compiled targets, the build-time list expansion and a component's prerender apply filter then sort by one stated calling convention, a compiled keyed list reconciles through lit repeat with the interpreter's key rule and microtask coalescing, a $map pointer spelled with a leading #/ resolves in every tier and validates in every position, and a template string as items is refused.
@@ -3338,4 +3339,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.9.54-draft — subject to revision_
+_Jx Specification v0.9.55-draft — subject to revision_
