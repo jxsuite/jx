@@ -24154,6 +24154,19 @@
             }
           ]
         },
+        "text-autospace-size": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/RefObject"
+            }
+          ]
+        },
         "text-box": {
           "oneOf": [
             {
@@ -24688,6 +24701,19 @@
           ]
         },
         "textAutospace": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/RefObject"
+            }
+          ]
+        },
+        "textAutospaceSize": {
           "oneOf": [
             {
               "type": "string"
