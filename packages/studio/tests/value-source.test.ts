@@ -135,6 +135,8 @@ describe("deriveSlotCaps", () => {
 describe("capsForPosition", () => {
   const expected: Record<SlotPosition, SlotMode[]> = {
     attribute: ["literal", "ref", "template"],
+    // A boolean flag cannot be a template (`BoolOrRef` has no free-string branch): it is the flag or a signal.
+    boolProperty: ["literal", "ref"],
     componentProp: ["literal", "ref", "template"],
     elementProperty: ["literal", "ref", "template"],
     /* No `template` rung, and that is the pattern earning its keep rather than an omission: a

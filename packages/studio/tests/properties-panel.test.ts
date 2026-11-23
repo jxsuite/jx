@@ -2418,6 +2418,103 @@ describe("editing a component definition is not editing an instance of it", () =
   });
 });
 
+// ─── The Value Source switcher on the specialised rows ────────────────────────
+
+describe("every bindable row carries the Value Source switcher", () => {
+  function boundRowsDoc(attributes: Record<string, JxAttributeValue>, extra: JxMutableNode = {}) {
+    return {
+      children: [{ attributes, tagName: "a", ...extra }],
+      state: { alt: { default: "/alt" }, hidden: { default: false }, url: { default: "/x" } },
+      tagName: "div",
+    };
+  }
+
+  test("an anchor's Link row offers Fixed value, From data and Mixed text", async () => {
+    openDoc(boundRowsDoc({ href: "/about" }), ["children", 0]);
+    const c = await renderPanel();
+    expect(row(c, "href").querySelector('[part="link-kind"]')).not.toBeNull();
+    expect(sourceLabel(c, "href")).toBe("Fixed value");
+    expect(await offeredRungs(c, "href")).toEqual(["literal", "ref", "template"]);
+  });
+
+  test("an anchor's href binds to state, and back to a fixed link", async () => {
+    openDoc(boundRowsDoc({ href: "/about" }), ["children", 0]);
+    const c = await renderPanel();
+    await chooseValueSource(c, "href", "ref");
+    expect(firstChild().attributes!.href).toEqual({ $ref: "#/state/alt" });
+    await renderPanel();
+    expect(sourceLabel(c, "href")).toBe("From data…");
+    expect(row(c, "href").querySelector('[part="link-kind"]')).toBeNull();
+    await chooseValueSource(c, "href", "literal");
+    expect(firstChild().attributes!.href).toBe("/about");
+  });
+
+  test("an anchor's href takes a template string", async () => {
+    openDoc(boundRowsDoc({ href: "/about" }), ["children", 0]);
+    const c = await renderPanel();
+    await chooseValueSource(c, "href", "template");
+    expect(firstChild().attributes!.href).toBe("${state.alt}");
+  });
+
+  test("an anchor's target is bindable too", async () => {
+    openDoc(boundRowsDoc({ href: "/x", target: "_blank" }), ["children", 0]);
+    const c = await renderPanel();
+    expect(sourceLabel(c, "target")).toBe("Fixed value");
+    await chooseValueSource(c, "target", "ref");
+    expect(firstChild().attributes!.target).toEqual({ $ref: "#/state/alt" });
+  });
+
+  test("a popover target is bindable too", async () => {
+    openDoc(
+      {
+        children: [
+          { attributes: { popovertarget: "site-menu" }, tagName: "button" },
+          { attributes: { id: "site-menu" }, tagName: "div" },
+        ],
+        state: { alt: { default: "x" } },
+        tagName: "div",
+      },
+      ["children", 0],
+    );
+    const c = await renderPanel();
+    expect(sourceLabel(c, "popovertarget")).toBe("Fixed value");
+    await chooseValueSource(c, "popovertarget", "ref");
+    expect(firstChild().attributes!.popovertarget).toEqual({ $ref: "#/state/alt" });
+  });
+
+  test("Class takes a template or a state entry", async () => {
+    openDoc(boundRowsDoc({}, { className: "card" }), ["children", 0]);
+    const c = await renderPanel();
+    expect(sourceLabel(c, "className")).toBe("Fixed value");
+    expect(await offeredRungs(c, "className")).toEqual(["literal", "ref", "template"]);
+    await chooseValueSource(c, "className", "ref");
+    // `className` and `hidden` are typed as plain values, though the schema admits a `{ $ref }`.
+    expect(firstChild()).toMatchObject({ className: { $ref: "#/state/alt" } });
+    await renderPanel();
+    await chooseValueSource(c, "className", "literal");
+    expect(firstChild().className).toBe("card");
+  });
+
+  test("Hidden is a flag or a state entry, never a template", async () => {
+    openDoc(boundRowsDoc({}), ["children", 0]);
+    const c = await renderPanel();
+    expect(sourceLabel(c, "hidden")).toBe("Fixed value");
+    expect(await offeredRungs(c, "hidden")).toEqual(["literal", "ref"]);
+    await chooseValueSource(c, "hidden", "ref");
+    expect(firstChild()).toMatchObject({ hidden: { $ref: "#/state/alt" } });
+  });
+
+  test("a bound Hidden shows the signal picker, and its flag stays unchecked", async () => {
+    openDoc(boundRowsDoc({}, Object.fromEntries([["hidden", { $ref: "#/state/hidden" }]])), [
+      "children",
+      0,
+    ]);
+    const c = await renderPanel();
+    expect(sourceLabel(c, "hidden")).toBe("From data…");
+    expect(row(c, "hidden").querySelector("select, jx-select")).not.toBeNull();
+  });
+});
+
 // ─── popovertarget ────────────────────────────────────────────────────────────
 
 describe("popovertarget control", () => {

@@ -1630,7 +1630,19 @@ function elementRows(
     key: "prop|className",
     label: "Class",
     prop: "className",
-    value: String(node.className || ""),
+    value: isString(node.className) ? node.className : "",
+  });
+  /* `className` is `StringOrRef`, so it takes the same three sources as any other text position:
+     a fixed value, a template, or a state entry. The tag strip needs the slot to draw a template as
+     chips, hence `tag`. */
+  applyLadder(cls.row, cls.plan, {
+    caps: "textProperty",
+    fieldKey: `prop|${path.join("/")}|className`,
+    onChange: (next) =>
+      transactDoc(activeTab.value, (t) => mutateUpdateProperty(t, path, "className", next)),
+    stateDefs: bindableSignals,
+    tag: { label: "Class", path, slot: ["className"] },
+    value: node.className,
   });
   if (node.className) {
     applyChip(cls.row, cls.plan, "className", propertyChip("className", "class"));
@@ -1643,7 +1655,7 @@ function elementRows(
 
   const hidden = blankRow("prop|hidden", "hidden", "Hidden");
   hidden.kind = "checkbox";
-  hidden.checked = Boolean(node.hidden);
+  hidden.checked = node.hidden === true;
   const hiddenPlan: RowPlan = {
     commitChecked: (checked) =>
       transactDoc(activeTab.value, (t) =>
@@ -1651,6 +1663,18 @@ function elementRows(
       ),
     debounceMs: 0,
   };
+  /* `hidden` is `BoolOrRef`: a flag, or a state entry that decides. A bound value draws as the
+     picker the ladder swaps in, so the checkbox below only ever shows a literal. */
+  applyLadder(hidden, hiddenPlan, {
+    caps: "boolProperty",
+    fieldKey: `prop|${path.join("/")}|hidden`,
+    onChange: (next) =>
+      transactDoc(activeTab.value, (t) =>
+        mutateUpdateProperty(t, path, "hidden", next === false ? undefined : next),
+      ),
+    stateDefs: bindableSignals,
+    value: node.hidden,
+  });
   if (node.hidden) {
     applyChip(hidden, hiddenPlan, "hidden", propertyChip("hidden", "hidden"));
   }
@@ -1913,12 +1937,28 @@ function attributeRow(
       mixedAcrossSelection(doc, targets, (n) => (n?.attributes ?? {})[attr] ?? null),
     );
 
+  /* The Value Source switcher every attribute row carries. The specialised rows below (Link, target,
+     popover target) draw a fixed value their own way, but they are still an `attributes` position
+     and take the same three sources; a BOUND value falls through to the generic widget, which is
+     what the switcher swaps in. */
+  const withSource = (row: ContentRowView, plan: RowPlan): void => {
+    applyLadder(row, plan, {
+      caps: "attribute",
+      extraSignals: ctx.mapSignals,
+      fieldKey: `attr|${path.join("/")}|${attr}`,
+      onChange: commitAttr,
+      stateDefs: ctx.bindableSignals,
+      tag: { label: attr, path, slot: ["attributes", attr] },
+      value,
+    });
+  };
+
   // Enhanced Link handling: only for anchors (a/area) with a plain (non-binding) value. Bindings
   // ($ref objects or ${…} template strings) fall through to the raw widget to stay editable.
   const isAnchor = tagName === "a" || tagName === "area";
   if (isAnchor && !isBoundAttrValue(value)) {
     if (attr === "href") {
-      return linkRow(key, label, node, path);
+      return linkRow(key, label, node, path, withSource);
     }
     if (attr === "target") {
       const row = blankRow(key, attr, label);
@@ -1926,6 +1966,7 @@ function attributeRow(
       row.value = isString(node.attributes?.target) ? node.attributes.target : "";
       row.options = [CLEAR_OPTION, ...(entry.enum ?? []).map((o) => ({ label: o, value: o }))];
       const plan: RowPlan = { commit: (raw) => commitAttr(raw || undefined), debounceMs: 0 };
+      withSource(row, plan);
       applyChip(row, plan, attr, chip());
       return withPlan(row, plan);
     }
@@ -1961,6 +2002,7 @@ function attributeRow(
       },
       debounceMs: 0,
     };
+    withSource(row, plan);
     applyChip(row, plan, attr, chip());
     return withPlan(row, plan);
   }
@@ -2022,7 +2064,13 @@ const LINK_KIND_OPTIONS = [
  * REINTERPRETS what is there rather than throwing it away — `a@b.com` picked as Email becomes
  * `mailto:a@b.com`. Internal targets offer the routes enumerated from the `pages/` tree.
  */
-function linkRow(key: string, label: string, node: JxMutableNode, path: JxPath): ContentRowView {
+function linkRow(
+  key: string,
+  label: string,
+  node: JxMutableNode,
+  path: JxPath,
+  withSource: (row: ContentRowView, plan: RowPlan) => void,
+): ContentRowView {
   const raw = isString(node.attributes?.href) ? node.attributes.href : "";
   const { kind, value } = classifyHref(raw);
   const commit = (nextKind: LinkKind, nextValue: string) => {
@@ -2073,6 +2121,7 @@ function linkRow(key: string, label: string, node: JxMutableNode, path: JxPath):
     plan.draft = linkDraft;
   }
 
+  withSource(row, plan);
   applyChip(
     row,
     plan,
