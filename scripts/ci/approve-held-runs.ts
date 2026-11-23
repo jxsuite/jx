@@ -1,8 +1,8 @@
 /**
  * Approves the workflow runs the repository's Actions policy holds on a commit a lane just pushed,
- * so the `ci` required check can report on that head. Called by `.github/workflows/schemas.yml` and
- * `.github/workflows/release-specs.yml` right after their push steps; generic enough for any lane
- * that writes a `GITHUB_TOKEN` commit.
+ * so the `ci` required check can report on that head. Called by `.github/workflows/schemas.yml`,
+ * `.github/workflows/release-specs.yml` and `.github/workflows/release-bun-nix.yml` right after
+ * their push steps; generic enough for any lane that writes a `GITHUB_TOKEN` commit.
  *
  * THE PROBLEM IT CLOSES (issue #307). A lane's `GITHUB_TOKEN` push moves the PR head, and
  * `pull_request: synchronize` DOES fire for it — every workflow is queued on the new commit. But
@@ -22,8 +22,8 @@
  * EVERY held run on the head, not only `Test`. The runs worth worrying about are the lanes that
  * push, and each must terminate on its own head — by an actor refusal (a job-level `if:` on
  * `github.actor`, which stays `github-actions[bot]` through an approval) or by a fixed point — and
- * a new pushing lane must bring one of the two before this step may approve it. Both lanes that
- * push today use the fixed point. (`screenshots.yml` was the third and the one with the actor
+ * a new pushing lane must bring one of the two before this step may approve it. All three lanes
+ * that push today use the fixed point. (`screenshots.yml` was the third and the one with the actor
  * refusal; it pushes nothing now, since the pictures are build outputs, so approving its run costs
  * a capture and writes nowhere.)
  *
@@ -37,6 +37,11 @@
  *   `github-actions[bot]`, and its concurrency group therefore does not cancel in progress — a
  *   cancel-in-progress group keyed on the actor would cancel the approver with the run it
  *   approved.
+ * - `release-bun-nix.yml` is release-specs.yml's twin on the same release pull request: it pushes
+ *   only when `bun.nix` disagrees with `bun.lock`, so the run its own push triggers regenerates the
+ *   same bytes and pushes nothing, and its group does not cancel in progress for the same reason.
+ *   It needs its own approval because the two lanes race: release-specs approves only the head IT
+ *   pushed, so when bun.nix landed second every run on the release pull request stayed held.
  *
  * Approving one run by name and leaving the rest would also be the wrong shape: `ci` is an
  * aggregate, and a held run that never reports is what leaves a PR BLOCKED.
@@ -286,7 +291,7 @@ export function renderNote(outcome: Outcome, repo: string, sha: string): string 
         `${status > 0 ? ` (HTTP ${status}${message ? `: ${message}` : ""})` : ` (${message})`}`,
     ),
     ">",
-    "> Approving every held run is safe: `schemas.yml` and `release-specs.yml` regenerate deterministically, so on their own head they push nothing, and no other lane pushes at all.",
+    "> Approving every held run is safe: `schemas.yml`, `release-specs.yml` and `release-bun-nix.yml` regenerate deterministically, so on their own head they push nothing, and no other lane pushes at all.",
     "",
   ];
   return lines.join("\n");

@@ -60,6 +60,39 @@ jobs:
       desktop_released: ${{ steps.rp.outputs['packages/desktop--release_created'] }}
       desktop_tag: ${{ steps.rp.outputs['packages/desktop--tag_name'] }}
     steps:
+      # release-please rewrites its pull request only when the release notes change. A commit on
+      # `main` that touches a line the release commit also touches (a `docs:` edit to a package's
+      # `description`, beside its `version`) adds no note, so release-please logs "remained the
+      # same" and leaves a branch that no longer merges; #737 sat CONFLICTING for hours that way.
+      # Closing it here makes the step below open a fresh one from `main` in this same run, and
+      # release-specs.yml and release-bun-nix.yml re-mint their commits onto it. The label comes
+      # off so the closed pull request is never mistaken for a pending release. `mergeable` is
+      # computed lazily, so UNKNOWN is asked again a few times and then left alone: closing on a
+      # guess would be worse than waiting for the next run.
+      - name: Close a release pull request that no longer merges
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pr="$(gh pr list --state open --label 'autorelease: pending' --json number,headRefName \
+            --jq '[.[] | select(.headRefName | startswith("release-please--"))] | first | .number // empty')"
+          if [ -z "$pr" ]; then
+            echo "No open release pull request."
+            exit 0
+          fi
+          state=UNKNOWN
+          for attempt in 1 2 3 4 5; do
+            state="$(gh pr view "$pr" --json mergeable --jq .mergeable)"
+            [ "$state" != UNKNOWN ] && break
+            sleep 5
+          done
+          echo "Release pull request #${pr} is ${state}."
+          if [ "$state" = CONFLICTING ]; then
+            gh pr edit "$pr" --remove-label 'autorelease: pending'
+            gh pr close "$pr" --comment "Closed by \`release-please.yml\`: this branch no longer merges into \`main\`, and release-please only rewrites it when the release notes change. This run opens a fresh release pull request from \`main\`."
+          fi
+
       - id: rp
         uses: googleapis/release-please-action@v5
         with:

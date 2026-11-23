@@ -44,10 +44,15 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
+# NOT `cancel-in-progress`, for release-specs.yml's reason: the release pull request is authored by
+# a bot, so the run this lane's push queues has the same `github.actor` as the run approving it, and
+# a cancel-in-progress group would cancel the approver with the run it just approved. Each run is a
+# fixed point, so letting both finish is safe.
 concurrency:
   group: release-bun-nix-${{ github.event.pull_request.number || inputs.pr }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -106,6 +111,7 @@ jobs:
 
       - name: Commit the regenerated bun.nix
         if: steps.sync.outputs.changed == 'true'
+        id: push
         env:
           BRANCH: ${{ steps.target.outputs.branch }}
         run: |
@@ -115,8 +121,36 @@ jobs:
           # `chore(deps)`, deliberately: release-please does not bump a version for `chore`, so
           # this commit cannot change what the release pull request it is landing on will release.
           git commit -m "chore(deps): regenerate bun.nix from bun.lock" -- bun.nix
-          git push origin "HEAD:${BRANCH}"
+          # `release-specs.yml` pushes to this same branch on this same event; whichever is slower
+          # is rejected non-fast-forward. The commits touch disjoint paths (bun.nix; specs/), so a
+          # rebase onto what landed meanwhile is clean.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${BRANCH}"; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::could not push after 3 attempts; another writer keeps moving ${BRANCH}"
+              exit 1
+            fi
+            git fetch origin "${BRANCH}"
+            git rebase "origin/${BRANCH}"
+          done
           echo "pushed $(git rev-parse --short HEAD) to ${BRANCH}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # The push above leaves every run on the new head held in `action_required` (issue #307), and
+      # `ci` never reports. When this lane pushed after release-specs.yml, whose own approval covers
+      # only ITS head, the release pull request sat BLOCKED with nothing red. Cannot fail the job: a
+      # refusal is printed as the one-line human crank per run and appended to the comment below.
+      - name: Approve the runs the push queued
+        id: approve
+        if: steps.push.outputs.sha != ''
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.push.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          NOTE_FILE: /tmp/release-bun-nix-approval.md
+        run: bun scripts/ci/approve-held-runs.ts
 
       - name: Say what happened, on the pull request
         if: steps.sync.outputs.changed == 'true'
@@ -124,6 +158,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ steps.target.outputs.pr }}
+          NOTE_FILE: /tmp/release-bun-nix-approval.md
         run: |
           set -euo pipefail
           {
@@ -133,13 +168,12 @@ jobs:
             echo "\`bun.nix\` had fallen behind \`bun.lock\` — expected, and the reason this"
             echo "workflow exists: dependency pull requests merge without it (see"
             echo "\`.github/workflows/release-bun-nix.yml\` for why nothing can regenerate it there)."
-            echo "It has been regenerated and pushed to this branch."
-            echo
-            echo "**If this pull request now shows no checks on its head commit**, that is the known"
-            echo "limitation: a push made with \`GITHUB_TOKEN\` does not always queue workflow runs."
-            echo "Push an empty commit, or re-run the required workflows, and it will go green."
-            echo "The release build itself re-checks this ( \`nix.yml\` with \`publish: true\` fails on"
-            echo "any drift), so nothing stale can ship either way."
+            echo "It has been regenerated and pushed to this branch, and the runs that push queued"
+            echo "were approved. The release build itself re-checks this (\`nix.yml\` with"
+            echo "\`publish: true\` fails on any drift), so nothing stale can ship either way."
+            if [ -f "$NOTE_FILE" ]; then
+              cat "$NOTE_FILE"
+            fi
           } > body.md
           existing="$(gh api "repos/${GH_REPO}/issues/${PR}/comments" \
             --jq '[.[] | select(.body | startswith("<!-- release-bun-nix -->")) | .id] | first // empty')"

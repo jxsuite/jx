@@ -99,6 +99,12 @@ The job creates the GitHub releases first and builds the next pull request secon
 
 `verify-release-integrity` is the answer: `if: always()`, gated on nothing but backfill mode (below), it asserts every version in `.release-please-manifest.json` has what its component owes at its tag, a published GitHub release for `desktop` and a git tag for every library (`bun run release:integrity`). It fails the run and opens ONE `release-incomplete` issue. Nothing `needs:` it, so a red X there blocks nothing else. The daily schedule on the workflow makes it a standing sweep.
 
+### A release pull request that stops merging is closed, not left
+
+release-please rewrites its pull request only when the release notes change. A later commit on `main` that edits a line the release commit also edits, such as a `docs:` change to a package's `description` next to its bumped `version`, adds no note, so release-please logs `PR … remained the same` and leaves a branch that no longer merges. #737 sat CONFLICTING that way until a human rebased it. The first step of `release-please.yml` now closes an open release pull request whose `mergeable` is `CONFLICTING` (removing `autorelease: pending` first), and the same run opens a fresh one from `main`. Do not replace this with a rebase in the workflow: the release commit is release-please's to write, and a fresh pull request is the one it already knows how to build.
+
+The two lanes that push to the release pull request, `release-specs.yml` and `release-bun-nix.yml`, race on the same event, and every run on a bot-pushed head is held in `action_required` until approved. Each lane therefore approves the runs on the head IT pushed (`scripts/ci/approve-held-runs.ts`), and neither cancels in progress. When only release-specs approved, a `bun.nix` push that landed second left every check held and the pull request BLOCKED with nothing red.
+
 ### The publish loop attempts every package, and the backfill goes through release-please.yml
 
 `publish.yml` used to be a bash loop under `set -euo pipefail`. On the 2026-10-17 release it reached `@jxsuite/catalog`, a new package with no npm trusted publisher yet, npm answered `E404 Not Found - PUT`, and the step died: `@jxsuite/site@2.0.5` and `@jxsuite/runtime@5.0.0`, later in topological order, were never attempted. Both had a tag and a GitHub release, so the integrity gate was green; the run was red, but a Microsoft Store failure in the same run drew the eye. Every package published after that depended on `^5.0.0` and `^2.0.5`, so installing any of them failed to resolve.

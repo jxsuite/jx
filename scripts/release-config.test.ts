@@ -153,6 +153,20 @@ describe("release-please config", () => {
     );
   });
 
+  test("release-please.yml closes a release pull request that no longer merges, before release-please runs", () => {
+    // Release-please rewrites its pull request only when the notes change, so a conflict from a
+    // Note-less commit on main would otherwise persist until a human rebased the branch (#737).
+    const workflow = readFileSync(".github/workflows/release-please.yml", "utf8");
+    const close = workflow.indexOf("Close a release pull request that no longer merges");
+    expect(close).toBeGreaterThan(-1);
+    expect(close).toBeLessThan(workflow.indexOf("uses: googleapis/release-please-action"));
+    expect(workflow).toContain('if [ "$state" = CONFLICTING ]; then');
+    // The label comes off first, so the closed pull request is never read as a pending release.
+    expect(workflow.indexOf("--remove-label 'autorelease: pending'")).toBeLessThan(
+      workflow.indexOf('gh pr close "$pr"'),
+    );
+  });
+
   test("extra-files is never declared at the config root", () => {
     // Root keys are ReleaserConfigOptions defaults inherited by EVERY package, so a root
     // `extra-files` would have all nineteen components stamp their own version into every

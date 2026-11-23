@@ -1,8 +1,9 @@
 /**
- * Covers `scripts/ci/approve-held-runs.ts` against a scripted GitHub, and pins the way the two
- * pushing lanes, `schemas.yml` and `release-specs.yml`, wire it: the permission it needs, the step
- * that calls it, and the concurrency suffix that keeps the approved bot run out of its approver's
- * group. `screenshots.yml` was the third; it is held to the opposite now, that it cannot push.
+ * Covers `scripts/ci/approve-held-runs.ts` against a scripted GitHub, and pins the way the three
+ * pushing lanes, `schemas.yml`, `release-specs.yml` and `release-bun-nix.yml`, wire it: the
+ * permission it needs, the step that calls it, and the concurrency suffix that keeps the approved
+ * bot run out of its approver's group. `screenshots.yml` was the third; it is held to the opposite
+ * now, that it cannot push.
  *
  * `fetch`, `sleep` and `now` are injected, so nothing here waits or talks to GitHub. What is tested
  * is the discriminator (held means `completed` + `action_required`), the settling rule, the
@@ -22,6 +23,7 @@ const WORKFLOWS = join(import.meta.dir, "../../.github/workflows");
 const WORKFLOW_SOURCE = await Bun.file(join(WORKFLOWS, "screenshots.yml")).text();
 const SCHEMAS_SOURCE = await Bun.file(join(WORKFLOWS, "schemas.yml")).text();
 const RELEASE_SPECS_SOURCE = await Bun.file(join(WORKFLOWS, "release-specs.yml")).text();
+const RELEASE_BUN_NIX_SOURCE = await Bun.file(join(WORKFLOWS, "release-bun-nix.yml")).text();
 const SHA = "8bb6cf5cef5798062061927dc0c59a0185f37938";
 
 const run = (id: number, name: string, over: Partial<WorkflowRun> = {}): WorkflowRun => ({
@@ -267,7 +269,9 @@ describe("crankFor and renderNote", () => {
     expect(note).toContain("[Test](https://github.com/jxsuite/jx/actions/runs/1)");
     // The safety argument names every lane that pushes, so the author of the next one knows what
     // It has to bring.
-    expect(note).toContain("`schemas.yml` and `release-specs.yml` regenerate deterministically");
+    expect(note).toContain(
+      "`schemas.yml`, `release-specs.yml` and `release-bun-nix.yml` regenerate deterministically",
+    );
     expect(note).toContain("no other lane pushes at all");
   });
 
@@ -460,5 +464,23 @@ describe("release-specs.yml wires it", () => {
     // The lane is safe on its own head because the run its push triggers finds specs/changes/ empty.
     expect(workflow.jobs.mint!.if ?? "").not.toContain("github-actions[bot]");
     expect(RELEASE_SPECS_SOURCE).toContain("fixed point");
+  });
+});
+
+describe("release-bun-nix.yml wires it", () => {
+  const workflow = parseWorkflow(RELEASE_BUN_NIX_SOURCE);
+  itWiresTheApproval(
+    "release-bun-nix.yml",
+    workflow,
+    "sync",
+    "Say what happened, on the pull request",
+    false,
+  );
+
+  test("has no actor refusal either: it pushes only when bun.nix disagreed with bun.lock", () => {
+    // It shares release-specs.yml's release pull request and races it; whichever pushes second
+    // Leaves the head the other approved behind, so each lane approves its own push.
+    expect(workflow.jobs.sync!.if ?? "").not.toContain("github-actions[bot]");
+    expect(RELEASE_BUN_NIX_SOURCE).toContain("fixed point");
   });
 });
