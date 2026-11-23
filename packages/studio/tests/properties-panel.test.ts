@@ -2488,8 +2488,7 @@ describe("every bindable row carries the Value Source switcher", () => {
     expect(sourceLabel(c, "className")).toBe("Fixed value");
     expect(await offeredRungs(c, "className")).toEqual(["literal", "ref", "template"]);
     await chooseValueSource(c, "className", "ref");
-    // `className` and `hidden` are typed as plain values, though the schema admits a `{ $ref }`.
-    expect(firstChild()).toMatchObject({ className: { $ref: "#/state/alt" } });
+    expect(firstChild().className).toEqual({ $ref: "#/state/alt" });
     await renderPanel();
     await chooseValueSource(c, "className", "literal");
     expect(firstChild().className).toBe("card");
@@ -2501,14 +2500,11 @@ describe("every bindable row carries the Value Source switcher", () => {
     expect(sourceLabel(c, "hidden")).toBe("Fixed value");
     expect(await offeredRungs(c, "hidden")).toEqual(["literal", "ref"]);
     await chooseValueSource(c, "hidden", "ref");
-    expect(firstChild()).toMatchObject({ hidden: { $ref: "#/state/alt" } });
+    expect(firstChild().hidden).toEqual({ $ref: "#/state/alt" });
   });
 
   test("a bound Hidden shows the signal picker, and its flag stays unchecked", async () => {
-    openDoc(boundRowsDoc({}, Object.fromEntries([["hidden", { $ref: "#/state/hidden" }]])), [
-      "children",
-      0,
-    ]);
+    openDoc(boundRowsDoc({}, { hidden: { $ref: "#/state/hidden" } }), ["children", 0]);
     const c = await renderPanel();
     expect(sourceLabel(c, "hidden")).toBe("From data…");
     expect(row(c, "hidden").querySelector("select, jx-select")).not.toBeNull();
