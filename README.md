@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A full-stack web framework with a visual editor, built on plain JSON and Markdown.<br> Sites compile to static HTML, so they are quick to serve, have almost no attack surface, and cost close to nothing to run. Pages, styles, state, data, and server logic are all declarative documents. Edit them in code, on a canvas, or with an agent.
+  A full-stack web framework with a visual editor, built on serializable documents (JSON or Jx Notation) and Markdown.<br> Sites compile to static HTML, so they are quick to serve, have almost no attack surface, and cost close to nothing to run. Pages, styles, state, data, and server logic are all declarative documents. Edit them in code, on a canvas, or with an agent.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 ## What is Jx?
 
-A Jx project is a directory of JSON and Markdown files. Routes come from the filesystem. Components are JSON documents whose property names mirror the DOM API. Reactivity is [`@vue/reactivity`](https://github.com/vuejs/core/tree/main/packages/reactivity). State entries marked `timing: "server"` run on the server.
+A Jx project is a directory of serializable documents and Markdown files. A document is written as JSON (`.json`) or as Jx Notation (`.jxn`), a KDL-based spelling of the same data, and the two read to the same thing. Routes come from the filesystem. Components are documents whose property names mirror the DOM API. Reactivity is [`@vue/reactivity`](https://github.com/vuejs/core/tree/main/packages/reactivity). State entries marked `timing: "server"` run on the server.
 
 ```json
 {
@@ -36,7 +36,7 @@ A Jx project is a directory of JSON and Markdown files. Routes come from the fil
 }
 ```
 
-Every document validates against a JSON Schema 2020-12 meta-schema generated from the live web platform, so the same file is legible to a person, a visual editor, and a model. The full format is documented under [Framework](https://jxsuite.com/docs/framework): state shapes, bindings, repeaters, props, statements, styling.
+Every document, in either spelling, validates against a JSON Schema 2020-12 meta-schema, the authoritative definition of the format, generated from the live web platform, so the same file is legible to a person, a visual editor, and a model. The full format is documented under [Framework](https://jxsuite.com/docs/framework): state shapes, bindings, repeaters, props, statements, styling.
 
 ## The stack
 
@@ -106,7 +106,7 @@ An extension is an npm package with a `jx-extension.json` manifest contributing 
 | Package                                      | What it is                                                            |
 | -------------------------------------------- | --------------------------------------------------------------------- |
 | [`@jxsuite/schema`](packages/schema)         | JSON Schema 2020-12 meta-schema generated from the live web platform  |
-| [`@jxsuite/runtime`](packages/runtime)       | JSON-native reactive web component runtime                            |
+| [`@jxsuite/runtime`](packages/runtime)       | Serializable reactive web component runtime                           |
 | [`@jxsuite/compiler`](packages/compiler)     | Static compiler, island detector, site builder, and the `jx` CLI      |
 | [`@jxsuite/server`](packages/server)         | Dev server: live reload, proxy resolution, Studio backend             |
 | [`@jxsuite/studio`](packages/studio)         | The visual editor, as a backend-agnostic application                  |

@@ -7,7 +7,7 @@
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
   },
-  "description": "JSON Schema 2020-12 meta-schema generator for Jx documents",
+  "description": "JSON Schema 2020-12 meta-schema generator: the authoritative definition of a Jx document",
   "exports": {
     ".": "./src/schema.ts",
     "./asset-paths": "./src/asset-paths.ts",

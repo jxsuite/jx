@@ -14,11 +14,11 @@ Here's the page, top to bottom.
 
 ## SECTION 1 — Hero
 
-**Eyebrow:** THE JSON-NATIVE WEB PLATFORM
+**Eyebrow:** THE SERIALIZABLE WEB PLATFORM
 
 **Headline:** _The websites of 2030, built in 2026._
 
-**Subhead:** Jx is a visual builder, a file-based CMS, a reactive runtime, and a static site compiler — all operating on the same plain JSON files. Build anything the web can do. Ship it as static HTML. Edit it visually. Version it in git. Own it forever.
+**Subhead:** Jx is a visual builder, a file-based CMS, a reactive runtime, and a static site compiler — all operating on the same serializable documents. Build anything the web can do. Ship it as static HTML. Edit it visually. Version it in git. Own it forever.
 
 **Primary CTA:** Try Jx Studio →\
 **Secondary CTA:** Read the spec
@@ -94,7 +94,7 @@ This section explicitly addresses the agency reader. The header signals it; eave
 
 **Recurring revenue without recurring work** Static hosting costs pennies. No CVE patching. Care plans become margin instead of overhead.
 
-**Say yes to anything** Interactive calculators. Real-time forms. AI features. E-commerce. Dashboards. All in the visual canvas, all in plain JSON.
+**Say yes to anything** Interactive calculators. Real-time forms. AI features. E-commerce. Dashboards. All in the visual canvas, all in plain serializable documents.
 
 **CTA:** See how agencies use Jx →
 
@@ -106,7 +106,7 @@ This section explicitly addresses the agency reader. The header signals it; eave
 
 **Headline:** _A schema, a runtime, and a compiler. No magic._
 
-**Body:** Jx is a JSON Schema 2020-12 dialect. Documents validate against standard tooling. `$ref` and `$defs` work as you'd expect. The reactivity model is `@vue/reactivity`, which is converging on the TC39 signals proposal. The runtime is ~10kB, light DOM, with manual slot distribution for Web Components composition. Server functions are a clean RPC boundary — `(args, env)` signature, bundled per-adapter at build time.
+**Body:** Jx documents are defined by a JSON Schema 2020-12 meta-schema, in JSON or Jx Notation. Documents validate against standard tooling. `$ref` and `$defs` work as you'd expect. The reactivity model is `@vue/reactivity`, which is converging on the TC39 signals proposal. The runtime is ~10kB, light DOM, with manual slot distribution for Web Components composition. Server functions are a clean RPC boundary — `(args, env)` signature, bundled per-adapter at build time.
 
 **Technical proof points (two-column list):**
 

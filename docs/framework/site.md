@@ -9,7 +9,7 @@ spec:
 
 > **Studio manages this structure for you.** [The Content workspace](/docs/studio/projects/browse) lists `pages/` and every collection under `content/`; the [content-type builder](/docs/studio/projects/content-types) writes the `content` section; [Project settings](/docs/studio/projects/settings) edits the project file. This section documents the on-disk layout for reference.
 
-A Jx site is a folder of plain JSON and Markdown files with a conventional layout. Only the project file and `pages/` are required; everything else is optional and additive.
+A Jx site is a folder of serializable documents (JSON or Jx Notation) and Markdown files with a conventional layout. Only the project file and `pages/` are required; everything else is optional and additive.
 
 ## Project anatomy
 

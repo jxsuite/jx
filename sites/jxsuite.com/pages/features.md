@@ -4,7 +4,7 @@ $head:
   - tagName: meta
     attributes:
       name: description
-      content: "Design pages, write content, add interactivity, accounts and data, and publish. Jx saves all of it as plain JSON and Markdown you keep."
+      content: "Design pages, write content, add interactivity, accounts and data, and publish. Jx saves all of it as plain JSON, Jx Notation and Markdown you keep."
   - tagName: meta
     attributes:
       property: og:title

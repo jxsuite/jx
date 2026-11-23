@@ -39,7 +39,7 @@
 
 ## 1. Overview
 
-Jx is a schema and runtime for building reactive web applications using plain JSON. A Jx application is a tree of JSON objects whose structure mirrors the DOM API, whose reactivity is powered by `@vue/reactivity`, and whose behavior is declared in `state` entries as inline functions or external module references.
+Jx is a schema and runtime for building reactive web applications from serializable documents. A document is a value in the JSON data model, defined by a JSON Schema 2020-12 meta-schema and written as JSON (`.json`) or as Jx Notation (`.jxn`, §22). A Jx application is a tree of such objects whose structure mirrors the DOM API, whose reactivity is powered by `@vue/reactivity`, and whose behavior is declared in `state` entries as inline functions or external module references.
 
 The core premise: **structure and state are data; the shape of each `state` entry determines its type and behavior — no additional flags required in the common case.**
 
@@ -51,7 +51,7 @@ component.json   ← structure, styling, state declarations, functions, bindings
 
 When handler functions grow complex, they may be extracted to an external `.js` sidecar referenced via `$src` on individual `$prototype: "Function"` entries. This is optional — simple components need no sidecar.
 
-The JSON file is fully serializable, statically analyzable, and visual-builder-friendly.
+The document is fully serializable, statically analyzable, and visual-builder-friendly.
 
 ---
 
@@ -65,7 +65,7 @@ Jx property names mirror standard DOM element properties. `tagName`, `className`
 
 Following [Tim Berners-Lee's Rule of Least Power](https://www.w3.org/DesignIssues/Principles.html#PLP): given a choice of solutions, use the least powerful one capable of solving the problem.
 
-- Declarative JSON over imperative JavaScript wherever possible
+- Declarative data over imperative JavaScript wherever possible
 - `$ref` bindings over template expressions wherever possible
 - Template expressions over handler functions wherever possible
 - Handler functions only when logic cannot be expressed otherwise

@@ -1,6 +1,6 @@
 Author a Jx project component, page, layout, or project configuration based on the user's request: $ARGUMENTS
 
-You are authoring files for the Jx platform — a declarative, JSON-based web framework. All UI is described as JSON documents that map directly to DOM structure. Reactivity is powered by @vue/reactivity.
+You are authoring files for the Jx platform — a declarative, serializable web framework (JSON Schema is the authoritative definition; documents are JSON or Jx Notation). All UI is described as documents that map directly to DOM structure. Reactivity is powered by @vue/reactivity.
 
 ---
 

@@ -4,7 +4,7 @@ $head:
   - tagName: meta
     attributes:
       name: description
-      content: "Jx Studio is a visual IDE for designing, editing and publishing websites. It saves plain JSON and Markdown, on your desktop or in a browser with Jx Cloud."
+      content: "Jx Studio is a visual IDE for designing, editing and publishing websites. It saves plain JSON or Jx Notation and Markdown, on your desktop or in a browser with Jx Cloud."
   - tagName: meta
     attributes:
       property: og:title
@@ -34,7 +34,7 @@ Visual IDE for the people who build websites
 :::
 
 :::p{style.fontSize="clamp(1.0625rem, 1.4vw, 1.25rem)" style.color="var(--color-text-secondary)" style.lineHeight="1.5" style.margin="1.5rem 0 2rem" style.maxWidth="42ch"}
-Create a project, design on a canvas, edit content in place, wire up interactivity and publish through git. Every change saves as plain JSON and Markdown.
+Create a project, design on a canvas, edit content in place, wire up interactivity and publish through git. Every change saves as plain JSON or Jx Notation and Markdown.
 :::
 
 :::div{style.display="flex" style.gap="0.75rem" style.flexWrap="wrap"}

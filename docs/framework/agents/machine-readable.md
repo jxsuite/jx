@@ -24,7 +24,7 @@ A plain-text index in the [llms.txt convention](https://llmstxt.org): a one-para
 ```markdown
 # Jx Suite
 
-> Jx Suite is a visual site builder (Jx Studio), a JSON-native component format, and a compiler that prerenders every page — working on plain files you own and publish with git. …
+> Jx Suite is a visual site builder (Jx Studio), a serializable component format defined by JSON Schema, and a compiler that prerenders every page — working on plain files you own and publish with git. …
 
 ## Start here
 

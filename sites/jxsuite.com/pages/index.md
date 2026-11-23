@@ -123,7 +123,7 @@ Wood-fired mains, served from five.
 ::::div{style.display="grid" style.gridTemplateColumns="repeat(4, 1fr)" style.gap="2rem" style.--lg.gridTemplateColumns="1fr 1fr" style.--sm.gridTemplateColumns="1fr"}
 ::fact-item{props.title="MIT licensed" props.text="The framework, the extensions and the desktop app are yours to fork, host and keep."}
 
-::fact-item{props.title="Documents you can read" props.text="Pages, styles, state and server logic are JSON and Markdown, checked against a JSON Schema generated from the web platform."}
+::fact-item{props.title="Documents you can read" props.text="Pages, styles, state and server logic are serializable documents and Markdown, checked against a JSON Schema generated from the web platform."}
 
 ::fact-item{props.title="Standard reactivity" props.text="Interactive parts are the browser's own custom elements, made reactive by the published @vue/reactivity package."}
 
