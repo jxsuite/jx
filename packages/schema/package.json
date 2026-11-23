@@ -1,9 +1,9 @@
 {
   "dependencies": {
     "@bgotink/kdl": "0.4.2",
-    "@webref/css": "^8.7.9",
+    "@webref/css": "^8.7.10",
     "@webref/elements": "^2.9.2",
-    "@webref/idl": "^3.87.0",
+    "@webref/idl": "^3.87.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
   },
