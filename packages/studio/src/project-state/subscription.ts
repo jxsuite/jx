@@ -7,19 +7,18 @@
  * included (§3.1), applies the answer and every later frame to the store in revision order, and
  * subscribes again with the same cursor whenever a frame does not continue it (a gap, §3.2) or the
  * host ends the subscription. A host that answers with events replays exactly what was missed; one
- * that answers with a snapshot replaces the store's state.
- *
- * **Beside the resync path, not instead of it.** The platform's `subscribeFileEvents` stream and
- * its resync reasons (`studio.md` §9.2) keep running; retiring them is `project-state.md` §3.3.
- * What the subscription takes over today is attribution: while it is live, Studio recognises its
- * own writes by their bytes (`store.ts`) rather than by the 1.5 second window of
- * `files/fs-events.ts`.
+ * that answers with a snapshot replaces the store's state. A reconnect is therefore a subscribe
+ * with `{ epoch, sinceRev }` and nothing else: no listing is re-read, and no resync reason exists
+ * any more (`project-state.md` §3.3).
  *
  * **A host that does not serve it.** A first subscribe that fails (a dev server that predates the
- * stream answers 404) leaves the subscription unavailable, and Studio behaves exactly as a platform
- * without `subscribeProjectState` does. A resubscribe that fails after the host has answered once
- * is a restart or a dropped connection, and is retried with a growing delay; until it answers, the
- * subscription is not live.
+ * stream answers 404, a cloud session whose capability route answers 404, a 5xx while a session
+ * hydrates) leaves the subscription {@link ProjectStateSubscription.unavailable}: Studio then has
+ * no live account of other writers' changes (`studio.md` §9.2) and writes unconditionally. It is
+ * asked again with the same growing delay a dropped one is, since only an answer says what the host
+ * serves, and the first answer makes it available from then on. A resubscribe that fails after the
+ * host has answered once is a restart or a dropped connection; until it answers, the subscription
+ * is not live.
  *
  * @license MIT
  * @docs extending/embedding/platform-adapter
@@ -68,7 +67,10 @@ export interface ProjectStateSubscriptionOptions {
 export interface ProjectStateSubscription {
   /** Whether the host has answered and the store follows it. */
   readonly live: boolean;
-  /** Whether the host refused the first subscribe, so it never will be live. */
+  /**
+   * Whether the host has refused every subscribe so far, without ever answering one: Studio follows
+   * no other writer until it does (the subscribe is retried).
+   */
   readonly unavailable: boolean;
   /** Whether the host has answered a subscribe at least once, so it serves the contract. */
   readonly answered: boolean;
@@ -197,6 +199,7 @@ export function startProjectStateSubscription(
         return;
       }
       answered = true;
+      unavailable = false;
       failures = 0;
       enqueue(() => apply(gen, () => cursor.answer(response)));
     } catch (error) {
@@ -204,13 +207,14 @@ export function startProjectStateSubscription(
         return;
       }
       setLive(false);
-      if (!answered) {
-        // The host does not serve the subscription: Studio keeps the resync path alone.
+      if (answered) {
+        console.warn("[project-state] resubscribing after a failure:", error);
+      } else {
+        /* Nothing has said the host serves the subscription: Studio follows no other writer until
+           an answer does, and the next attempt asks again. */
         unavailable = true;
         markSettled();
-        return;
       }
-      console.warn("[project-state] resubscribing after a failure:", error);
       retry();
     }
   }

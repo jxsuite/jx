@@ -68,8 +68,8 @@ export const STUDIO_ROUTES = {
       "`{epoch, events}` with `id: <epoch>:<rev>`. `?clientId=` names the client. The stream " +
       "closes when the host ends the subscription; activating another project starts a new " +
       "epoch (specs/project-state.md §3.2)",
-    'The client keeps the "open", "reconnect" and "commit" resync reasons of studio.md §9.2, ' +
-      "re-listing what it caches over the reload stream's fs frames instead of replaying.",
+    "A client reconnects by subscribing again with its cursor (project-state.md §3.3); the " +
+      "reload stream's fs frames carry no revision and are never replayed.",
   ),
   /**
    * A rename as one operation (project-state.md §9, §10.2): the host plans the move and every

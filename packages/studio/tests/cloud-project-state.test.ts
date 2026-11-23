@@ -13,6 +13,8 @@ import type {
   SubscribeResponse,
 } from "@jxsuite/protocol/project-state";
 import { createCloudPlatform } from "../src/platforms/cloud";
+import { startProjectStateSubscription } from "../src/project-state/subscription";
+import { createContentStore } from "../src/project-state/store";
 
 /*
  * The Cloud adapter's project state members (`project-state.md` §3.2, §10.3): the subscribe
@@ -159,6 +161,38 @@ describe("the Cloud adapter's project state", () => {
     await tick();
     expect(ended).toEqual(["e1"]);
     expect(socket!.closed).toBe(true);
+  });
+
+  /* `project-state.md` §3.3: a dropped socket is repaired by subscribing again with the cursor, on a
+     socket of its own, and by nothing else: no listing, no resync reason. */
+  test("a reconnect is a subscribe with { epoch, sinceRev }, and lists nothing", async () => {
+    installSockets();
+    const calls = stubFetch(() => Response.json({ version: 1 }));
+    const platform = createCloudPlatform({ ...CLOUD_PROJECT });
+    const sub = startProjectStateSubscription({
+      clientId: "w",
+      retryDelay: () => 0,
+      store: createContentStore(),
+      subscribe: platform.subscribeProjectState!,
+    });
+    await until(() => sockets.length > 0);
+    sockets[0]!.emit("open");
+    sockets[0]!.emit("message", { data: encodeCloudSubscribeAnswer(CLOUD_SNAPSHOT) });
+    sockets[0]!.emit("message", { data: encodeCloudEvents("e1", [changed]) });
+    await until(() => sub.live);
+    // The socket drops: a deploy, a sleeping laptop.
+    sockets[0]!.emit("close");
+    await until(() => sockets.length > 1);
+    sockets[1]!.emit("open");
+    expect(JSON.parse(sockets[1]!.sent[0]!)).toEqual({
+      clientId: "w",
+      epoch: "e1",
+      kind: "subscribe",
+      sinceRev: 2,
+    });
+    // The capability was asked once; nothing else went over HTTP.
+    expect(calls.map((call) => call.url)).toEqual([`${CLOUD_SESSION_BASE}/project-state`]);
+    sub.stop();
   });
 
   test("a session that predates the binding rejects the subscribe and opens no socket", async () => {

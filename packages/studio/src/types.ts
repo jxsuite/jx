@@ -287,13 +287,6 @@ export interface SitePreviewResult extends SiteBuildResult {
 }
 
 /**
- * Why a file-event transport asks Studio to re-read rather than trust its event stream (see
- * `StudioPlatform.subscribeFileEvents`). Studio-side only: no wire message carries this union, so
- * `FsEvent` itself is unchanged.
- */
-export type FsResyncReason = "reconnect" | "commit" | "open";
-
-/**
  * One request to a format class's capability (`POST /__studio/format`, or the desktop RPC of the
  * same name): `parse` reads `source` into a Jx document, `serialize` writes `doc` back out as text,
  * and the answer is that document or that text. The backend refuses an action the format does not
@@ -455,31 +448,27 @@ export interface StudioPlatform {
    * Subscribe to backend filesystem change events for the active project. Returns an unsubscribe
    * function. Optional: platforms without a watcher omit it and the sidebar stays manual-refresh.
    *
-   * `options.onResync` is how a transport admits that the event stream alone may not describe the
-   * tree any more. `"reconnect"`: the stream dropped and came back, so every event in between was
-   * lost and Studio must re-read what it has cached. `"commit"`: the backend committed without
-   * emitting per-file events, so the listings are re-read but open documents are not. `"open"`: the
-   * stream's FIRST open — events sent before it reached nobody, and listings made before it (the
-   * project's first ones, raced against the handshake) may already be stale; a transport whose
-   * listings carry `DirEntry.version` reports it, so content versions noted before the stream was
-   * live are dropped and the loaded listings re-read. A platform whose stream cannot lose events
-   * (an in-process watcher) never calls it.
+   * The events are deltas for the file tree, and Studio repairs no gap in them: the project state
+   * subscription ({@link subscribeProjectState}) replays what a dropped stream missed, and a
+   * platform without it has no gap repair at all (`studio.md` §9.2). An older adapter that still
+   * takes a second `{ onResync }` argument is never passed one.
+   *
+   * An empty batch says the repository moved with no file event (a commit made by another client of
+   * a shared session): Studio reads git status again and changes nothing else.
    */
-  subscribeFileEvents?: (
-    handler: (events: FsEvent[]) => void,
-    options?: { onResync?: (reason: FsResyncReason) => void },
-  ) => () => void;
+  subscribeFileEvents?: (handler: (events: FsEvent[]) => void) => () => void;
   /**
    * Subscribe to the host's project state (`project-state.md` §3): send `request`, answer with the
    * host's subscribe answer, and hand every later batch of events to `listener.events` until the
    * next call replaces the subscription, reporting its end through `listener.ended`. Studio sends
-   * its cursor on every connect and subscribes again on a gap or an end.
+   * its cursor on every connect, the first included, and subscribes again on a gap or an end: a
+   * reconnect is a subscribe with `{ epoch, sinceRev }` (`project-state.md` §3.3).
    *
-   * Optional, and beside `subscribeFileEvents` rather than instead of it: a platform whose host
-   * serves the subscription keeps its file events and resync reasons (`project-state.md` §3.3), and
-   * Studio uses the subscription to keep its content store (`project-state.md` §11.1) and to
-   * recognise its own writes by their bytes rather than by a time window (§9.2). A first call that
-   * rejects means the host does not serve it, and Studio behaves as if the member were absent.
+   * Optional. It is the only account Studio takes of other writers' changes: its content store
+   * (`project-state.md` §11.1), the caches derived from it, the open tabs and the canvas's
+   * definitions all follow it, and Studio recognises its own writes by their bytes. A call that
+   * rejects before any has answered means the host does not serve it (yet): Studio then follows no
+   * other writer, writes unconditionally, and asks again with a growing delay (`studio.md` §9.2).
    */
   subscribeProjectState?: ProjectStateClient["subscribe"];
   /**

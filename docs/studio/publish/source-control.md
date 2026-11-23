@@ -79,7 +79,7 @@ If the commit fails, the summary goes back into the box, so you can fix the prob
 
 ## Stay in sync
 
-The bar at the foot of the change list shows where you stand against the repository, with a last-updated time: **Up to date**, or how many commits you are ahead or behind. Studio refreshes this automatically whenever a file in the project changes, whether you saved it in Studio or another program changed it on disk, and checks again every 30 seconds while the Publish workspace is showing; the circular arrow at the left of the bar re-checks on demand. Three buttons act on it:
+The bar at the foot of the change list shows where you stand against the repository, with a last-updated time: **Up to date**, or how many commits you are ahead or behind. Studio refreshes this automatically whenever a file in the project changes, whether you saved it in Studio or another program changed it on disk, and whenever someone else commits in the same Jx Cloud session; it checks again every 30 seconds while the Publish workspace is showing; the circular arrow at the left of the bar re-checks on demand. Three buttons act on it:
 
 - **Fetch**: check the repository for news without changing your files.
 - **Pull**: bring teammates' commits into your copy.

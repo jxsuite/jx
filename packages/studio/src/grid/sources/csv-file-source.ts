@@ -11,7 +11,7 @@
 import { getPlatform } from "../../platform";
 import { projectState } from "../../store";
 import { findContentTypeSchema } from "../../utils/studio-utils";
-import { isRecentLocal, markLocalWrite } from "../../files/fs-events";
+import { markLocalWrite } from "../../files/fs-events";
 import { parseCsv, serializeCsv } from "../csv-codec";
 import {
   cellToText,
@@ -200,14 +200,14 @@ export function createCsvFileSource(path: string): GridSource {
       const current = await load();
       const platform = getPlatform();
 
-      // Whole-file staleness: abort if the file changed under us (and it wasn't our own write).
+      // Whole-file staleness: abort if the file changed under us. Our own last write is `loadText`.
       let onDisk: string | null = null;
       try {
         onDisk = await platform.readFile(path);
       } catch {
         onDisk = null; // Deleted underneath — treat as stale.
       }
-      if (onDisk !== current.loadText && !isRecentLocal(path)) {
+      if (onDisk !== current.loadText) {
         return uniformResult(batch, {
           error: "File changed on disk — refresh to reload",
           ok: false,

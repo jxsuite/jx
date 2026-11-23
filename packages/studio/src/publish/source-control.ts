@@ -221,8 +221,9 @@ export function requestGitRefresh(): void {
  * Ask for a status read once the tree has been quiet for {@link GIT_REFRESH_DEBOUNCE}.
  *
  * The file watcher calls this for every batch it delivers, Studio's own writes included (a write
- * Studio made changes the status exactly as much as anyone else's), and for every resync. A burst
- * (a starter scaffolded, a checkout, a formatter run) is many batches and one read.
+ * Studio made changes the status exactly as much as anyone else's), and for the host's
+ * `gitChanged`. A burst (a starter scaffolded, a checkout, a formatter run) is many batches and one
+ * read.
  */
 export function scheduleGitRefresh(): void {
   if (_scheduleTimer) {

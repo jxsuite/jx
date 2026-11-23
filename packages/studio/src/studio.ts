@@ -134,7 +134,6 @@ import {
   openLastSessionOrHome,
   reloadCleanTab,
   reloadFileInTab,
-  reloadTabsIfChanged,
   setSessionWorkspaceShow,
 } from "./files/files";
 import {
@@ -1139,9 +1138,6 @@ function ensureFsSync() {
     onComponentsChanged: invalidateComponentRegistry,
     onFormatsChanged: resetProjectRegistries,
     onReadiness: noteReadiness,
-    /* A reconnect re-reads the clean, non-collab tabs, and leaves every one whose content did not
-       change untouched: most reconnects changed nothing, and a reload is a repaint per tab. */
-    onResyncContent: reloadTabsIfChanged,
     // The watcher is how an outside edit, a checkout or Studio's own write reaches git status.
     noteRepositoryChange: scheduleGitRefresh,
     renderLeftPanel,

@@ -9,8 +9,13 @@
  * the subscription) hands them over from the bootstrap.
  *
  * - **Which files exist** (`fileAdded`, `fileRemoved`, `fileRenamed`): the caches keyed on the file
- *   set (pages, templates, layouts, collections, media) and the usage counts are dropped, and the
- *   content versions of what went or moved are forgotten.
+ *   set (pages, templates, layouts, collections, media) are dropped, and the content versions of
+ *   what went or moved are forgotten. The usage counts read every document, so they are keyed by
+ *   the store's `generation` and dropped only when it moved: a `docChanged` that fills in what the
+ *   host learned about the same bytes keeps them. The caches that read single documents (the
+ *   component registry, the Site panel's dynamic pages, the format registry) are keyed by the store
+ *   themselves (`DerivationKey`, the format-set token), so a drop re-derives only the entries whose
+ *   key moved.
  * - **What a document holds** (`docChanged`, never a bare `fileChanged`, §4.3): the caches keyed on
  *   contents are dropped, and a document another writer changed reaches the live component lane.
  *   Studio's own write is known by the hash its `fileAdded` or `fileChanged` echo carried, since
@@ -33,7 +38,7 @@
  * @docs extending/embedding/platform-adapter
  */
 
-import type { ContentHash, DocId, ReadinessState } from "@jxsuite/protocol/project-state";
+import type { ContentHash, ReadinessState } from "@jxsuite/protocol/project-state";
 import type { ContentStore, StoreChange } from "./store";
 import type { AppliedEvent } from "./subscription";
 
@@ -111,26 +116,56 @@ export function createStoreDerivations(
   targets: DerivationTargets,
 ): StoreDerivations {
   /**
-   * The hash each document's bytes had when they last reached the canvas: Studio's own write, or a
-   * change {@link DerivationTargets.documentChanged} was told of. Another writer's file event clears
-   * it until its `docChanged` arrives.
+   * The hash the bytes at each path had when they last reached the canvas: Studio's own write, a
+   * change {@link DerivationTargets.documentChanged} was told of, or (for the first snapshot) what
+   * Studio read while opening the project. Another writer's file event clears it until its
+   * `docChanged` arrives. Keyed by path rather than `DocId`, and relabelled by a rename, so that a
+   * snapshot of a new epoch (every id minted again) or one that names a file without its hash
+   * forgets nothing the canvas holds: the host's `docChanged` that later fills the same bytes in is
+   * not another writer's change.
    */
-  const appliedHashes = new Map<DocId, ContentHash>();
+  const appliedHashes = new Map<string, ContentHash>();
   let last = fieldsOf(store);
   /** Whether a snapshot has been taken, so a later one's fields can be compared with it. */
   let seen = store.readiness !== null;
 
   const isApplied = (path: string): boolean => {
     const doc = store.docAt(path);
-    return doc?.hash !== undefined && appliedHashes.get(doc.docId) === doc.hash;
+    return doc?.hash !== undefined && appliedHashes.get(path) === doc.hash;
   };
 
   /** Record who wrote a file's current bytes: Studio's are applied already, nobody else's are. */
-  const attribute = (docId: DocId, hash: ContentHash | undefined, own: boolean) => {
+  const attribute = (path: string, hash: ContentHash | undefined, own: boolean) => {
     if (own && hash !== undefined) {
-      appliedHashes.set(docId, hash);
+      appliedHashes.set(path, hash);
     } else {
-      appliedHashes.delete(docId);
+      appliedHashes.delete(path);
+    }
+  };
+
+  /** Forget `path`, and everything under it when it is a directory. */
+  const forget = (path: string, isDir: boolean) => {
+    appliedHashes.delete(path);
+    if (isDir) {
+      for (const key of appliedHashes.keys()) {
+        if (key.startsWith(`${path}/`)) {
+          appliedHashes.delete(key);
+        }
+      }
+    }
+  };
+
+  /** Follow a rename: what the canvas holds of `from` (and beneath it) it holds of `to`. */
+  const relabel = (from: string, to: string) => {
+    const relabelled: [string, ContentHash][] = [];
+    for (const [key, hash] of appliedHashes) {
+      if (key === from || key.startsWith(`${from}/`)) {
+        appliedHashes.delete(key);
+        relabelled.push([to + key.slice(from.length), hash]);
+      }
+    }
+    for (const [key, hash] of relabelled) {
+      appliedHashes.set(key, hash);
     }
   };
 
@@ -138,14 +173,24 @@ export function createStoreDerivations(
   const changed = (path: string) => {
     const doc = store.docAt(path);
     if (doc?.hash !== undefined) {
-      appliedHashes.set(doc.docId, doc.hash);
+      appliedHashes.set(path, doc.hash);
     }
     targets.documentChanged?.(path);
   };
 
-  /** Drop the file caches for `paths`, then repaint once. */
+  /** The store's generation when the usage answers were last dropped. */
+  let usageGeneration = store.generation;
+
+  /**
+   * Drop the file caches for `paths`. The usage answers are keyed by the store's generation (they
+   * read every document), so they go only when it moved: a `docChanged` that fills in what the host
+   * learned about the same bytes leaves them.
+   */
   const drop = (paths: readonly string[], structural: boolean) => {
-    targets.invalidateUsages();
+    if (store.generation !== usageGeneration) {
+      usageGeneration = store.generation;
+      targets.invalidateUsages();
+    }
     targets.invalidateDerivedCaches?.(paths, structural);
   };
 
@@ -160,11 +205,11 @@ export function createStoreDerivations(
         switch (event.type) {
           case "fileAdded": {
             structural.add(event.path);
-            attribute(event.docId, event.hash, own);
+            attribute(event.path, event.hash, own);
             break;
           }
           case "fileChanged": {
-            attribute(event.docId, event.hash, own);
+            attribute(event.path, event.hash, own);
             break;
           }
           case "fileRemoved": {
@@ -173,7 +218,7 @@ export function createStoreDerivations(
             if (event.isDir) {
               forgottenDirs.push(event.path);
             }
-            appliedHashes.delete(event.docId);
+            forget(event.path, event.isDir);
             break;
           }
           case "fileRenamed": {
@@ -183,11 +228,12 @@ export function createStoreDerivations(
             if (event.isDir) {
               forgottenDirs.push(event.from);
             }
+            relabel(event.from, event.to);
             break;
           }
           case "docChanged": {
             contents.add(event.path);
-            if (!own && appliedHashes.get(event.docId) !== event.hash) {
+            if (!own && appliedHashes.get(event.path) !== event.hash) {
               changed(event.path);
             }
             break;
@@ -247,7 +293,7 @@ export function createStoreDerivations(
         targets.forgetVersions(forgotten, forgottenDirs);
       }
       if (structural.size > 0 || contents.size > 0) {
-        drop([...structural, ...contents], structural.size > 0);
+        drop([...new Set([...structural, ...contents])], structural.size > 0);
         repaint = true;
       }
       last = fieldsOf(store);
@@ -256,16 +302,37 @@ export function createStoreDerivations(
       }
     },
     snapshot(change) {
-      appliedHashes.clear();
+      /* What the canvas holds survives a snapshot wherever the bytes did: a path that left is
+         forgotten, and one whose bytes moved is told below. The first snapshot is the account of
+         what Studio read while opening the project, so its bytes are the canvas's. */
+      for (const { isDir, path } of change.removed) {
+        forget(path, isDir);
+      }
+      if (!seen) {
+        for (const doc of store.documents()) {
+          if (!doc.isDir && doc.hash !== undefined) {
+            appliedHashes.set(doc.path, doc.hash);
+          }
+        }
+      }
       const fields = fieldsOf(store);
       let repaint = false;
+      /* A snapshot that replaced earlier state also stands for the files it added and removed (a
+         rename among them), which no hash change reports: the caches keyed on the file set drop
+         them as the events would have. The first snapshot reports the whole project as added, which
+         Studio read itself while opening it. */
+      const moved = seen ? [...change.added, ...change.removed].map((entry) => entry.path) : [];
+      if (moved.length > 0 && change.paths.length === 0) {
+        drop(moved, true);
+        repaint = true;
+      }
       if (change.paths.length > 0) {
         /* The listings' versions of what the snapshot replaced are stale, but the store already
            holds the new hashes: a forget withholds a derived version until the store reports the
            path again, and it just has, so the paths are released at once. */
         targets.forgetVersions(change.paths, []);
         targets.releaseVersions?.(change.paths);
-        drop(change.paths, true);
+        drop([...new Set([...change.paths, ...moved])], true);
         for (const path of change.paths) {
           if (store.docAt(path)?.isDir === false) {
             changed(path);

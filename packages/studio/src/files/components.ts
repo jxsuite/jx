@@ -1,10 +1,22 @@
-/** Component registry — cached list of project components discovered via the platform. */
+/**
+ * Component registry — cached list of project components discovered via the platform.
+ *
+ * **Keyed by the store** (`project-state.md` §11.1). Each project component's entry remembers the
+ * key of the bytes it was derived from ({@link DerivationKey}: the definition's `DocId` and hash),
+ * so that while the project state subscription is live, {@link refreshStaleComponents} re-derives
+ * exactly the entries whose document changed, follows a renamed definition to its new path without
+ * reading it (the bytes are the same), and drops the entry of a removed one. A full scan runs when
+ * the project opens and when the host says the set of tags moved (`componentsChanged`).
+ */
 
 import { getPlatform } from "../platform";
 import { projectState } from "../store";
+import { contentStore } from "../project-state/store";
+import type { DerivationKey } from "../project-state/store";
 import type { ComponentMeta } from "../types";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { parseNativeDocument } from "@jxsuite/schema/jxn";
 import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
 
 /** A discovered component: project components carry a file path; package components may not. */
@@ -17,6 +29,77 @@ export interface ComponentEntry extends Omit<ComponentMeta, "path"> {
 
 export let componentRegistry: ComponentEntry[] = [];
 export let _componentRegistryLoaded = false;
+
+/** The key of the bytes each project component's entry was derived from, by its path. */
+const entryKeys = new Map<string, DerivationKey>();
+
+/** Remember the store's key for the entry at `path`, or forget it when the store holds none. */
+function recordKey(path: string): void {
+  const key = contentStore.keyAt(path);
+  if (key === undefined) {
+    entryKeys.delete(path);
+  } else {
+    entryKeys.set(path, key);
+  }
+}
+
+/** The hash half of a {@link DerivationKey}. */
+const hashOf = (key: DerivationKey): string => key.slice(key.lastIndexOf("@") + 1);
+/** The `DocId` half of a {@link DerivationKey}. */
+const docIdOf = (key: DerivationKey): string => key.slice(0, key.lastIndexOf("@"));
+
+/** Whether a registry entry is a project file's definition, which the store can key. */
+const isProjectEntry = (entry: ComponentEntry): entry is ComponentEntry & { path: string } =>
+  entry.path !== undefined && entry.source !== "npm";
+
+/** Entries the newest scan found while the store held no key for their path. */
+const scannedUnkeyed = new Set<string>();
+/**
+ * Entries with no key whose path the store has held a document at (one it named without a hash).
+ * When the store stops holding that path the definition moved or went, and nothing says where, so
+ * the registry is scanned again. An entry the store never held (a path outside the host's index) is
+ * not followed by the store at all, and costs no scan.
+ */
+const unkeyedHeld = new Set<string>();
+
+/**
+ * Re-key the entries a snapshot left behind (`project-state.md` §11.1). A snapshot of a new epoch
+ * names every document under a new `DocId`: an entry whose document is gone while the same bytes
+ * sit at its path takes the new key, nothing read. An entry scanned before the store held any key
+ * (the project opens before its subscription answers) takes the key the first snapshot gives its
+ * path, since that snapshot is the account of the bytes the scan read. An entry whose bytes moved
+ * keeps its old key, which {@link refreshStaleComponents} re-derives.
+ */
+function rekeyEntries(): void {
+  for (const entry of componentRegistry) {
+    if (!isProjectEntry(entry)) {
+      continue;
+    }
+    const { path } = entry;
+    const now = contentStore.keyAt(path);
+    const was = entryKeys.get(path);
+    if (was === undefined && contentStore.docAt(path) !== undefined) {
+      unkeyedHeld.add(path);
+    }
+    if (now === undefined || was === now) {
+      continue;
+    }
+    if (was === undefined) {
+      if (scannedUnkeyed.delete(path)) {
+        entryKeys.set(path, now);
+        unkeyedHeld.delete(path);
+      }
+    } else if (contentStore.document(docIdOf(was)) === undefined && hashOf(was) === hashOf(now)) {
+      entryKeys.set(path, now);
+    }
+  }
+}
+
+contentStore.onChange((change) => {
+  if (change.snapshot) {
+    rekeyEntries();
+  }
+});
 
 /** Bumped by every load, so only the newest scan may write the registry. */
 let _generation = 0;
@@ -46,6 +129,20 @@ export function loadComponentRegistry(): Promise<void> {
     }
     if (found) {
       componentRegistry = found;
+      entryKeys.clear();
+      scannedUnkeyed.clear();
+      unkeyedHeld.clear();
+      for (const entry of found) {
+        if (isProjectEntry(entry)) {
+          recordKey(entry.path);
+          if (!entryKeys.has(entry.path)) {
+            scannedUnkeyed.add(entry.path);
+            if (contentStore.docAt(entry.path) !== undefined) {
+              unkeyedHeld.add(entry.path);
+            }
+          }
+        }
+      }
     }
     _componentRegistryLoaded = true;
   })();
@@ -78,11 +175,15 @@ export function noteComponentSaved(path: string | null, doc: JxMutableNode): boo
   if (!path) {
     return false;
   }
+  recordKey(path);
+  scannedUnkeyed.delete(path);
+  unkeyedHeld.delete(path);
   const index = componentRegistry.findIndex((c) => c.path === path);
   /* SAFETY: a saved tab's document was parsed from JSON and has just been written back as JSON
      (`serializeDocument`), so every value it holds is a JSON value — the model the extractor reads. */
   const meta = componentMetaFrom(doc as JsonValue, path);
   if (!meta) {
+    entryKeys.delete(path);
     if (index === -1) {
       return false;
     }
@@ -98,6 +199,96 @@ export function noteComponentSaved(path: string | null, doc: JxMutableNode): boo
     componentRegistry[index] = entry;
   }
   return true;
+}
+
+/**
+ * Re-derive the entries whose definition's bytes are no longer the ones they were derived from, by
+ * the store's keys: an entry whose document moved takes its new path (the bytes are the same, so
+ * nothing is read), one whose document is gone leaves the registry, and one whose hash changed is
+ * read and extracted again as a save would ({@link noteComponentSaved}). An entry whose document's
+ * id is gone while a file still sits at its path (a snapshot of a new epoch mints every id again)
+ * is re-keyed when the bytes are the same and read again when they are not; only an entry whose
+ * path the store no longer holds at all leaves. An entry with no key (the store held none when it
+ * was derived) is read again once the store holds one, and when the store stops holding a path it
+ * held nothing says where the definition went, so the registry is scanned again. Answers whether
+ * the registry changed.
+ *
+ * Only meaningful while the store follows the host; a caller without a live subscription re-scans.
+ */
+export async function refreshStaleComponents(): Promise<boolean> {
+  let changed = false;
+  /** The definitions whose bytes changed, at the paths they hold now. */
+  const stale: string[] = [];
+  let rescan = false;
+  for (const entry of componentRegistry) {
+    if (!isProjectEntry(entry) || entryKeys.has(entry.path)) {
+      continue;
+    }
+    const doc = contentStore.docAt(entry.path);
+    if (doc === undefined) {
+      rescan ||= unkeyedHeld.has(entry.path);
+    } else if (contentStore.keyAt(entry.path) === undefined) {
+      unkeyedHeld.add(entry.path);
+    } else {
+      scannedUnkeyed.delete(entry.path);
+      unkeyedHeld.delete(entry.path);
+      stale.push(entry.path);
+    }
+  }
+  if (rescan) {
+    await loadComponentRegistry();
+    return true;
+  }
+  for (const [path, key] of entryKeys) {
+    const now = contentStore.keyAt(path);
+    if (now === key) {
+      continue;
+    }
+    const moved = contentStore.document(docIdOf(key));
+    const index = componentRegistry.findIndex((entry) => entry.path === path);
+    entryKeys.delete(path);
+    if (moved === undefined && contentStore.docAt(path)?.isDir === false) {
+      // The id is gone but a file is still there: the same bytes re-key, other bytes re-derive.
+      if (now !== undefined && hashOf(now) === hashOf(key)) {
+        entryKeys.set(path, now);
+      } else {
+        stale.push(path);
+      }
+      continue;
+    }
+    if (moved && !moved.isDir && moved.path !== path && contentStore.keyAt(moved.path) === key) {
+      // The same bytes under another name: relabel the entry, read nothing.
+      if (index !== -1) {
+        componentRegistry[index] = { ...componentRegistry[index]!, path: moved.path };
+        changed = true;
+      }
+      entryKeys.set(moved.path, key);
+    } else if (moved) {
+      if (moved.path !== path && index !== -1) {
+        // Moved and rewritten: the entry is derived again at its new path.
+        componentRegistry.splice(index, 1);
+        changed = true;
+      }
+      stale.push(moved.path);
+    } else if (index !== -1) {
+      componentRegistry.splice(index, 1);
+      changed = true;
+    }
+  }
+  const rederived = await Promise.all(stale.map((path) => rederive(path)));
+  return changed || rederived.includes(true);
+}
+
+/** Read the definition at `path` again and bring its entry up to date; whether it changed. */
+async function rederive(path: string): Promise<boolean> {
+  let doc: JxMutableNode;
+  try {
+    doc = parseNativeDocument(await getPlatform().readFile(path), path);
+  } catch {
+    // A definition that no longer reads keeps the entry it had.
+    return false;
+  }
+  return noteComponentSaved(path, doc);
 }
 
 /**

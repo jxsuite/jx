@@ -18,12 +18,15 @@
  *
  * **It stays current by being told, not by polling.** The project index is one cache, dropped by
  * {@link invalidateSiteIndex} — wired into the filesystem subscription's derived-cache list and the
- * media-changed handler in `studio.ts` — and re-read the next time the panel paints. The component
- * registry and the media cache are their owners' caches, read as they stand; the media cache
- * repaints the Navigator itself when its listing lands. The page list is judged by the extensions
- * the format registry claims, so a change of formats ({@link onFormatsChanged}: a dependency
- * install landing a Markdown format) re-reads it too, and a page whose format is missing is listed
- * as needing its extension rather than hidden (`panels/site-model.ts`).
+ * media-changed handler in `studio.ts` — and re-read the next time the panel paints. While the
+ * project state subscription is live it is keyed by the store (`project-state.md` §11.1): a change
+ * to file contents alone keeps the file set and re-reads only the dynamic pages whose bytes moved,
+ * and the component registry re-derives only the entries whose definition moved or changed. The
+ * component registry and the media cache are their owners' caches, read as they stand; the media
+ * cache repaints the Navigator itself when its listing lands. The page list is judged by the
+ * extensions the format registry claims, so a change of formats ({@link onFormatsChanged}: a
+ * dependency install landing a Markdown format) re-reads it too, and a page whose format is missing
+ * is listed as needing its extension rather than hidden (`panels/site-model.ts`).
  *
  * **A card's preview is retried, not announced once.** Every preview box is tracked with the
  * registry entry it was rendered for. A box whose entry has since been replaced (a save, a re-scan)
@@ -62,7 +65,10 @@ import {
   buildComponentInstance,
   componentRegistry,
   loadComponentRegistry,
+  refreshStaleComponents,
 } from "../files/components";
+import { contentStore } from "../project-state/store";
+import type { DerivationKey } from "../project-state/store";
 import { mediaKind } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
 import { elementForAsset } from "../editor/file-drop-action";
@@ -109,6 +115,14 @@ interface SiteIndex {
 
 let _index: SiteIndex | null = null;
 /**
+ * Each dynamic page's collection, by path, with the store key of the bytes it was read from
+ * (`project-state.md` §11.1): a re-read of the index reads again only the pages whose key moved. A
+ * fact read with no key (no live subscription) is never reused.
+ */
+const _facts = new Map<string, { key: DerivationKey; contentType: string | null }>();
+/** Whether the next read must walk `pages/` and `layouts/` again, rather than reuse the file set. */
+let _walk = true;
+/**
  * Whether `_index` predates the last invalidation. A stale index stays on screen while its re-read
  * runs (stale-while-revalidate), so a save does not flash every section back to "Reading…" and tear
  * its rows down. Only a project with no index yet shows the loading state.
@@ -129,22 +143,48 @@ async function contentTypeOf(path: string): Promise<string | null> {
   return facts.contentType;
 }
 
-/** Read the index: one walk of `pages/` and `layouts/`, then each dynamic page's `$paths`. */
+/** A dynamic page's collection: the fact the store key it was read under still holds, or a read. */
+async function pageFact(path: string): Promise<SitePageFact> {
+  if (!path.includes("[")) {
+    return { contentType: null, path };
+  }
+  const key = projectStateLive() ? contentStore.keyAt(path) : undefined;
+  const held = _facts.get(path);
+  if (key !== undefined && held?.key === key) {
+    return { contentType: held.contentType, path };
+  }
+  const contentType = await contentTypeOf(path);
+  if (key === undefined) {
+    _facts.delete(path);
+  } else {
+    _facts.set(path, { contentType, key });
+  }
+  return { contentType, path };
+}
+
+/**
+ * Read the index: one walk of `pages/` and `layouts/`, then each dynamic page's `$paths`. A read
+ * that follows a change to file contents alone, while the subscription is live, keeps the file set
+ * it has and re-reads only the pages whose bytes moved ({@link pageFact}).
+ */
 async function readIndex(epoch: number): Promise<void> {
-  const [scan, pageExtensions] = await Promise.all([
-    scanLibrary(["pages", "layouts"], getPlatform()),
-    routedPageExtensions(),
-  ]);
-  const pageFiles = scan.files.filter((file) => file.path.startsWith("pages/"));
+  const walk = _walk || !_index || !projectStateLive();
+  const [files, pageExtensions] = walk
+    ? await Promise.all([
+        scanLibrary(["pages", "layouts"], getPlatform()).then((scan) =>
+          scan.files.map((file) => file.path),
+        ),
+        routedPageExtensions(),
+      ])
+    : [[..._index!.pages.map((page) => page.path), ..._index!.layouts], _index!.pageExtensions];
   const pages = await Promise.all(
-    pageFiles.map(async (file): Promise<SitePageFact> => ({
-      contentType: file.path.includes("[") ? await contentTypeOf(file.path) : null,
-      path: file.path,
-    })),
+    files.filter((path) => path.startsWith("pages/")).map((path) => pageFact(path)),
   );
   if (epoch !== _epoch) {
     return;
   }
+  // Only a read that landed settles the file set; one an invalidation overtook walks again.
+  _walk = false;
   // A re-read keeps the counts it already had until their own re-listing lands.
   const previous = _index?.collections;
   const collections = new Map<string, number | null>(
@@ -153,15 +193,21 @@ async function readIndex(epoch: number): Promise<void> {
   _indexStale = false;
   _index = {
     collections,
-    layouts: scan.files.flatMap((file) => (file.path.startsWith("layouts/") ? [file.path] : [])),
+    layouts: files.filter((path) => path.startsWith("layouts/")),
     pageExtensions,
     pages,
   };
   repaint();
-  // The counts are a second pass, only for the collections a page actually nests under.
+  /* The counts are a second pass, only for the collections a page actually nests under. A count is
+     a function of the collection's file set, so a read that kept the file set keeps the counts it
+     has and lists only the collections it has none for. */
   const nested = new Set(
     pages.flatMap((page) =>
-      page.contentType && collections.has(page.contentType) ? [page.contentType] : [],
+      page.contentType &&
+      collections.has(page.contentType) &&
+      (walk || collections.get(page.contentType) === null)
+        ? [page.contentType]
+        : [],
     ),
   );
   await Promise.all(
@@ -204,20 +250,20 @@ function siteIndex(): SiteIndex | null {
  * and the media-changed handler), because a page, layout or component appearing or disappearing is
  * the same event for all of them. The index it has stays on screen until the re-read lands.
  *
- * The component registry is re-scanned too, once, because a component file created outside Studio
- * is otherwise invisible until the project is reopened. A scan reads every JSON file in the
- * project, so it runs only for a batch that could hold a component definition: Studio's own save of
- * a component already updates the registry (`noteComponentSaved`), and a page or an entry is not
- * one.
+ * Without a live project state subscription the component registry is re-scanned too, once, because
+ * a component file created outside Studio is otherwise invisible until the project is reopened. A
+ * scan reads every JSON file in the project, so it runs only for a batch that could hold a
+ * component definition: Studio's own save of a component already updates the registry
+ * (`noteComponentSaved`), and a page or an entry is not one.
  *
- * While a project state subscription is live, a batch that only rewrote files costs no scan: the
- * host reports a change to the component set itself (`componentsChanged`,
- * {@link invalidateComponentRegistry}). A batch that added, removed or moved a file that could hold
- * a definition still re-scans, because a move keeps the set of tags the host compares and changes
- * the path the registry reads each definition from.
+ * While the subscription is live nothing is re-scanned here. The host reports a change to the
+ * component set itself (`componentsChanged`, {@link invalidateComponentRegistry}), and the registry
+ * is keyed by the store, so a change that could touch a definition re-derives exactly the entries
+ * whose document moved, went or changed (`refreshStaleComponents`). A change to file contents alone
+ * keeps the index's file set and re-reads only the dynamic pages whose bytes moved.
  *
- * @param paths - The project-relative paths the event batch touched; `undefined` (a gap in the
- *   stream, or an upload) means anything may have changed.
+ * @param paths - The project-relative paths the change touched; `undefined` (an upload) means
+ *   anything may have changed.
  * @param structural - Whether the batch added, removed or renamed anything, rather than only
  *   rewriting files that exist.
  */
@@ -225,9 +271,23 @@ export function invalidateSiteIndex(paths?: readonly string[], structural = true
   _epoch += 1;
   _indexStale = true;
   _loading = null;
-  if (
+  const live = projectStateLive();
+  if (structural || !live) {
+    _walk = true;
+  }
+  if (live && paths !== undefined) {
+    /* The registry is keyed by the store: the entries whose definition moved, went or changed are
+       re-derived, and a new tag is the host's `componentsChanged`. */
+    if (paths.some((path) => mayDefineComponent(path))) {
+      void refreshStaleComponents().then((changed) => {
+        if (changed) {
+          repaint();
+        }
+      });
+    }
+  } else if (
     paths === undefined ||
-    ((structural || !projectStateLive()) && paths.some((path) => mayDefineComponent(path)))
+    ((structural || !live) && paths.some((path) => mayDefineComponent(path)))
   ) {
     _registryStale = true;
   }
@@ -790,6 +850,8 @@ export function resetSitePanel(): void {
   _index = null;
   _indexStale = false;
   _loading = null;
+  _facts.clear();
+  _walk = true;
   // A new project's components are not the last one's, whatever the registry says it has loaded.
   _registryStale = true;
   _registryLoading = false;

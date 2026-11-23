@@ -2583,20 +2583,6 @@ export function reloadCleanTab(path: string): void {
 }
 
 /**
- * Re-read open tabs after the file-event stream reconnected (`FsSyncContext.onResyncContent`).
- *
- * The paths arrive already filtered to clean, non-collab tabs. Each reload is `onlyIfChanged`
- * because a reconnect almost always changed nothing: an unconditional reload would replace every
- * open document with an identical one, which is a repaint per tab and an undo boundary nobody
- * made.
- */
-export function reloadTabsIfChanged(paths: string[]): void {
-  for (const path of paths) {
-    void reloadFileInTab(path, { onlyIfChanged: true });
-  }
-}
-
-/**
  * Reload an already-open tab from disk without changing the active tab. Used to refresh after AI
  * assistant writes to a file, an external change, or a reconnect.
  *
@@ -2610,10 +2596,10 @@ export function reloadTabsIfChanged(paths: string[]): void {
  * round trip (a network one on cloud). So the decision is re-checked after every await and before
  * anything is assigned: a tab that was clean and took an edit in the meantime, or that joined a
  * co-editing session, keeps what it now holds. Otherwise the disk copy would land over the author's
- * newest keystrokes and clear `dirty` — work lost without a trace — and a reconnect resync, which
- * re-reads every clean tab at the moment the author comes back to the window, is exactly when those
- * keystrokes arrive. A tab that was ALREADY dirty when the read started is the caller asking for it
- * to be replaced (an AI write, a rename's reference rewrite), and keeps that meaning.
+ * newest keystrokes and clear `dirty` — work lost without a trace — and a reconnect, whose replayed
+ * changes reach the clean tabs at the moment the author comes back to the window, is exactly when
+ * those keystrokes arrive. A tab that was ALREADY dirty when the read started is the caller asking
+ * for it to be replaced (an AI write, a rename's reference rewrite), and keeps that meaning.
  */
 export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: boolean } = {}) {
   for (const [, tab] of workspace.tabs.entries()) {

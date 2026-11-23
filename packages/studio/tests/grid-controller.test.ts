@@ -11,7 +11,7 @@ import type {
   GridRow,
   GridSource,
 } from "../src/grid/grid-source";
-import type { FsEvent } from "../src/types";
+import { reportForeignChange } from "../src/project-state/foreign";
 
 const confirmCalls: string[] = [];
 let confirmResult = true;
@@ -454,16 +454,8 @@ describe("refresh and fs staleness", () => {
     expect(controller.buffer.isDirty()).toBeFalse();
   });
 
-  test("fs events on backing paths mark pending rows stale; clean grids just reload", async () => {
-    let fsHandler: ((events: FsEvent[]) => void) | null = null;
-    installMockPlatform({
-      subscribeFileEvents: (handler) => {
-        fsHandler = handler;
-        return () => {
-          fsHandler = null;
-        };
-      },
-    });
+  test("another writer's change to a backing path marks pending rows stale; clean grids reload", async () => {
+    installMockPlatform();
     const source = stubSource({
       backingPaths: new Map([
         ["content/a.md", "a"],
@@ -478,27 +470,39 @@ describe("refresh and fs staleness", () => {
     };
     const controller = createGridController(openGridTab(), source);
     await controller.load();
-    expect(fsHandler).not.toBeNull();
 
     controller.buffer.setCell("b", "title", "Pending");
-    fsHandler!([{ isDir: false, path: "content/a.md", type: "change" }]);
+    reportForeignChange("content/a.md");
     expect(controller.buffer.rowState("a")).toBe("stale");
     expect(statusCalls.at(-1)).toContain("stale");
 
     // Unrelated paths are ignored.
-    fsHandler!([{ isDir: false, path: "elsewhere.md", type: "change" }]);
+    reportForeignChange("elsewhere.md");
     expect(controller.buffer.rowState("b")).toBe("dirty");
 
     // A clean grid reloads instead of marking stale.
     controller.buffer.reset();
     const rowCallsBefore = rowCalls;
-    fsHandler!([{ isDir: false, path: "content/b.md", type: "change" }]);
+    reportForeignChange("content/b.md");
     await flush();
     expect(rowCalls).toBeGreaterThan(rowCallsBefore);
 
-    // Tab close unsubscribes.
+    // A whole-file source names every row.
+    const whole = createGridController(
+      openGridTab(),
+      stubSource({ backingPaths: new Map([["data.csv", "*"]]) }),
+    );
+    await whole.load();
+    whole.buffer.setCell("a", "title", "Pending");
+    reportForeignChange("data.csv");
+    expect(whole.buffer.rowState("b")).toBe("stale");
+
+    // Tab close unsubscribes: a later report reaches no closed grid.
     closeAllTabs();
-    expect(fsHandler).toBeNull();
+    const after = rowCalls;
+    reportForeignChange("content/b.md");
+    await flush();
+    expect(rowCalls).toBe(after);
   });
 });
 

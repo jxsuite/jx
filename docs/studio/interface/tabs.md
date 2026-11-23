@@ -87,7 +87,7 @@ Saving writes the file in place, in your project folder, as plain Markdown, JSON
 
 ### When the file changes on disk
 
-Another program, a script or a git checkout can change a file you have open. On the desktop app and the dev server, Studio notices:
+Another program, a script or a git checkout can change a file you have open. In the desktop app, on the dev server and in Jx Cloud, Studio notices, and a change made while Studio was disconnected (the machine slept, or the server restarted) arrives as soon as it reconnects:
 
 - A document with no unsaved changes shows the new version.
 - A document with unsaved changes keeps them, and [Problems](/docs/studio/interface/problems-and-progress) says the file changed on disk.
