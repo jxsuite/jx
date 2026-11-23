@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.0](https://github.com/jxsuite/jx/compare/collab-v0.12.5...collab-v0.13.0) (2026-11-23)
+
+
+### Features
+
+* **server:** the dev server serves project state and keys collab rooms by document ([#728](https://github.com/jxsuite/jx/issues/728)) ([bf16222](https://github.com/jxsuite/jx/commit/bf162221a5b26a169ab36a6fc378b9bd974c85df))
+* **studio:** one content store keyed by document and hash, with buffers held against a base ([#729](https://github.com/jxsuite/jx/issues/729)) ([0db299c](https://github.com/jxsuite/jx/commit/0db299cdcb24c3ee3a490b10039a5fc28560be72))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.2.0
+
 ## [0.12.5](https://github.com/jxsuite/jx/compare/collab-v0.12.4...collab-v0.12.5) (2026-11-17)
 
 

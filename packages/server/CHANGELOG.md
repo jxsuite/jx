@@ -1,5 +1,47 @@
 # Changelog
 
+## [9.3.0](https://github.com/jxsuite/jx/compare/server-v9.2.1...server-v9.3.0) (2026-11-23)
+
+
+### Features
+
+* **desktop:** project-state host serves the desktop session ([#727](https://github.com/jxsuite/jx/issues/727)) ([fb12d93](https://github.com/jxsuite/jx/commit/fb12d9371e0a1245594480b9c1f185393b87a122))
+* **protocol,studio:** the cloud binding of project state, and Studio's half of it ([#732](https://github.com/jxsuite/jx/issues/732)) ([7206f61](https://github.com/jxsuite/jx/commit/7206f614d16d9807952c4073c68064b226aa4d93))
+* **server:** a rename is one operation that completes or rolls back ([#731](https://github.com/jxsuite/jx/issues/731)) ([5fb6a0a](https://github.com/jxsuite/jx/commit/5fb6a0a35b6e91fd98641c261e9084e78f25400f))
+* **server:** project-state dependency graph ([#725](https://github.com/jxsuite/jx/issues/725)) ([04ae064](https://github.com/jxsuite/jx/commit/04ae0649ae1ad72d0712bd10d5d24d84a4a65ad3))
+* **server:** project-state host core, readiness and git monitor ([#726](https://github.com/jxsuite/jx/issues/726)) ([7f7f683](https://github.com/jxsuite/jx/commit/7f7f6839b9361d20d895c6bcb4067a234ff269f0))
+* **server:** reference extraction is a pure subpath export ([#723](https://github.com/jxsuite/jx/issues/723)) ([6971aa4](https://github.com/jxsuite/jx/commit/6971aa40c9632b7ffc1a53b9810d3da04764cc49))
+* **server:** the dev server serves project state and keys collab rooms by document ([#728](https://github.com/jxsuite/jx/issues/728)) ([bf16222](https://github.com/jxsuite/jx/commit/bf162221a5b26a169ab36a6fc378b9bd974c85df))
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+* **studio:** one content store keyed by document and hash, with buffers held against a base ([#729](https://github.com/jxsuite/jx/issues/729)) ([0db299c](https://github.com/jxsuite/jx/commit/0db299cdcb24c3ee3a490b10039a5fc28560be72))
+
+
+### Bug Fixes
+
+* **studio,desktop,server,runtime:** project state stays current after open, install and edits ([#721](https://github.com/jxsuite/jx/issues/721)) ([b096332](https://github.com/jxsuite/jx/commit/b09633266ab45d19abd3c722bcfa43ee1b97b1e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.2
+    * @jxsuite/catalog bumped to 0.1.19
+    * @jxsuite/collab bumped to 0.13.0
+    * @jxsuite/compiler bumped to 11.1.1
+    * @jxsuite/create bumped to 1.8.7
+    * @jxsuite/erase bumped to 0.3.6
+    * @jxsuite/import bumped to 0.44.9
+    * @jxsuite/protocol bumped to 6.7.0
+    * @jxsuite/runtime bumped to 9.0.2
+    * @jxsuite/schema bumped to 8.2.0
+    * @jxsuite/site bumped to 4.1.1
+    * @jxsuite/starters bumped to 5.2.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.15
+    * @jxsuite/connector bumped to 0.8.15
+    * @jxsuite/parser bumped to 5.2.2
+
 ## [9.2.1](https://github.com/jxsuite/jx/compare/server-v9.2.0...server-v9.2.1) (2026-11-17)
 
 

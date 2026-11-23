@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.0.2](https://github.com/jxsuite/jx/compare/runtime-v9.0.1...runtime-v9.0.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* **studio,desktop,server,runtime:** project state stays current after open, install and edits ([#721](https://github.com/jxsuite/jx/issues/721)) ([b096332](https://github.com/jxsuite/jx/commit/b09633266ab45d19abd3c722bcfa43ee1b97b1e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.2.0
+  * devDependencies
+    * @jxsuite/erase bumped to 0.3.6
+
 ## [9.0.1](https://github.com/jxsuite/jx/compare/runtime-v9.0.0...runtime-v9.0.1) (2026-11-17)
 
 

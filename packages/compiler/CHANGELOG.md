@@ -1,5 +1,21 @@
 # Changelog
 
+## [11.1.1](https://github.com/jxsuite/jx/compare/compiler-v11.1.0...compiler-v11.1.1) (2026-11-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.8.7
+    * @jxsuite/erase bumped to 0.3.6
+    * @jxsuite/runtime bumped to 9.0.2
+    * @jxsuite/schema bumped to 8.2.0
+    * @jxsuite/site bumped to 4.1.1
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.15
+    * @jxsuite/parser bumped to 5.2.2
+
 ## [11.1.0](https://github.com/jxsuite/jx/compare/compiler-v11.0.0...compiler-v11.1.0) (2026-11-17)
 
 

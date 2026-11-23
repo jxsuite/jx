@@ -1,5 +1,40 @@
 # Changelog
 
+## [9.5.0](https://github.com/jxsuite/jx/compare/desktop-v9.4.1...desktop-v9.5.0) (2026-11-23)
+
+
+### Features
+
+* **desktop:** project-state host serves the desktop session ([#727](https://github.com/jxsuite/jx/issues/727)) ([fb12d93](https://github.com/jxsuite/jx/commit/fb12d9371e0a1245594480b9c1f185393b87a122))
+* **server:** a rename is one operation that completes or rolls back ([#731](https://github.com/jxsuite/jx/issues/731)) ([5fb6a0a](https://github.com/jxsuite/jx/commit/5fb6a0a35b6e91fd98641c261e9084e78f25400f))
+* **server:** the dev server serves project state and keys collab rooms by document ([#728](https://github.com/jxsuite/jx/issues/728)) ([bf16222](https://github.com/jxsuite/jx/commit/bf162221a5b26a169ab36a6fc378b9bd974c85df))
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+* **studio:** one content store keyed by document and hash, with buffers held against a base ([#729](https://github.com/jxsuite/jx/issues/729)) ([0db299c](https://github.com/jxsuite/jx/commit/0db299cdcb24c3ee3a490b10039a5fc28560be72))
+
+
+### Bug Fixes
+
+* **desktop:** skip What's New where Apple refuses it ([#712](https://github.com/jxsuite/jx/issues/712)) ([e4d7d94](https://github.com/jxsuite/jx/commit/e4d7d9405eb74fbfde7ba0c45c42e68d96083802))
+* **studio,desktop,server,runtime:** project state stays current after open, install and edits ([#721](https://github.com/jxsuite/jx/issues/721)) ([b096332](https://github.com/jxsuite/jx/commit/b09633266ab45d19abd3c722bcfa43ee1b97b1e3))
+* **studio,desktop:** report a missing recent project, and open no blank Untitled tab ([#713](https://github.com/jxsuite/jx/issues/713)) ([1d825c2](https://github.com/jxsuite/jx/commit/1d825c22dbadf437130ddf61676de4a4d2ef5f29))
+* **studio:** Convert to Component wraps the selection instead of replacing its root ([#720](https://github.com/jxsuite/jx/issues/720)) ([0589a29](https://github.com/jxsuite/jx/commit/0589a2979df4b3091b9bc1ffed75fc8845566fb0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 11.1.1
+    * @jxsuite/create bumped to 1.8.7
+    * @jxsuite/protocol bumped to 6.7.0
+    * @jxsuite/schema bumped to 8.2.0
+    * @jxsuite/server bumped to 9.3.0
+    * @jxsuite/starters bumped to 5.2.0
+    * @jxsuite/studio bumped to 13.2.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.3.0
+    * @jxsuite/ui bumped to 0.16.0
+
 ## [9.4.1](https://github.com/jxsuite/jx/compare/desktop-v9.4.0...desktop-v9.4.1) (2026-11-17)
 
 

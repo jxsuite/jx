@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.2.0](https://github.com/jxsuite/jx/compare/schema-v8.1.0...schema-v8.2.0) (2026-11-23)
+
+
+### Features
+
+* **studio:** convert a whole project between .json and .jxn from Project settings ([#717](https://github.com/jxsuite/jx/issues/717)) ([8d25ea7](https://github.com/jxsuite/jx/commit/8d25ea780feca9cc8623c1741037de20b735035c))
+
 ## [8.1.0](https://github.com/jxsuite/jx/compare/schema-v8.0.0...schema-v8.1.0) (2026-11-17)
 
 
