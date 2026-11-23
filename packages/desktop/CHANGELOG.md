@@ -1,5 +1,32 @@
 # Changelog
 
+## [10.0.0](https://github.com/jxsuite/jx/compare/desktop-v9.5.0...desktop-v10.0.0) (2026-11-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio,desktop:** retire the resync reasons; every reconnect is a subscribe with sinceRev ([#739](https://github.com/jxsuite/jx/issues/739))
+
+### Features
+
+* **studio,desktop:** retire the resync reasons; every reconnect is a subscribe with sinceRev ([#739](https://github.com/jxsuite/jx/issues/739)) ([8d87e68](https://github.com/jxsuite/jx/commit/8d87e68c9fc551d22763ff7aaa9ab18868771970))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 11.1.2
+    * @jxsuite/create bumped to 1.8.8
+    * @jxsuite/protocol bumped to 7.0.0
+    * @jxsuite/schema bumped to 8.2.1
+    * @jxsuite/server bumped to 9.3.1
+    * @jxsuite/starters bumped to 5.2.1
+    * @jxsuite/studio bumped to 14.0.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.3.1
+    * @jxsuite/ui bumped to 0.16.1
+
 ## [9.5.0](https://github.com/jxsuite/jx/compare/desktop-v9.4.1...desktop-v9.5.0) (2026-11-23)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.2.1](https://github.com/jxsuite/jx/compare/schema-v8.2.0...schema-v8.2.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **schema:** className and hidden admit a $ref, as the schema already says ([#735](https://github.com/jxsuite/jx/issues/735)) ([170bac9](https://github.com/jxsuite/jx/commit/170bac96ac8ef74f8e9d23aabb676554214fd889))
+
 ## [8.2.0](https://github.com/jxsuite/jx/compare/schema-v8.1.0...schema-v8.2.0) (2026-11-23)
 
 

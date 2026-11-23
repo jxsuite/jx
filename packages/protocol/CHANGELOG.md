@@ -1,5 +1,23 @@
 # Changelog
 
+## [7.0.0](https://github.com/jxsuite/jx/compare/protocol-v6.7.0...protocol-v7.0.0) (2026-11-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio,desktop:** retire the resync reasons; every reconnect is a subscribe with sinceRev ([#739](https://github.com/jxsuite/jx/issues/739))
+
+### Features
+
+* **studio,desktop:** retire the resync reasons; every reconnect is a subscribe with sinceRev ([#739](https://github.com/jxsuite/jx/issues/739)) ([8d87e68](https://github.com/jxsuite/jx/commit/8d87e68c9fc551d22763ff7aaa9ab18868771970))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.2.1
+
 ## [6.7.0](https://github.com/jxsuite/jx/compare/protocol-v6.6.1...protocol-v6.7.0) (2026-11-23)
 
 
