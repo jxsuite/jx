@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.9.19-draft\
+**Version:** 0.9.20-draft\
 **Status:** Partial\
-**Updated:** 2026-11-17\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 ---
@@ -2478,6 +2478,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.9.20-draft** (2026-11-23) — §2: defaults.format chooses the native notation new documents are written in.
 - **0.9.19-draft** (2026-11-17) — §5.5: $page describes the page and never its layout, so $page.title is the page's own title as its title element shows it, resolved in the build before a layout reads it, $page.description carries the page's description meta and $page.locale follows the page's own $lang; the live preview gives a dynamic page its concrete URL and named parameters; the $page.$head, $page.frontmatter and $site.$head rows are dropped because nothing reads them.
 - **0.9.18-draft** (2026-11-17) — A page's title property is never rendered as its root element's title attribute, with or without a layout, and the build warns once about a head entry key it does not render: a top-level attribute-like key, or a title entry.
 - **0.9.17-draft** (2026-11-17) — §5.4: every layout in a nested chain contributes its head entries to the layout level of the head merge, outermost first, a layout's title is never the page title at any depth, and a layout cycle is an error naming the chain.

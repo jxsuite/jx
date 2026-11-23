@@ -2,9 +2,9 @@
 
 ## Mounting Documents in an Imperative Host
 
-**Version:** 0.1.16\
+**Version:** 0.1.17\
 **Status:** Implemented\
-**Updated:** 2026-11-15\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 Companion to [spec.md](./spec.md) §4, §13 and §16. Defines how an application written in ordinary TypeScript hosts Jx documents: how it mounts one into a node it owns, how its own state and functions reach the document, how the document reaches back, and what a mount may configure for itself rather than for the page. Jx Studio's chrome is the first such host; a site that embeds a Jx component beside a foreign framework is the second.
@@ -214,6 +214,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.17** (2026-11-23) — Only a successful resolve is cached and a failed defineElement releases its URL; forgetSource(url) drops what the realm remembers about one document URL (§6).
 - **0.1.16** (2026-11-15) — The project shadow default is a per-realm setting, set with setShadowDefault, and the canvas switches gain one that renders every component in the light DOM.
 - **0.1.15** (2026-11-13) — setRemoteLookupHandler: a host answers each automatic Request and each timing server call itself, running it, answering from what it holds, or leaving it alone, and gives up a promise it handed out by rejecting it with an AbortError (§5.2).
 - **0.1.14** (2026-11-13) — §2.1: onListReconciled also names the root node of each row that stands, and replaceListRow hands a mapped list a new root node for a row it has drawn.
@@ -234,4 +235,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Embedding Specification v0.1.16_
+_Jx Embedding Specification v0.1.17_

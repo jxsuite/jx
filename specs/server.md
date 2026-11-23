@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.4.6-draft\
+**Version:** 0.4.9-draft\
 **Status:** Partial\
-**Updated:** 2026-11-15\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 ---
@@ -383,6 +383,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.9-draft** (2026-11-23) — The dev server serves the project state stream at GET /__studio/project/events and conditional file writes and deletes, refuses a stream naming another project than the active one, keys a collaboration room and the preview overlay inside the active project by its document (§3.1, §4.1).
+- **0.4.8-draft** (2026-11-23) — §3.1 names the project state stream of project-state.md as the replaying one, leaving the reload stream's non-replay unchanged.
+- **0.4.7-draft** (2026-11-23) — §3.4: the desktop loopback project server answers a .jxn document on every static lane as JSON, as the dev server and a site origin do, and Studio's shell realm installs a .jxn parser as the canvas does.
 - **0.4.6-draft** (2026-11-15) — §4.1: the AI proxy's base-URL guard is specified in ai.md §4, and the site import's component-naming pass now runs the proxy's policy, its key provenance and that guard.
 - **0.4.5-draft** (2026-11-15) — §4.1 the AI proxy advertises wire versions, reports an upstream 429 as rate-limited, ends a cut-off upstream body truncated, and is held to the gateway conformance kit.
 - **0.4.4-draft** (2026-11-15) — §4.1 the AI proxy accepts chat wire version 2 beside version 1 and names the wire it served in X-Jx-AI-Wire.
@@ -453,4 +456,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.4.6-draft_
+_`@jxsuite/server` Specification v0.4.9-draft_

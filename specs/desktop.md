@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.24-draft\
+**Version:** 0.7.31-draft\
 **Status:** Partial\
-**Updated:** 2026-11-17\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 ---
@@ -1165,6 +1165,13 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.31-draft** (2026-11-23) — The Cloud adapter subscribes to the session's replaying /events where it serves the project state binding, and saves, deletes and renames with a base.
+- **0.7.30-draft** (2026-11-23) — The window's session runs the project state host and answers projectSubscribe, projectWrite and projectDelete over its socket, refusing the unconditional writes to a socket that subscribed (§7.3); the adapter exposes the subscription as projectState and reports a reconnect as its end (§10.1).
+- **0.7.29-draft** (2026-11-23) — §7.3 and §10.1 point at project-state.md, which makes the window's session the project state host and replaces resync pushes with a replaying subscription.
+- **0.7.28-draft** (2026-11-23) — §10.1 the desktop and dev-server adapters report their first open as "open"; the desktop watcher reports a write once it is whole, exposes its initial scan as ready, keeps one watcher per root across a re-root onto the same folder, and pushes onFileResync "open" each time it is ready; a batch reaching no subscriber becomes one "open" for the next.
+- **0.7.27-draft** (2026-11-23) — §3.1: the desktop loopback answers a .jxn document under documentBaseUrl as JSON, as the dev server does.
+- **0.7.26-draft** (2026-11-23) — §4.6: a project root that no longer exists answers missing before the trust prompt or any window, and Studio reports it in a dialog.
+- **0.7.25-draft** (2026-11-23) — §7.7: the submission skips What's New where Apple refuses it (an app's first version) instead of failing.
 - **0.7.24-draft** (2026-11-17) — §7.7: the app declares no export compliance; it is answered per build, because Apple refuses an upload that declares encryption without the documentation's code.
 - **0.7.23-draft** (2026-11-17) — §7.7: the Mac App Store build declares its export compliance in the app (ITSAppUsesNonExemptEncryption), so the answer travels with every build.
 - **0.7.22-draft** (2026-11-14) — §7.7: a desktop release is submitted to App Review after its upload (the mas-submit job), App Review accepted 8.0.1 (483), and the export compliance answer stays a person's.
@@ -1274,4 +1281,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.24-draft_
+_Jx Studio Desktop Architecture Specification v0.7.31-draft_

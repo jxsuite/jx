@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.17.9-draft\
+**Version:** 0.17.27-draft\
 **Status:** Partial\
-**Updated:** 2026-11-15\
+**Updated:** 2026-11-23\
 **License:** MIT
 
 ---
@@ -2692,6 +2692,24 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.17.27-draft** (2026-11-23) — §6.6: every bindable row carries the value-source ladder, including the Link, Open in and popover-target rows and an element's Class and Hidden.
+- **0.17.26-draft** (2026-11-23) — 9.1.2: a preview is bounded by its box; the mount contains layout, paint and style so a fixed element in a preview cannot draw over Studio's chrome.
+- **0.17.25-draft** (2026-11-23) — §9.1.1: a rename is one operation where the host serves one, and an open referrer with unsaved edits, co-edited or not, has the host's rewrite applied to its buffer, or is reported when nothing is left to rewrite.
+- **0.17.24-draft** (2026-11-23) — 5.7, 7.2 and 9.1.2 name the preview realm (project-state.md 11.2): Site panel, Content home, palette and Project Styles previews are drawn there, never in Studio's window, and a changed definition it holds replaces it; 13.5 counts its unanswered requests as an idle source; a palette card is asked again after a save or a replaced realm and shows the box naming a tag the realm cannot draw, kit package components draw through Studio's own kit, and a trial the realm could not answer is asked again.
+- **0.17.23-draft** (2026-11-23) — The platform layer gains writeProjectState and deleteProjectState; once the host serves the subscription every write and delete names a base, a tab's save its base hash, and a conflict asks Keep Mine, Take Disk Copy or Compare (the copy on disk against the unsaved version) before anything is written.
+- **0.17.22-draft** (2026-11-23) — A co-edited tab whose file changes under unsaved edits stays dirty and conflicted, and its save asks before the room writes.
+- **0.17.21-draft** (2026-11-23) — StudioPlatform gains the optional subscribeProjectState member (§3.4); while it is live, Studio recognises its own writes by hash instead of the 1.5 second window and reloads open tabs from the subscription's fileChanged events (§9.2).
+- **0.17.20-draft** (2026-11-23) — While the project state subscription is live, the derived caches follow its events and the watcher updates the tree and git status alone (§9.2), content versions are the store's hashes (§3.4), and Project Styles' component samples are keyed by tag and definition hash (§7.2).
+- **0.17.19-draft** (2026-11-23) — §3.4 and §9.2 point at project-state.md, which will replace the resync reasons and the 1.5 second echo window with a replaying subscription and hash-attributed events.
+- **0.17.18-draft** (2026-11-23) — Site panel lists a page whose format is not loaded as needing its extension, re-reads on a format change, and retries or refreshes component card previews.
+- **0.17.17-draft** (2026-11-23) — §16.4 states that every door into a project runs one open sequence, which re-fetches the format registry and extension UI after a dependency install and before the project is read.
+- **0.17.16-draft** (2026-11-23) — Git status also refreshes, debounced, on every file-watcher batch and resync; reads are generation-guarded and a refresh requested mid-read arms one trailing read; the poll is a fallback.
+- **0.17.15-draft** (2026-11-23) — §9.2 every transport reports its first open as an "open" resync, the desktop adapter also when the backend watcher on the window root finishes its initial scan after every re-root, and a late subscriber is told "open" once for the batches and resyncs nobody received.
+- **0.17.14-draft** (2026-11-23) — A Content home preview that failed is reported once on the console and asked again when its inputs move or its card re-enters view (§9.1.2).
+- **0.17.13-draft** (2026-11-23) — §4.1: a saved or externally changed project component is redefined in every canvas frame and its Library preview dropped.
+- **0.17.12-draft** (2026-11-23) — §9.1.1: Convert to Component wraps the selected tree in the new component element instead of making the selection the component's root.
+- **0.17.11-draft** (2026-11-23) — §8.6: a project's default document format (defaults.format), and converting a whole project between .json and .jxn from Project settings, with the unsaved-tab refusal and the unmerged-branch warning.
+- **0.17.10-draft** (2026-11-23) — Opening a project through the picker closes the old tabs rather than leaving a blank Untitled one, so a project with no home page opens with no tab.
 - **0.17.9-draft** (2026-11-15) — Every canvas mode renders a component in the light DOM, whatever its shadow setting.
 - **0.17.8-draft** (2026-11-15) — §4.5: a $switch case that is another document is fetched relative to the document it is written in; the canvas frame resolved it against its own address.
 - **0.17.7-draft** (2026-11-15) — §4.6 (new): one of Studio's own surfaces draws on the canvas with its surface specimen, a typed fixture scope beside the surface, with variants set by canvas.setSpecimenVariant and listed in §6.2's resolving-with popover; seven surfaces have one and the rest are the section's open item.
@@ -2970,4 +2988,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.17.9-draft_
+_`@jxsuite/studio` Specification v0.17.27-draft_
