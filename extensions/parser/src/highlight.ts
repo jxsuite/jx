@@ -150,7 +150,7 @@ export function highlightCodeBlocks(nodes: (JxElement | string)[]): void {
         if (!isNonNullObject(child) || child.tagName !== "code") {
           continue;
         }
-        const lang = /^language-(\S+)/.exec(child.className ?? "")?.[1];
+        const lang = /^language-(\S+)/.exec(isString(child.className) ? child.className : "")?.[1];
         const code = child.textContent;
         if (!lang || !isString(code) || code.length === 0) {
           continue;

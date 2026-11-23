@@ -350,9 +350,9 @@ export interface JxElement {
   children?: (JxElement | string)[] | JxMappedArray | ComputedChildren;
   style?: JxStyle;
   attributes?: Record<string, JxAttributeValue>;
-  className?: string;
+  className?: string | JxRef;
   id?: string;
-  hidden?: boolean;
+  hidden?: boolean | JxRef;
   tabIndex?: number;
   title?: string;
   lang?: string;
@@ -862,7 +862,7 @@ export interface JxMutableNode {
   children?: (JxMutableNode | string)[] | JxMappedArray | ComputedChildren;
   style?: JxStyle;
   attributes?: Record<string, JxAttributeValue>;
-  className?: string;
+  className?: string | JxRef;
   id?: string;
   title?: string;
   $ref?: string;

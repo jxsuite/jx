@@ -131,7 +131,9 @@ describe("nesting", () => {
   it("finds an alert inside an ordinary blockquote", () => {
     const [quote] = render("> quoted\n>\n> > [!TIP]\n> > inner\n");
     expect(quote!.tagName).toBe("blockquote");
-    const inner = kids(quote!).find((c) => c.className?.includes("jx-alert"));
+    const inner = kids(quote!).find(
+      (c) => isString(c.className) && c.className.includes("jx-alert"),
+    );
     expect(inner?.attributes?.["data-alert"]).toBe("tip");
   });
 
