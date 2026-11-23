@@ -15,7 +15,7 @@ code:
 
 # Extension anatomy
 
-Jx documents are JSON. Everything beyond plain JSON enters the system through **extension packages**: Markdown content, dynamic data tables, authentication, whatever you build next. The unit of admission is an npm package (or a local directory) shipping a `jx-extension.json` manifest; a project opts in with one line in the project file. The first-party extensions (`@jxsuite/parser`, `@jxsuite/connector`, `@jxsuite/auth`) use only these public hooks, so anything they do, your extension can do.
+Jx documents are serializable data, written as JSON or Jx Notation. Everything beyond that data model enters the system through **extension packages**: Markdown content, dynamic data tables, authentication, whatever you build next. The unit of admission is an npm package (or a local directory) shipping a `jx-extension.json` manifest; a project opts in with one line in the project file. The first-party extensions (`@jxsuite/parser`, `@jxsuite/connector`, `@jxsuite/auth`) use only these public hooks, so anything they do, your extension can do.
 
 An extension contributes up to four kinds of things, all declared in JSON before any code runs:
 

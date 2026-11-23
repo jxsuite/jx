@@ -35,7 +35,7 @@ Shipping a Jx site is part of the Studio flow, with no terminal and no separate 
 
 **How you hear about it.** Anything that takes a while runs as an **Activity** in the Bottom dock, with its steps ticked off in order and its log underneath (creating the repository, adding the remote, pushing, waiting on the host), and the same steps show in **Publish › Deploys** while they run. Nothing about that is transient once it goes wrong: a push the remote refused goes on the **Problems** list, carrying the host's own error and the activity's log, and stays there until you deal with it. See **[Problems and progress](/docs/studio/interface/problems-and-progress)**.
 
-Because every Jx file is plain JSON or Markdown, each publish is a clean, reviewable set of changes: no binary blobs, no database dumps.
+Because every Jx file is plain text, JSON, Jx Notation or Markdown, each publish is a clean, reviewable set of changes: no binary blobs, no database dumps.
 
 ## Where your changes go
 

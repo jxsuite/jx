@@ -17,5 +17,5 @@ Studio is organized around a few surfaces:
 - [Publish](/docs/studio/publish) commits, branches, and pushes; your host builds and serves the site.
 
 :::doc-note
-Studio writes plain JSON and Markdown files. Everything you build here is readable, diffable, and documented in the [Framework](/docs/framework) section.
+Studio writes plain serializable documents (JSON or Jx Notation) and Markdown files. Everything you build here is readable, diffable, and documented in the [Framework](/docs/framework) section.
 :::

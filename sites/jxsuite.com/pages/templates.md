@@ -12,7 +12,7 @@ $head:
   - tagName: meta
     attributes:
       property: og:description
-      content: "Thirteen finished starter sites, in plain JSON and Markdown you own."
+      content: "Thirteen finished starter sites, in plain JSON, Jx Notation and Markdown you own."
   - tagName: meta
     attributes:
       property: og:type

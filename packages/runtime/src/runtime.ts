@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * Jx — JSON-native reactive web component runtime
+ * Jx — serializable reactive web component runtime
  *
  * Four-step pipeline:
  *

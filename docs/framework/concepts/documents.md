@@ -1,6 +1,6 @@
 ---
 title: "Documents"
-description: "The root structure of a Jx file ($schema, $id, $defs, state, tagName, children) and why the format is plain JSON."
+description: "The root structure of a Jx file ($schema, $id, $defs, state, tagName, children) and why the format is serializable."
 spec:
   - spec.md#1
   - spec.md#2
@@ -73,11 +73,11 @@ What a document _is_ follows from its root `tagName` and where the file lives:
 
 Either kind may declare `state`; the difference is that a custom element gets its own isolated scope and a `$props` boundary (see [Props and scope](/docs/framework/concepts/props-and-scope)).
 
-## Why plain JSON
+## Why serializable
 
-Jx documents are valid JSON, rather than JavaScript object literals, JSX, or a template DSL. That distinction is load-bearing:
+A Jx document is a value in the JSON data model, written as `.json` or as Jx Notation, rather than JavaScript object literals, JSX, or a template DSL. That distinction is load-bearing:
 
-- JSON serializes and deserializes without executing code.
+- The data model serializes and deserializes without executing code.
 - There is no `this` ambiguity; self-references are explicit `$ref` pointers.
 - Visual builders, IDEs, validators, and bundlers understand it natively.
 - JSON Schema tooling (validation, autocomplete, LSP) applies directly.
@@ -86,7 +86,7 @@ The format also follows the **rule of least power**: prefer a `$ref` binding ove
 
 ## How it works
 
-Jx is a JSON Schema dialect: any 2020-12-compatible validator can check a document against the Jx meta-schema identified by `$schema`. In development, the runtime loads the `.json` file, builds a reactive scope from `state`, and renders the tree with real DOM calls. In production, the [build](/docs/framework/build) compiles the JSON away, emitting plain JavaScript classes, static HTML, and extracted CSS.
+JSON Schema is the authoritative definition of the format: any 2020-12-compatible validator can check a document against the Jx meta-schema identified by `$schema`. In development, the runtime loads the `.json` file, builds a reactive scope from `state`, and renders the tree with real DOM calls. In production, the [build](/docs/framework/build) compiles the JSON away, emitting plain JavaScript classes, static HTML, and extracted CSS.
 
 ## Rules
 

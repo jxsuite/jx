@@ -9,7 +9,7 @@ code:
 
 # Working with agents
 
-A Jx project is a folder of JSON documents, and that one fact changes what it means to hand a website to a language model. The model edits the same `pages/index.json` a person edits in Studio, not a generated intermediate and not a pile of framework code standing in for the page. There is one artifact, and everybody works on it: you, Studio, and the agent.
+A Jx project is a folder of serializable documents, JSON or Jx Notation, and that one fact changes what it means to hand a website to a language model. The model edits the same `pages/index.json` a person edits in Studio, not a generated intermediate and not a pile of framework code standing in for the page. There is one artifact, and everybody works on it: you, Studio, and the agent.
 
 This page explains why that shape suits a model, where agents plug in, and the loop that turns a plausible answer into a checked one.
 

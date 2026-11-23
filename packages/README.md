@@ -5,7 +5,7 @@ The core packages are the Jx framework itself. [`extensions/*`](../extensions/RE
 | Package                                   | What it is                                                                     |
 | ----------------------------------------- | ------------------------------------------------------------------------------ |
 | [`@jxsuite/schema`](./schema)             | JSON Schema 2020-12 meta-schema generator for Jx documents                     |
-| [`@jxsuite/runtime`](./runtime)           | JSON-native reactive web component runtime: no virtual DOM, no diffing         |
+| [`@jxsuite/runtime`](./runtime)           | Serializable reactive web component runtime: no virtual DOM, no diffing        |
 | [`@jxsuite/compiler`](./compiler)         | Static HTML compiler, island detector, site builder, plus the `jx` CLI         |
 | [`@jxsuite/server`](./server)             | Bun dev server: live reload, proxy resolution, Studio backend                  |
 | [`@jxsuite/studio`](./studio)             | The visual builder, as a backend-agnostic browser application                  |

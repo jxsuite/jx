@@ -1,6 +1,6 @@
 # `@jxsuite/runtime`
 
-> JSON-native reactive web component runtime for Jx.
+> Serializable reactive web component runtime for Jx.
 
 ## Overview
 

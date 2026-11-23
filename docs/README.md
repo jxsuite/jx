@@ -8,7 +8,7 @@ The style guide for writing a page — voice, page shapes, callouts, the canonic
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | [`start/`](./start) + `start.md`             | Install, first project, Studio tour, tutorials, "coming from X" migration guides                          |
 | [`studio/`](./studio) + `studio.md`          | The visual editor, surface by surface (`ai/ data/ design/ editing/ interface/ logic/ projects/ publish/`) |
-| [`framework/`](./framework) + `framework.md` | The JSON document format Studio writes, how a site compiles, and the generated catalogs                   |
+| [`framework/`](./framework) + `framework.md` | The serializable document format Studio writes, how a site compiles, and the generated catalogs           |
 | [`extending/`](./extending) + `extending.md` | Extension authoring, embedding Studio, the backend protocol, generated reference tables                   |
 | [`nav.json`](./nav.json)                     | The sidebar manifest — `{ id, sections[{ path, label, pages[], groups[{ label, pages[] }] }] }`           |
 | [`images/`](./images)                        | Screenshots, every one produced by `bun run screenshots`                                                  |

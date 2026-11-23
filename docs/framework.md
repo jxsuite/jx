@@ -1,6 +1,6 @@
 ---
 title: "Framework"
-description: "The Jx specification: a declarative DOM format using plain JSON with reactive state, web components, and standards alignment."
+description: "The Jx specification: a declarative, serializable DOM format with reactive state, web components, and standards alignment."
 spec:
   - spec.md#2
   - spec.md#3
@@ -10,7 +10,7 @@ spec:
 
 > This is the conceptual foundation beneath [Jx Studio](/studio). You never have to read it to build with Studio. Start here if you want to know exactly what the format is.
 
-Jx is a schema and runtime for building reactive web applications using plain JSON. A Jx application is a tree of JSON objects whose structure mirrors the DOM API, whose reactivity is powered by `@vue/reactivity`, and whose behavior is declared in `state` entries.
+Jx is a schema and runtime for building reactive web applications from serializable documents. A document is a value in the JSON data model, defined by JSON Schema and written as JSON or [Jx Notation](/docs/framework/concepts/jxn-files). A Jx application is a tree of such objects whose structure mirrors the DOM API, whose reactivity is powered by `@vue/reactivity`, and whose behavior is declared in `state` entries.
 
 ## The core premise
 
@@ -40,9 +40,9 @@ A Jx component is a single `.json` file that can be fully self-describing:
 
 1. **DOM-First Design.** Property names mirror standard DOM element properties. `tagName`, `className`, `textContent`, `hidden`, `tabIndex` all map directly to their DOM equivalents.
 
-2. **Rule of Least Power.** Declarative JSON over imperative JavaScript wherever possible. `$ref` bindings over template expressions. Template expressions over handler functions. Handler functions only when logic cannot be expressed otherwise.
+2. **Rule of Least Power.** Declarative data over imperative JavaScript wherever possible. `$ref` bindings over template expressions. Template expressions over handler functions. Handler functions only when logic cannot be expressed otherwise.
 
-3. **JSON as the Authoritative Format.** Documents are valid JSON. Fully serializable. No `this` ambiguity. Natively understood by visual builders, IDEs, validators, and bundlers.
+3. **Serializable, with JSON as the data model.** A document is a JSON value, written as `.json` or as Jx Notation (`.jxn`), and JSON Schema is the authoritative definition. Fully serializable. No `this` ambiguity. Natively understood by visual builders, IDEs, validators, and bundlers.
 
 4. **Explicit Over Implicit.** Signal scope does not leak across component boundaries. Every dependency must be explicitly declared as a `$prop`.
 
