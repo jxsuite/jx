@@ -21,12 +21,14 @@
  * - **A version already in flight is not a failure either.** Apple allows one at a time, so when a
  *   different version is waiting or in review the build stays in TestFlight, a warning says so, and
  *   the next release carries on from there.
- * - **It never answers for the build's export compliance.** That is the build's own declaration
- *   (`ITSAppUsesNonExemptEncryption` in `electron-builder.yml`); a processed build that still has
- *   no answer fails here, naming it, rather than being declared on the person's behalf.
+ * - **It answers a build's export compliance only when told what the answer is.** The answer is a
+ *   legal declaration that is the owner's, so it is never a default: `--encryption exempt` (the
+ *   build uses only exempt encryption) or `--encryption non-exempt` records that answer on a build
+ *   that has none, through the build's `usesNonExemptEncryption`. A build that already has an
+ *   answer is left alone, and with no flag a build without one fails here, naming it.
  *
  *   bun scripts/mas-submit.ts --build <number> [--version <x.y.z>] [--release-type
- *   MANUAL|AFTER_APPROVAL] [--whats-new <text>]
+ *   MANUAL|AFTER_APPROVAL] [--whats-new <text>] [--encryption exempt|non-exempt]
  *
  * Credentials come from the environment: `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, and the key
  * itself at `APPLE_API_KEY_PATH` (default `~/.appstoreconnect/private_keys/AuthKey_<id>.p8`, where
@@ -223,8 +225,13 @@ function describeFailure(method: string, path: string, status: number, text: str
   return `${method} ${path} -> ${status}: ${detail}`;
 }
 
+/** The owner's export compliance answer, as the build's `usesNonExemptEncryption`. */
+export type EncryptionAnswer = "exempt" | "non-exempt";
+
 export interface SubmitOptions {
   buildNumber: string;
+  /** Recorded on a build with no answer; absent, such a build fails. */
+  encryption?: EncryptionAnswer;
   /** How often the build is looked up while it processes. */
   intervalMs?: number;
   releaseType: ReleaseType;
@@ -433,11 +440,22 @@ export async function submitToReview(
     throw new Error(`Build ${label} has expired and cannot be submitted.`);
   }
   if (build.attributes.usesNonExemptEncryption === null) {
-    throw new Error(
-      `Build ${label} has no export compliance answer. The build declares it itself: set ` +
-        `ITSAppUsesNonExemptEncryption in electron-builder.yml (packages/desktop/AGENTS.md, ` +
-        `"Mac App Store Publishing"), or answer it for this build in App Store Connect.`,
-    );
+    if (!options.encryption) {
+      throw new Error(
+        `Build ${label} has no export compliance answer. Set the repository variable ` +
+          `MAS_ENCRYPTION to "exempt" or "non-exempt" so the job records it ` +
+          `(packages/desktop/AGENTS.md, "Mac App Store Publishing"), or answer it for this build ` +
+          `in App Store Connect.`,
+      );
+    }
+    await client.request("PATCH", `/v1/builds/${build.id}`, {
+      data: {
+        attributes: { usesNonExemptEncryption: options.encryption === "non-exempt" },
+        id: build.id,
+        type: "builds",
+      },
+    });
+    lines.push(`Recorded export compliance for ${label}: ${options.encryption} encryption.`);
   }
 
   const version = await ensureVersion(client, app.id, options);
@@ -490,6 +508,7 @@ export async function submitToReview(
 
 export interface Args {
   buildNumber: string;
+  encryption: EncryptionAnswer | undefined;
   releaseType: ReleaseType;
   version: string | null;
   whatsNew: string;
@@ -498,6 +517,7 @@ export interface Args {
 export function parseArgs(argv: string[]): Args {
   const args: Args = {
     buildNumber: "",
+    encryption: undefined,
     releaseType: "MANUAL",
     version: null,
     whatsNew: DEFAULT_WHATS_NEW,
@@ -524,6 +544,13 @@ export function parseArgs(argv: string[]): Args {
           );
         }
         args.releaseType = value;
+        break;
+      }
+      case "--encryption": {
+        if (value !== "exempt" && value !== "non-exempt") {
+          throw new Error(`--encryption is exempt or non-exempt, not ${JSON.stringify(value)}`);
+        }
+        args.encryption = value;
         break;
       }
       case "--whats-new": {
@@ -568,6 +595,7 @@ if (import.meta.main) {
   const client = createClient({ issuerId, keyId, privateKey: readFileSync(keyPath, "utf8") });
   const report = await submitToReview(client, {
     buildNumber: args.buildNumber,
+    encryption: args.encryption,
     releaseType: args.releaseType,
     version,
     whatsNew: args.whatsNew,
