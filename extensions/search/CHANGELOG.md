@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.8](https://github.com/jxsuite/jx/compare/search-v0.6.7...search-v0.6.8) (2026-11-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.2.1
+
 ## [0.6.7](https://github.com/jxsuite/jx/compare/search-v0.6.6...search-v0.6.7) (2026-11-23)
 
 

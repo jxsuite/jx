@@ -2,7 +2,7 @@
 
 ## One Backend-Owned Model of a Project, Served by Every Studio Host
 
-**Version:** 0.1.16-draft\
+**Version:** 0.1.18-draft\
 **Status:** Partial\
 **Updated:** 2026-11-23\
 **License:** MIT
@@ -387,6 +387,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.18-draft** (2026-11-23) — Every adapter subscribes, and the resync reasons are retired: a reconnect is a subscribe with sinceRev, every cache is keyed by the store (a new epoch's snapshot of the same bytes re-keys rather than drops, and a `docChanged` of bytes already accounted for is no other writer's change), and a host that does not serve the subscription leaves Studio with no live account of other writers.
+- **0.1.17-draft** (2026-11-23) — §11.3 is Implemented: the cloud session's collaboration rooms are keyed by document, save through its project state host with a base and a write id of their own, report a refused save or an outside change under unsaved edits as doc-conflict, and follow renames and removals; §10.3 says its rooms save through it.
 - **0.1.16-draft** (2026-11-23) — The reference walk moves to @jxsuite/protocol/refs, re-exported by the server, so Studio and the cloud host walk with it without depending on a backend.
 - **0.1.15-draft** (2026-11-23) — The cloud binding is specified whole: a capability route, the subscribe exchange and its end on /events, and the conditional writes, deletes and rename on /project-state routes; the persisted log's schema and replay window are fixed; Studio honours a partial graph and supplies its own rewrites.
 - **0.1.14-draft** (2026-11-23) — The cloud host serves the contract: its Durable Object persists the log in SQLite (13.1), reports a partial graph and announces a change only an unindexed document could depend on as an incomplete invalidation naming none (8.2), and passes the suite through the cloud binding (10.3); a capability answer other than 404 or 405 is asked again (3.2); the cloud's rooms still flush without a base, so 11.3 is Partial.
@@ -407,4 +409,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Project State Specification v0.1.16-draft_
+_Jx Project State Specification v0.1.18-draft_

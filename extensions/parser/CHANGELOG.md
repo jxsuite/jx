@@ -1,5 +1,22 @@
 # Changelog
 
+## [5.2.3](https://github.com/jxsuite/jx/compare/parser-v5.2.2...parser-v5.2.3) (2026-11-23)
+
+
+### Bug Fixes
+
+* **schema:** className and hidden admit a $ref, as the schema already says ([#735](https://github.com/jxsuite/jx/issues/735)) ([170bac9](https://github.com/jxsuite/jx/commit/170bac96ac8ef74f8e9d23aabb676554214fd889))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.16
+    * @jxsuite/schema bumped to 8.2.1
+  * devDependencies
+    * @jxsuite/runtime bumped to 9.0.3
+
 ## [5.2.2](https://github.com/jxsuite/jx/compare/parser-v5.2.1...parser-v5.2.2) (2026-11-23)
 
 

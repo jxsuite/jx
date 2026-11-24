@@ -2,7 +2,7 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.31-draft\
+**Version:** 0.8.0-draft\
 **Status:** Partial\
 **Updated:** 2026-11-23\
 **License:** MIT
@@ -1165,6 +1165,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.0-draft** (2026-11-23) — §7.3 and §10.1 the backend no longer pushes onFileResync and the adapters report no resync reason; a dropped stream is repaired by the project state subscription.
 - **0.7.31-draft** (2026-11-23) — The Cloud adapter subscribes to the session's replaying /events where it serves the project state binding, and saves, deletes and renames with a base.
 - **0.7.30-draft** (2026-11-23) — The window's session runs the project state host and answers projectSubscribe, projectWrite and projectDelete over its socket, refusing the unconditional writes to a socket that subscribed (§7.3); the adapter exposes the subscription as projectState and reports a reconnect as its end (§10.1).
 - **0.7.29-draft** (2026-11-23) — §7.3 and §10.1 point at project-state.md, which makes the window's session the project state host and replaces resync pushes with a replaying subscription.
@@ -1281,4 +1282,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.31-draft_
+_Jx Studio Desktop Architecture Specification v0.8.0-draft_

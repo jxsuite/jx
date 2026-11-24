@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.17.27-draft\
+**Version:** 0.18.0-draft\
 **Status:** Partial\
 **Updated:** 2026-11-23\
 **License:** MIT
@@ -2686,6 +2686,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.18.0-draft** (2026-11-23) — The resync reasons and the echo window are removed in favour of the project state subscription; the tree folds its file events and snapshots, the caches that read documents are keyed by the store, and a platform without a served subscription has no live account of other writers.
 - **0.17.27-draft** (2026-11-23) — §6.6: every bindable row carries the value-source ladder, including the Link, Open in and popover-target rows and an element's Class and Hidden.
 - **0.17.26-draft** (2026-11-23) — 9.1.2: a preview is bounded by its box; the mount contains layout, paint and style so a fixed element in a preview cannot draw over Studio's chrome.
 - **0.17.25-draft** (2026-11-23) — §9.1.1: a rename is one operation where the host serves one, and an open referrer with unsaved edits, co-edited or not, has the host's rewrite applied to its buffer, or is reported when nothing is left to rewrite.
@@ -2982,4 +2983,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.17.27-draft_
+_`@jxsuite/studio` Specification v0.18.0-draft_

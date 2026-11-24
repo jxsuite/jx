@@ -1,5 +1,38 @@
 # Changelog
 
+## [14.0.0](https://github.com/jxsuite/jx/compare/studio-v13.2.0...studio-v14.0.0) (2026-11-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio,desktop:** retire the resync reasons; every reconnect is a subscribe with sinceRev ([#739](https://github.com/jxsuite/jx/issues/739))
+
+### Features
+
+* **studio,desktop:** retire the resync reasons; every reconnect is a subscribe with sinceRev ([#739](https://github.com/jxsuite/jx/issues/739)) ([8d87e68](https://github.com/jxsuite/jx/commit/8d87e68c9fc551d22763ff7aaa9ab18868771970))
+
+
+### Bug Fixes
+
+* **schema:** className and hidden admit a $ref, as the schema already says ([#735](https://github.com/jxsuite/jx/issues/735)) ([170bac9](https://github.com/jxsuite/jx/commit/170bac96ac8ef74f8e9d23aabb676554214fd889))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.3
+    * @jxsuite/collab bumped to 0.13.1
+    * @jxsuite/create bumped to 1.8.8
+    * @jxsuite/erase bumped to 0.3.7
+    * @jxsuite/formulas bumped to 0.0.40
+    * @jxsuite/markup bumped to 1.0.16
+    * @jxsuite/protocol bumped to 7.0.0
+    * @jxsuite/runtime bumped to 9.0.3
+    * @jxsuite/schema bumped to 8.2.1
+    * @jxsuite/site bumped to 4.1.2
+    * @jxsuite/ui bumped to 0.16.1
+
 ## [13.2.0](https://github.com/jxsuite/jx/compare/studio-v13.1.0...studio-v13.2.0) (2026-11-23)
 
 

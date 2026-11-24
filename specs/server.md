@@ -2,7 +2,7 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.4.9-draft\
+**Version:** 0.4.10-draft\
 **Status:** Partial\
 **Updated:** 2026-11-23\
 **License:** MIT
@@ -383,6 +383,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.10-draft** (2026-11-23) — §3.1 the reload stream's fs frames carry no resync reason; the project state stream repairs their gaps.
 - **0.4.9-draft** (2026-11-23) — The dev server serves the project state stream at GET /__studio/project/events and conditional file writes and deletes, refuses a stream naming another project than the active one, keys a collaboration room and the preview overlay inside the active project by its document (§3.1, §4.1).
 - **0.4.8-draft** (2026-11-23) — §3.1 names the project state stream of project-state.md as the replaying one, leaving the reload stream's non-replay unchanged.
 - **0.4.7-draft** (2026-11-23) — §3.4: the desktop loopback project server answers a .jxn document on every static lane as JSON, as the dev server and a site origin do, and Studio's shell realm installs a .jxn parser as the canvas does.
@@ -456,4 +457,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.4.9-draft_
+_`@jxsuite/server` Specification v0.4.10-draft_
