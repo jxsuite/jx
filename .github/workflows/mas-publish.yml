@@ -219,10 +219,15 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           RELEASE_TYPE: ${{ inputs.release_type }}
+          # The owner's export compliance answer ("exempt" or "non-exempt"), recorded on a build
+          # that has none. Unset, such a build fails the job (scripts/mas-submit.ts).
+          MAS_ENCRYPTION: ${{ vars.MAS_ENCRYPTION }}
           BUILD_NUMBER: ${{ needs.mas-publish.outputs.build_number }}
         run: |
           set -euo pipefail
           export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$APPLE_API_KEY_PATH"
           trap 'rm -f "$APPLE_API_KEY_PATH"' EXIT
-          bun scripts/mas-submit.ts --build "$BUILD_NUMBER" --release-type "$RELEASE_TYPE"
+          args=(--build "$BUILD_NUMBER" --release-type "$RELEASE_TYPE")
+          if [ -n "${MAS_ENCRYPTION:-}" ]; then args+=(--encryption "$MAS_ENCRYPTION"); fi
+          bun scripts/mas-submit.ts "${args[@]}"

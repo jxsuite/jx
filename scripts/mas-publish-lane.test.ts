@@ -76,10 +76,13 @@ describe("mas-publish.yml", () => {
     const step = submit?.steps.find((candidate) => candidate.name === "Submit to App Review");
     expect(step?.env).toMatchObject({
       BUILD_NUMBER: "${{ needs.mas-publish.outputs.build_number }}",
+      MAS_ENCRYPTION: "${{ vars.MAS_ENCRYPTION }}",
       RELEASE_TYPE: "${{ inputs.release_type }}",
     });
-    expect(step?.run).toContain('bun scripts/mas-submit.ts --build "$BUILD_NUMBER"');
+    expect(step?.run).toContain('--build "$BUILD_NUMBER"');
     expect(step?.run).toContain('--release-type "$RELEASE_TYPE"');
+    expect(step?.run).toContain('--encryption "$MAS_ENCRYPTION"');
+    expect(step?.run).toContain('bun scripts/mas-submit.ts "${args[@]}"');
     expect(step?.run).toContain("trap 'rm -f \"$APPLE_API_KEY_PATH\"' EXIT");
   });
 

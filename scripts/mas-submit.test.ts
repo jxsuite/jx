@@ -96,6 +96,9 @@ function fakeAsc(overrides: Partial<FakeAscState> = {}) {
           data: state.app ? [{ attributes: { bundleId: "com.jxsuite.studio" }, id: "app1" }] : [],
         });
       }
+      if (method === "PATCH" && route === "/v1/builds/build1") {
+        return reply({ data: { attributes: {}, id: "build1" } });
+      }
       if (route === "/v1/builds") {
         const index = Math.min(lookups, state.buildStates.length - 1);
         lookups += 1;
@@ -307,8 +310,35 @@ describe("submitToReview", () => {
     const { client, state } = fakeAsc({ encryption: null });
     const failure = await rejection(submitToReview(client, OPTIONS));
 
-    expect(failure?.message).toMatch(/no export compliance answer.*ITSAppUsesNonExemptEncryption/s);
+    expect(failure?.message).toMatch(/no export compliance answer.*MAS_ENCRYPTION/s);
     expect(state.calls).not.toContain("POST /v1/appStoreVersions");
+    expect(state.calls).not.toContain("PATCH /v1/builds/build1");
+  });
+
+  test.each([
+    ["exempt", false],
+    ["non-exempt", true],
+  ] as const)(
+    "records the %s answer the owner chose on a build with none",
+    async (answer, flag) => {
+      const { client, state } = fakeAsc({ encryption: null });
+      const report = await submitToReview(client, { ...OPTIONS, encryption: answer });
+
+      expect(report.failed).toBe(false);
+      expect(report.lines.join("\n")).toContain(`Recorded export compliance`);
+      expect(state.bodies["PATCH /v1/builds/build1"]?.data.attributes).toEqual({
+        usesNonExemptEncryption: flag,
+      });
+      expect(state.calls.indexOf("PATCH /v1/builds/build1")).toBeLessThan(
+        state.calls.indexOf("POST /v1/reviewSubmissions"),
+      );
+    },
+  );
+
+  test("leaves a build that already has an answer alone", async () => {
+    const { client, state } = fakeAsc({ encryption: true });
+    await submitToReview(client, { ...OPTIONS, encryption: "exempt" });
+    expect(state.calls).not.toContain("PATCH /v1/builds/build1");
   });
 
   test("refuses an expired build", async () => {
@@ -344,6 +374,7 @@ describe("parseArgs", () => {
   test("takes the build number and defaults to a manual release", () => {
     expect(parseArgs(["--build", "500"])).toEqual({
       buildNumber: "500",
+      encryption: undefined,
       releaseType: "MANUAL",
       version: null,
       whatsNew: "Bug fixes and improvements.",
@@ -361,9 +392,12 @@ describe("parseArgs", () => {
         "AFTER_APPROVAL",
         "--whats-new",
         "Hi",
+        "--encryption",
+        "exempt",
       ]),
     ).toEqual({
       buildNumber: "7",
+      encryption: "exempt",
       releaseType: "AFTER_APPROVAL",
       version: "1.2.3",
       whatsNew: "Hi",
@@ -375,6 +409,7 @@ describe("parseArgs", () => {
     [["--build", "x"], /--build <number> is required/],
     [["--build"], /--build needs a value/],
     [["--build", "1", "--release-type", "NOW"], /MANUAL or AFTER_APPROVAL/],
+    [["--build", "1", "--encryption", "maybe"], /exempt or non-exempt/],
     [["--build", "1", "--bogus", "x"], /Unknown option: --bogus/],
   ])("rejects %j", (argv, message) => {
     expect(() => parseArgs(argv)).toThrow(message);
