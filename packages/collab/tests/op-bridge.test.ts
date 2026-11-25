@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp } from "../src/ops.ts";
 import { applyDocOpToDoc } from "../src/ops.ts";
@@ -399,7 +400,7 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     );
   });
 
-  test("a new style declaration collapses its map and order events to one op", () => {
+  test("a new style declaration collapses to one op", () => {
     const a = new Y.Doc();
     const b = new Y.Doc();
     seedStructure(a, { children: [{ style: { color: "red" }, tagName: "p" }], tagName: "div" });
@@ -424,11 +425,49 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     expect(Array.isArray(ops)).toBe(true);
     for (const op of Array.isArray(ops) ? ops : []) {
       expect(op).toMatchObject({ key: "style", op: "set-key", path: ["children", 0] });
+      // The op carries the block in canonical order, not the order the author wrote it in.
+      const value = "value" in op ? op.value : undefined;
+      expect(isJsonObject(value) ? Object.keys(value) : []).toEqual(["color", "margin"]);
     }
     expect(yValueToJson(resolveYPath(b, ["children", 0, "style"]))).toEqual({
       margin: "1px",
       color: "red",
     });
+  });
+
+  test("a style change at two depths in one transaction collapses to one op", () => {
+    const a = new Y.Doc();
+    const b = new Y.Doc();
+    seedStructure(a, {
+      children: [{ style: { ":hover": { color: "red" }, width: "1px" }, tagName: "p" }],
+      tagName: "div",
+    });
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    let ops: JxDocOp[] | null | "unset" = "unset";
+    b.getMap("structure").observeDeep((events) => {
+      ops = yEventsToDocOps(events);
+    });
+    applyDocOpsToY(
+      a,
+      [
+        {
+          key: "style",
+          op: "set-key",
+          path: ["children", 0],
+          value: { ":hover": { color: "blue" }, height: "2px", width: "1px" },
+        },
+      ],
+      "x",
+    );
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
+    expect(Array.isArray(ops) ? ops.length : -1).toBeGreaterThan(0);
+    for (const op of Array.isArray(ops) ? ops : []) {
+      expect(op).toMatchObject({ key: "style", op: "set-key", path: ["children", 0] });
+    }
+  });
+
+  test("an event that is not a map, array or text event bails to null", () => {
+    expect(yEventsToDocOps([fakeEvent({ path: [], target: { doc: null } })])).toBeNull();
   });
 
   test("a collapse whose container is gone bails to null", () => {

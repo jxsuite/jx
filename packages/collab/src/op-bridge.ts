@@ -24,6 +24,7 @@ import {
   toYChild,
   writeNodeKey,
   yChildToJson,
+  yNodeKeyToJson,
   yValueToJson,
 } from "./schema.ts";
 import type { YStructureValue } from "./schema.ts";
@@ -321,7 +322,7 @@ export function yEventsToDocOps(
         key: granular.key,
         op: "set-key",
         path: granular.nodePath,
-        value: yValueToJson(container),
+        value: yNodeKeyToJson(granular.key, container),
       });
       continue;
     }
@@ -348,7 +349,7 @@ export function yEventsToDocOps(
         if (change.action === "delete") {
           ops.push({ key, op: "set-key", path });
         } else {
-          ops.push({ key, op: "set-key", path, value: yValueToJson(target.get(key)) });
+          ops.push({ key, op: "set-key", path, value: yNodeKeyToJson(key, target.get(key)) });
         }
       }
     } else if (event instanceof Y.YArrayEvent) {

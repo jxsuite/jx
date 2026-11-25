@@ -296,7 +296,7 @@ describe("the shared write rule", () => {
     expect(yValueToJson(node)).toEqual({ tagName: "p" });
   });
 
-  test("an ordered style, state and function entry read back in their written order", () => {
+  test("style reads canonically, and state and function entries ascending, whatever order they were written", () => {
     const doc = new Y.Doc();
     const root = doc.getMap<YStructureValue>("structure");
     const value = {
@@ -315,7 +315,7 @@ describe("the shared write rule", () => {
     const json = yValueToJson(root);
     expect(keysOf(memberOf(json, "state"))).toEqual(["a", "z"]);
     expect(memberOf(json, "style")).toEqual({ color: "red" });
-    // A map written before the companion array existed still reads, in its own order.
+    // Attributes carry no order of their own: Yjs's order is what reads back.
     const legacy = new Y.Map<YStructureValue>();
     legacy.set("b", 1);
     legacy.set("a", 2);
@@ -327,17 +327,21 @@ describe("the shared write rule", () => {
     expect(memberOf(yValueToJson(root), "state")).toEqual({ a: { body: "x" } });
     mergeYNode(root, { state: { a: 2 } });
     expect(memberOf(yValueToJson(root), "state")).toEqual({ a: 2 });
-    // A stale key left in the companion array, and a duplicate, are ignored on read.
-    const style = new Y.Map<YStructureValue>();
-    const order = new Y.Array<YStructureValue>();
-    order.insert(0, ["x", "x", "gone", "y"]);
-    style.set("y", 1);
-    style.set("x", 2);
-    style.set("\0order", order);
-    root.set("style", style);
-    expect(keysAt(root, "style")).toEqual(["x", "y"]);
-    mergeYNode(root, { style: { y: 1, x: 2, w: 3 } });
-    expect(keysAt(root, "style")).toEqual(["y", "x", "w"]);
+    // A style stored whole by a client from before the schema went granular reads canonically too.
+    root.set("style", { padding: "1px", ":hover": { b: "1", a: "2" }, color: "red" });
+    expect(keysAt(root, "style")).toEqual(["color", "padding", ":hover"]);
+    const hover = memberOf(memberOf(yValueToJson(root), "style"), ":hover");
+    expect(keysOf(hover)).toEqual(["a", "b"]);
+    // Nothing stored in a style, state or function map is a key the document did not name.
+    mergeYNode(root, { style: { y: 1, x: 2, w: 3 }, state: { b: 1, a: 2 } });
+    expect(keysAt(root, "style")).toEqual(["w", "x", "y"]);
+    expect(keysAt(root, "state")).toEqual(["a", "b"]);
+    for (const key of ["style", "state"]) {
+      const map = root.get(key);
+      expect(map instanceof Y.Map ? [...map.keys()].toSorted() : null).toEqual(
+        keysAt(root, key).toSorted(),
+      );
+    }
   });
 
   test("writers reject what is not a node or a child, and skip cleared keys", () => {
@@ -377,7 +381,7 @@ describe("the shared write rule", () => {
   test("stored shapes older writers left are healed and every cleared key is dropped", () => {
     const doc = new Y.Doc();
     const root = doc.getMap<YStructureValue>("structure");
-    // A style map with no companion array, a state map and a handler holding plain values.
+    // A style map, a state map and a handler holding plain values.
     const style = new Y.Map<YStructureValue>();
     style.set("a", "1");
     root.set("style", style);
@@ -408,12 +412,11 @@ describe("the shared write rule", () => {
     const handler = root.get("onclick");
     expect(handler).toBeInstanceOf(Y.Map);
     expect(handler instanceof Y.Map ? handler.get("body") : null).toBeInstanceOf(Y.Text);
-    // The state's own keys keep the written order, with a shared prefix left alone.
     mergeYNode(root, { state: { keep: 2, h: 1, g: { body: "g" } } });
-    expect(keysAt(root, "state")).toEqual(["keep", "h", "g"]);
+    expect(keysAt(root, "state")).toEqual(["g", "h", "keep"]);
     // Seeding drops cleared keys too.
     const holder = new Y.Doc().getMap<YStructureValue>("holder");
-    holder.set("style", toYObject({ a: undefined, b: { c: undefined, d: 1 } }, true));
+    holder.set("style", toYObject({ a: undefined, b: { c: undefined, d: 1 } }));
     holder.set("state", toYState({ a: undefined, b: 1 }));
     holder.set("onclick", toYFunction({ body: "x", y: undefined }));
     const read = yValueToJson(holder);
@@ -439,7 +442,7 @@ function memberOf(value: JxDocumentValue | undefined, key: string): JxDocumentVa
   return value[key];
 }
 
-/** The own keys of one node key's object value, in stored order. */
+/** The own keys of one node key's object value, in read order. */
 function keysAt(root: Y.Map<YStructureValue>, key: string): string[] {
   return keysOf(memberOf(yValueToJson(root), key));
 }

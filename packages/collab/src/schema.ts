@@ -29,10 +29,10 @@
  * through {@link mergeYNode}), diffs onto the containers already there and falls back to
  * {@link toYNodeValue} only when the stored type changes.
  *
- * Key order. A `Y.Map` has none, and peers would read different orders, so a style block, a `state`
- * block and a function entry carry a companion `Y.Array` of their keys under {@link ORDER_KEY}.
- * {@link yValueToJson} reads the map in that order, and a writer keeps the array equal to the order
- * of the value it writes.
+ * Key order. A `Y.Map` has none, and nothing here stores one. A style block is read in the
+ * canonical order of {@link canonicalStyle}, a `state` block and a function entry in ascending key
+ * order, so peers holding the same keys read the same block whatever order each wrote them in.
+ * `$media` is a whole value and keeps its source order.
  *
  * Seeding contract: providers seed only `source` (from file bytes). Clients derive `structure` on
  * first sync via {@link seedStructure}, which is convergence-safe under concurrent seeders because
@@ -45,6 +45,7 @@ import { cloneValue } from "@jxsuite/schema/doc-ops";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import { matchChildren } from "./diff-core.ts";
+import { canonicalStyle } from "./style-order.ts";
 
 export const META_KEY = "meta";
 export const FRONTMATTER_KEY = "frontmatter";
@@ -183,13 +184,7 @@ export function applyTextEdit(text: Y.Text, next: string): boolean {
   return true;
 }
 
-/**
- * The reserved key of a Y.Map's companion `Y.Array` of keys. It starts with NUL so no JSON key a
- * document names (a CSS property, a state entry) can collide with it.
- */
-export const ORDER_KEY = "\u0000order";
-
-/** Node keys that hold a state block: an ordered `Y.Map` of entries. */
+/** Node keys that hold a state block: a `Y.Map` of entries, read in ascending key order. */
 const STATE_KEY = "state";
 
 /** Whether a node key holds an event-handler function (`onclick`, `oninput`, ...). */
@@ -205,88 +200,17 @@ function isFunctionEntry(value: JxDocumentValue | undefined): value is DocumentR
   );
 }
 
-/** The keys of a plain object whose value is defined, in the object's own order. */
-function definedKeys(value: DocumentRecord): string[] {
-  return Object.entries(value)
-    .filter(([, entry]) => entry !== undefined)
-    .map(([key]) => key);
-}
-
-/** A map's keys in their stored order: the companion array first, then any key it does not name. */
-function orderedKeys(map: Y.Map<YStructureValue>): string[] {
-  const order = map.get(ORDER_KEY);
-  const keys = new Set<string>();
-  if (order instanceof Y.Array) {
-    for (const key of order.toArray()) {
-      if (isString(key) && map.has(key) && key !== ORDER_KEY) {
-        keys.add(key);
-      }
-    }
-  }
-  for (const key of map.keys()) {
-    if (key !== ORDER_KEY) {
-      keys.add(key);
-    }
-  }
-  return [...keys];
-}
-
-/** Store `keys` as the companion array of a map that has none yet. */
-function seedOrder(map: Y.Map<YStructureValue>, keys: readonly string[]): void {
-  const order = new Y.Array<YStructureValue>();
-  order.insert(0, [...keys]);
-  map.set(ORDER_KEY, order);
-}
-
 /**
- * Make a map read in `keys` order. Nothing is written when it already does, and otherwise the
- * companion array takes one minimal edit (common prefix and suffix kept), so concurrent additions
- * to the order survive the way concurrent characters in a text do.
+ * A plain object becomes a Y.Map, recursing into nested objects; other values stay plain JSON. No
+ * key order is stored: a style block is read in {@link canonicalStyle} order.
  */
-function syncOrder(map: Y.Map<YStructureValue>, keys: readonly string[]): void {
-  const order = map.get(ORDER_KEY);
-  if (!(order instanceof Y.Array)) {
-    seedOrder(map, keys);
-    return;
-  }
-  const effective = orderedKeys(map);
-  if (effective.length === keys.length && effective.every((key, i) => key === keys[i])) {
-    return;
-  }
-  const raw = order.toArray();
-  let start = 0;
-  const minLen = Math.min(raw.length, keys.length);
-  while (start < minLen && raw[start] === keys[start]) {
-    start += 1;
-  }
-  let endRaw = raw.length;
-  let endKeys = keys.length;
-  while (endRaw > start && endKeys > start && raw[endRaw - 1] === keys[endKeys - 1]) {
-    endRaw -= 1;
-    endKeys -= 1;
-  }
-  if (endRaw > start) {
-    order.delete(start, endRaw - start);
-  }
-  if (endKeys > start) {
-    order.insert(start, keys.slice(start, endKeys));
-  }
-}
-
-/**
- * A plain object becomes a Y.Map, recursing into nested objects; other values stay plain JSON. An
- * `ordered` object (a style block) carries the companion key array at every level.
- */
-export function toYObject(value: DocumentRecord, ordered = false): Y.Map<YStructureValue> {
+export function toYObject(value: DocumentRecord): Y.Map<YStructureValue> {
   const map = new Y.Map<YStructureValue>();
   for (const [key, entry] of Object.entries(value)) {
     if (entry === undefined) {
       continue;
     }
-    map.set(key, isDocumentRecord(entry) ? toYObject(entry, ordered) : cloneValue(entry));
-  }
-  if (ordered) {
-    seedOrder(map, definedKeys(value));
+    map.set(key, isDocumentRecord(entry) ? toYObject(entry) : cloneValue(entry));
   }
   return map;
 }
@@ -295,17 +219,12 @@ export function toYObject(value: DocumentRecord, ordered = false): Y.Map<YStruct
  * Merge a plain object into an existing Y.Map per key: set changed keys, delete removed ones,
  * recurse into nested maps. Whole-value replacement would mint a new Y.Map and discard a peer's
  * concurrent edit to an untouched sibling property — the very thing granularity exists to prevent.
- * An `ordered` merge also leaves the companion key array in the value's order.
  */
-export function mergeYObject(
-  map: Y.Map<YStructureValue>,
-  value: DocumentRecord,
-  ordered = false,
-): void {
+export function mergeYObject(map: Y.Map<YStructureValue>, value: DocumentRecord): void {
   // Detached key list: deleting from a Y.Map while iterating its live keys is unsafe.
   // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
   for (const key of [...map.keys()]) {
-    if (key !== ORDER_KEY && (!(key in value) || value[key] === undefined)) {
+    if (!(key in value) || value[key] === undefined) {
       map.delete(key);
     }
   }
@@ -316,22 +235,19 @@ export function mergeYObject(
     const existing = map.get(key);
     if (isDocumentRecord(entry)) {
       if (existing instanceof Y.Map) {
-        mergeYObject(existing, entry, ordered);
+        mergeYObject(existing, entry);
       } else {
-        map.set(key, toYObject(entry, ordered));
+        map.set(key, toYObject(entry));
       }
     } else if (!map.has(key) || !deepEqualJson(existing, entry)) {
       map.set(key, cloneValue(entry));
     }
   }
-  if (ordered) {
-    syncOrder(map, definedKeys(value));
-  }
 }
 
 /**
- * A function entry or handler becomes an ordered Y.Map whose `body` is a `Y.Text`, so two authors
- * typing in one function body merge per character. Its other keys stay plain.
+ * A function entry or handler becomes a Y.Map whose `body` is a `Y.Text`, so two authors typing in
+ * one function body merge per character. Its other keys stay plain.
  */
 export function toYFunction(value: DocumentRecord): Y.Map<YStructureValue> {
   const map = new Y.Map<YStructureValue>();
@@ -340,7 +256,6 @@ export function toYFunction(value: DocumentRecord): Y.Map<YStructureValue> {
       map.set(key, key === "body" && isString(entry) ? new Y.Text(entry) : cloneValue(entry));
     }
   }
-  seedOrder(map, definedKeys(value));
   return map;
 }
 
@@ -348,7 +263,7 @@ export function toYFunction(value: DocumentRecord): Y.Map<YStructureValue> {
 export function mergeYFunction(map: Y.Map<YStructureValue>, value: DocumentRecord): void {
   // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
   for (const key of [...map.keys()]) {
-    if (key !== ORDER_KEY && value[key] === undefined) {
+    if (value[key] === undefined) {
       map.delete(key);
     }
   }
@@ -367,10 +282,9 @@ export function mergeYFunction(map: Y.Map<YStructureValue>, value: DocumentRecor
       map.set(key, cloneValue(entry));
     }
   }
-  syncOrder(map, definedKeys(value));
 }
 
-/** A `state` block becomes an ordered Y.Map; each function entry in it a {@link toYFunction}. */
+/** A `state` block becomes a Y.Map; each function entry in it a {@link toYFunction}. */
 export function toYState(value: DocumentRecord): Y.Map<YStructureValue> {
   const map = new Y.Map<YStructureValue>();
   for (const [key, entry] of Object.entries(value)) {
@@ -378,15 +292,14 @@ export function toYState(value: DocumentRecord): Y.Map<YStructureValue> {
       map.set(key, isFunctionEntry(entry) ? toYFunction(entry) : cloneValue(entry));
     }
   }
-  seedOrder(map, definedKeys(value));
   return map;
 }
 
-/** Merge a `state` block onto the ordered Y.Map already holding it, entry by entry. */
+/** Merge a `state` block onto the Y.Map already holding it, entry by entry. */
 export function mergeYState(map: Y.Map<YStructureValue>, value: DocumentRecord): void {
   // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
   for (const key of [...map.keys()]) {
-    if (key !== ORDER_KEY && value[key] === undefined) {
+    if (value[key] === undefined) {
       map.delete(key);
     }
   }
@@ -405,7 +318,6 @@ export function mergeYState(map: Y.Map<YStructureValue>, value: DocumentRecord):
       map.set(key, cloneValue(entry));
     }
   }
-  syncOrder(map, definedKeys(value));
 }
 
 /** A plain object becomes a Y.Map whose string values are each a Y.Text; other values stay plain. */
@@ -481,10 +393,10 @@ export function toYChildren(children: readonly JxDocumentValue[]): Y.Array<YStru
 
 /**
  * The conversion rule for one node key, shared by every writer: a `children` array becomes a
- * `Y.Array`, a {@link TEXT_KEYS} string a `Y.Text`, `style` an ordered nested `Y.Map`, the other
+ * `Y.Array`, a {@link TEXT_KEYS} string a `Y.Text`, `style` and the other
  * {@link GRANULAR_OBJECT_KEYS} nested `Y.Map`s, {@link TEXT_OBJECT_KEYS} a `Y.Map` of texts,
- * `state` an ordered `Y.Map` of entries, a function handler an ordered `Y.Map` with a `Y.Text`
- * body, and anything else a whole-JSON LWW value.
+ * `state` a `Y.Map` of entries, a function handler a `Y.Map` with a `Y.Text` body, and anything
+ * else a whole-JSON LWW value.
  */
 export function toYNodeValue(key: string, value: JxDocumentValue): YStructureValue {
   if (key === "children" && Array.isArray(value)) {
@@ -492,9 +404,6 @@ export function toYNodeValue(key: string, value: JxDocumentValue): YStructureVal
   }
   if (TEXT_KEYS.has(key) && isString(value)) {
     return new Y.Text(value);
-  }
-  if (key === "style" && isDocumentRecord(value)) {
-    return toYObject(value, true);
   }
   if (GRANULAR_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
     return toYObject(value);
@@ -552,10 +461,6 @@ export function writeNodeKey(
     return;
   }
   if (existing instanceof Y.Map && isDocumentRecord(value)) {
-    if (key === "style") {
-      mergeYObject(existing, value, true);
-      return;
-    }
     if (GRANULAR_OBJECT_KEYS.has(key)) {
       mergeYObject(existing, value);
       return;
@@ -653,9 +558,47 @@ function toChildItem(item: YStructureValue): Y.Text | Y.Map<YStructureValue> | s
   throw new TypeError("collab-schema: a children array holds only nodes and text");
 }
 
-/** A node or granular-object Y.Map back to its plain object (deep, detached copy). */
+/**
+ * A node Y.Map back to its plain object (deep, detached copy), each key read by
+ * {@link yNodeKeyToJson}.
+ */
 function yMapToJson(map: Y.Map<YStructureValue>): DocumentRecord {
-  return Object.fromEntries(orderedKeys(map).map((key) => [key, yValueToJson(map.get(key))]));
+  return Object.fromEntries([...map.keys()].map((key) => [key, yNodeKeyToJson(key, map.get(key))]));
+}
+
+/**
+ * A granular-object Y.Map back to a plain object, nested maps included, with its keys in Yjs's own
+ * order or, when `sorted`, ascending.
+ */
+function yObjectToJson(map: Y.Map<YStructureValue>, sorted: boolean): DocumentRecord {
+  const keys = sorted ? [...map.keys()].toSorted() : [...map.keys()];
+  return Object.fromEntries(
+    keys.map((key) => {
+      const entry = map.get(key);
+      return [key, entry instanceof Y.Map ? yObjectToJson(entry, sorted) : yValueToJson(entry)];
+    }),
+  );
+}
+
+/**
+ * The value held under a node key, back to JSON, with the key order specs/collab.md §3.1 gives it.
+ * `style` reads in {@link canonicalStyle} order, whether stored granularly or, by a client from
+ * before the schema went granular, as one value; `state` and a function handler read their keys
+ * ascending, since only `style` and `$media` give key order a meaning (`spec.md`, Jx Notation).
+ * `$media` is a whole value and arrives in the order it was written.
+ */
+export function yNodeKeyToJson(
+  key: string,
+  value: YStructureValue | undefined,
+): JxDocumentValue | undefined {
+  if (key === "style") {
+    const block = value instanceof Y.Map ? yObjectToJson(value, false) : value;
+    return isDocumentRecord(block) ? canonicalStyle(block) : block;
+  }
+  if (value instanceof Y.Map) {
+    return yObjectToJson(value, key === STATE_KEY || isHandlerKey(key));
+  }
+  return yValueToJson(value);
 }
 
 /**

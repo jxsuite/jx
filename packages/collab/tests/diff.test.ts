@@ -247,17 +247,15 @@ describe("replaceYStructure", () => {
     expect("state" in yDocToJson(ydoc)).toBe(false);
   });
 
-  test("a reordered style or state block is a change, a reordered attributes block is not", () => {
+  test("a key reorder is not a change in style, state or attributes", () => {
     const base: JxMutableNode = { style: { a: "1", b: "2" }, tagName: "p" };
-    expect(diffDocs(base, { style: { b: "2", a: "1" }, tagName: "p" })).toEqual([
-      { key: "style", op: "set-key", path: [], value: { b: "2", a: "1" } },
-    ]);
+    expect(diffDocs(base, { style: { b: "2", a: "1" }, tagName: "p" })).toEqual([]);
     const state = (inner: Record<string, number>): JxMutableNode => ({
       state: { list: [inner] },
       tagName: "p",
     });
-    expect(diffDocs(state({ x: 1, y: 2 }), state({ y: 2, x: 1 }))).toHaveLength(1);
-    expect(diffDocs(state({ x: 1 }), state({ x: 1 }))).toEqual([]);
+    expect(diffDocs(state({ x: 1, y: 2 }), state({ y: 2, x: 1 }))).toEqual([]);
+    expect(diffDocs(state({ x: 1 }), state({ x: 2 }))).toHaveLength(1);
     expect(
       diffDocs(
         { attributes: { a: "1", b: "2" }, tagName: "p" },

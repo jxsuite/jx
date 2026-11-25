@@ -48,25 +48,6 @@ class MaxOpsExceededError extends Error {
   }
 }
 
-/** Node keys whose object key order the shared document stores and a peer must read back. */
-const ORDERED_KEYS: ReadonlySet<string> = new Set(["style", "state"]);
-
-/** Whether two values list their object keys in the same order, at every depth. */
-function sameKeyOrder(a: JxDocumentValue | undefined, b: JxDocumentValue | undefined): boolean {
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.every((item, i) => sameKeyOrder(item, b[i]));
-  }
-  if (isJsonObject(a) && isJsonObject(b)) {
-    const keysA = Object.keys(a);
-    const keysB = Object.keys(b);
-    return (
-      keysA.length === keysB.length &&
-      keysA.every((key, i) => key === keysB[i] && sameKeyOrder(a[key], b[key]))
-    );
-  }
-  return true;
-}
-
 /** Order-insensitive for object keys, order-sensitive for arrays. */
 export function deepEqual(a: JxDocumentValue | undefined, b: JxDocumentValue | undefined): boolean {
   if (a === b) {
@@ -241,10 +222,7 @@ function diffNode(script: DiffScript, path: JxPath, a: JxMutableNode, b: JxMutab
     }
     if (!(key in b)) {
       pushOp(script, { key, op: "set-key", path });
-    } else if (
-      !deepEqual(a[key], b[key]) ||
-      (ORDERED_KEYS.has(key) && !sameKeyOrder(a[key], b[key]))
-    ) {
+    } else if (!deepEqual(a[key], b[key])) {
       pushOp(script, { key, op: "set-key", path, value: b[key] });
     }
   }

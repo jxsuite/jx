@@ -667,19 +667,75 @@ describe("a function body merges per character", () => {
     expect(memberOf(treeA["onclick"], "body")).toBe("a;return 1;b");
   });
 
-  test("reordering state entries reaches the peer in the new order", () => {
+  test("state entries read in ascending name order on both peers, whatever order was written", () => {
     const { a, b, sync } = pair(FUNCTIONS);
     const { alpha, beta, gamma } = FUNCTION_STATE;
     setKey(a, [], "state", { gamma, beta, alpha });
     sync();
-    expect(keysOf(yDocToJson(b)["state"])).toEqual(["gamma", "beta", "alpha"]);
+    expect(keysOf(yDocToJson(a)["state"])).toEqual(["alpha", "beta", "gamma"]);
+    expect(keysOf(yDocToJson(b)["state"])).toEqual(["alpha", "beta", "gamma"]);
   });
 
-  test("reordering style declarations reaches the peer in the new order", () => {
+  test("style declarations read in canonical order, not the order they were written in", () => {
     const { a, b, sync } = pair({ style: { color: "red", padding: "1px" }, tagName: "div" });
     setKey(a, [], "style", { padding: "1px", color: "red" });
     sync();
-    expect(keysOf(yDocToJson(b)["style"])).toEqual(["padding", "color"]);
+    expect(keysOf(yDocToJson(b)["style"])).toEqual(["color", "padding"]);
+  });
+
+  test("a longhand written before its shorthand reads after it", () => {
+    const { a, b, sync } = pair({ style: { color: "red" }, tagName: "div" });
+    setKey(a, [], "style", { "border-bottom-color": "red", "border-color": "blue" });
+    sync();
+    expect(keysOf(yDocToJson(b)["style"])).toEqual(["border-color", "border-bottom-color"]);
+    expect(keysOf(yDocToJson(a)["style"])).toEqual(["border-color", "border-bottom-color"]);
+  });
+
+  test("peers writing the same style keys in different orders converge to identical canonical JSON", () => {
+    const { a, b, sync } = pair({ tagName: "div" });
+    setKey(a, [], "style", { padding: "1px", marginLeft: "0", margin: "1em", color: "red" });
+    setKey(b, [], "style", { color: "red", margin: "1em", marginLeft: "0", padding: "1px" });
+    sync();
+    const jsonA = JSON.stringify(yDocToJson(a));
+    expect(JSON.stringify(yDocToJson(b))).toBe(jsonA);
+    expect(keysOf(yDocToJson(a)["style"])).toEqual(["color", "margin", "marginLeft", "padding"]);
+  });
+
+  test("nested selector blocks follow the declarations, by key name", () => {
+    const { a } = pair({ tagName: "div" });
+    setKey(a, [], "style", { "&:hover": { color: "red" }, "& a": { color: "blue" }, width: "1px" });
+    expect(keysOf(yDocToJson(a)["style"])).toEqual(["width", "& a", "&:hover"]);
+  });
+
+  test("$media is a whole value, so its source order survives the round trip", () => {
+    const media = {
+      "--lg": "(min-width: 1024px)",
+      "--sm": "(min-width: 640px)",
+      "--md": "(min-width: 768px)",
+    };
+    const { a, b, sync } = pair({ tagName: "div" });
+    setKey(a, [], "$media", media);
+    sync();
+    expect(keysOf(yDocToJson(b)["$media"])).toEqual(["--lg", "--sm", "--md"]);
+    const seeded = new Y.Doc();
+    seedStructure(seeded, { $media: media, tagName: "div" });
+    expect(keysOf(yDocToJson(seeded)["$media"])).toEqual(["--lg", "--sm", "--md"]);
+  });
+
+  test("no reserved key appears in any read output", () => {
+    const { a } = pair({
+      onclick: { $prototype: "Function", body: "x()" },
+      state: FUNCTION_STATE,
+      style: { color: "red", ":hover": { color: "blue" } },
+      tagName: "div",
+    });
+    expect(JSON.stringify(yDocToJson(a))).not.toContain(String.raw`\u0000`);
+    for (const key of ["style", "state", "onclick"]) {
+      const value = resolveYPath(a, [key]);
+      expect(
+        value instanceof Y.Map ? [...value.keys()].every((k) => !k.includes("\0")) : false,
+      ).toBe(true);
+    }
   });
 });
 
