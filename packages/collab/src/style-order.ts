@@ -99,7 +99,12 @@ export function canonicalStyleKeys(
 }
 
 /** A style block with its keys, and those of every nested block, in canonical order. */
-export function canonicalStyle(block: Readonly<Record<string, JxDocumentValue | undefined>>) {
+/** A style block, nested blocks included. */
+export type StyleBlock = Record<string, JxDocumentValue>;
+
+export function canonicalStyle(
+  block: Readonly<Record<string, JxDocumentValue | undefined>>,
+): StyleBlock {
   return Object.fromEntries(
     canonicalStyleKeys(block).map((key) => {
       const value = block[key]!;

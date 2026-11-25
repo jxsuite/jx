@@ -17,7 +17,9 @@ export type ShorthandTable = Record<string, string[]>;
 export async function buildShorthandTable(): Promise<ShorthandTable> {
   const data = await css.listAll();
   const table: ShorthandTable = {};
-  const shorthands = data.properties
+  /* The package's types omit `longhands`, which every property record in css.json may carry. */
+  const properties: readonly { name: string; longhands?: readonly string[] }[] = data.properties;
+  const shorthands = properties
     .filter((property) => (property.longhands?.length ?? 0) > 0)
     .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   for (const property of shorthands) {

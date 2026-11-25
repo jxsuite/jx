@@ -592,8 +592,13 @@ export function yNodeKeyToJson(
   value: YStructureValue | undefined,
 ): JxDocumentValue | undefined {
   if (key === "style") {
-    const block = value instanceof Y.Map ? yObjectToJson(value, false) : value;
-    return isDocumentRecord(block) ? canonicalStyle(block) : block;
+    if (value instanceof Y.Map) {
+      return canonicalStyle(yObjectToJson(value, false));
+    }
+    if (value instanceof Y.Array || value instanceof Y.Text) {
+      return yValueToJson(value);
+    }
+    return isDocumentRecord(value) ? canonicalStyle(value) : value;
   }
   if (value instanceof Y.Map) {
     return yObjectToJson(value, key === STATE_KEY || isHandlerKey(key));

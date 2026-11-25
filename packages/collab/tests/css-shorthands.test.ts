@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { buildShorthandTable, renderShorthandModule } from "../scripts/css-shorthands-table.ts";
+import type { ShorthandTable } from "../scripts/css-shorthands-table.ts";
 import { SHORTHAND_LONGHANDS } from "../src/css-shorthands.ts";
 
 describe("the committed shorthand table", () => {
   test("matches @webref/css (run `bun run generate:css-shorthands` after a bump)", async () => {
-    expect(SHORTHAND_LONGHANDS).toEqual(await buildShorthandTable());
+    const committed: ShorthandTable = { ...SHORTHAND_LONGHANDS };
+    expect(committed).toEqual(await buildShorthandTable());
   });
 
   test("lists margin and border with their longhands", () => {
