@@ -563,7 +563,18 @@ function toChildItem(item: YStructureValue): Y.Text | Y.Map<YStructureValue> | s
  * {@link yNodeKeyToJson}.
  */
 function yMapToJson(map: Y.Map<YStructureValue>): DocumentRecord {
-  return Object.fromEntries([...map.keys()].map((key) => [key, yNodeKeyToJson(key, map.get(key))]));
+  return Object.fromEntries(
+    [...map.keys()].map((key) => [key, yNodeKeyToJson(key, map.get(key), map.doc)]),
+  );
+}
+
+/** The key order of the document's `$media` map, which orders breakpoint blocks in a style. */
+function mediaOrder(doc: Y.Doc | null | undefined): string[] {
+  if (!doc) {
+    return [];
+  }
+  const media = yValueToJson(structureMap(doc).get("$media"));
+  return isDocumentRecord(media) ? Object.keys(media) : [];
 }
 
 /**
@@ -585,20 +596,24 @@ function yObjectToJson(map: Y.Map<YStructureValue>, sorted: boolean): DocumentRe
  * `style` reads in {@link canonicalStyle} order, whether stored granularly or, by a client from
  * before the schema went granular, as one value; `state` and a function handler read their keys
  * ascending, since only `style` and `$media` give key order a meaning (`spec.md`, Jx Notation).
- * `$media` is a whole value and arrives in the order it was written.
+ * `$media` is a whole value and arrives in the order it was written; the `@--` breakpoint blocks of
+ * a style follow its key order. `doc` is the document `$media` is read from; a `Y.Map` value brings
+ * its own.
  */
 export function yNodeKeyToJson(
   key: string,
   value: YStructureValue | undefined,
+  doc?: Y.Doc | null,
 ): JxDocumentValue | undefined {
   if (key === "style") {
+    const media = () => mediaOrder(value instanceof Y.Map ? (value.doc ?? doc) : doc);
     if (value instanceof Y.Map) {
-      return canonicalStyle(yObjectToJson(value, false));
+      return canonicalStyle(yObjectToJson(value, false), media());
     }
     if (value instanceof Y.Array || value instanceof Y.Text) {
       return yValueToJson(value);
     }
-    return isDocumentRecord(value) ? canonicalStyle(value) : value;
+    return isDocumentRecord(value) ? canonicalStyle(value, media()) : value;
   }
   if (value instanceof Y.Map) {
     return yObjectToJson(value, key === STATE_KEY || isHandlerKey(key));

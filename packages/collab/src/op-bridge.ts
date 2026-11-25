@@ -322,7 +322,7 @@ export function yEventsToDocOps(
         key: granular.key,
         op: "set-key",
         path: granular.nodePath,
-        value: yNodeKeyToJson(granular.key, container),
+        value: yNodeKeyToJson(granular.key, container, doc),
       });
       continue;
     }
@@ -349,7 +349,12 @@ export function yEventsToDocOps(
         if (change.action === "delete") {
           ops.push({ key, op: "set-key", path });
         } else {
-          ops.push({ key, op: "set-key", path, value: yNodeKeyToJson(key, target.get(key)) });
+          ops.push({
+            key,
+            op: "set-key",
+            path,
+            value: yNodeKeyToJson(key, target.get(key), target.doc),
+          });
         }
       }
     } else if (event instanceof Y.YArrayEvent) {

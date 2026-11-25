@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import * as Y from "yjs";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
@@ -446,3 +447,82 @@ function memberOf(value: JxDocumentValue | undefined, key: string): JxDocumentVa
 function keysAt(root: Y.Map<YStructureValue>, key: string): string[] {
   return keysOf(memberOf(yValueToJson(root), key));
 }
+
+describe("breakpoint order on read (examples/components/responsive-card.json)", () => {
+  const card: JxMutableNode = JSON.parse(
+    readFileSync(`${import.meta.dir}/../../../examples/components/responsive-card.json`, "utf8"),
+  );
+
+  /** Every style object in the tree, in document order. */
+  function styles(
+    node: JxDocumentValue | undefined,
+    out: JxDocumentValue[] = [],
+  ): JxDocumentValue[] {
+    if (isJsonObject(node)) {
+      if (isJsonObject(node["style"])) {
+        out.push(node["style"]);
+      }
+      for (const child of Array.isArray(node["children"]) ? node["children"] : []) {
+        styles(child, out);
+      }
+    }
+    return out;
+  }
+
+  /** What the cascade renders: each property's last value, walking the blocks in key order. */
+  function rendered(style: JxDocumentValue) {
+    const out: Record<string, string> = {};
+    const walk = (block: JxDocumentValue, prefix: string) => {
+      if (!isJsonObject(block)) {
+        return;
+      }
+      for (const [key, value] of Object.entries(block)) {
+        if (isJsonObject(value)) {
+          walk(value, `${prefix}${key} `);
+        } else {
+          out[`${prefix}${key}`] = String(value);
+        }
+      }
+    };
+    walk(style, "");
+    return out;
+  }
+
+  const atRules = (style: JxDocumentValue) =>
+    Object.keys(isJsonObject(style) ? style : {}).filter((key) => key.startsWith("@"));
+
+  test("every style keeps its authored breakpoint order and renders as authored", () => {
+    const read = yDocToJson(seeded(card));
+    const authored = styles(card);
+    const got = styles(read);
+    expect(got).toHaveLength(authored.length);
+    expect(authored.map((style) => atRules(style))).toContainEqual(["@--sm", "@--md"]);
+    for (const [index, style] of authored.entries()) {
+      expect(atRules(got[index]!)).toEqual(atRules(style));
+      expect(rendered(got[index]!)).toEqual(rendered(style));
+    }
+  });
+
+  test("a pair sets the same property, and the later breakpoint still wins", () => {
+    const [, heading] = styles(yDocToJson(seeded(card)));
+    expect(atRules(heading!)).toEqual(["@--sm", "@--md"]);
+    expect(
+      isJsonObject(heading) && isJsonObject(heading["@--md"]) && heading["@--md"]["fontSize"],
+    ).toBe("2rem");
+  });
+
+  test("a document with no $media reads breakpoints in name order", () => {
+    const { $media: _media, ...bare } = card;
+    const [, heading] = styles(yDocToJson(seeded(bare)));
+    expect(atRules(heading!)).toEqual(["@--md", "@--sm"]);
+  });
+
+  test("a $media listing @--dark first puts it first", () => {
+    const reordered: JxMutableNode = {
+      ...card,
+      $media: { "--dark": "(prefers-color-scheme: dark)", "--md": "(min-width: 768px)" },
+    };
+    const paragraph = styles(yDocToJson(seeded(reordered))).at(2);
+    expect(atRules(paragraph!)).toEqual(["@--dark", "@--md"]);
+  });
+});

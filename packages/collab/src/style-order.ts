@@ -9,6 +9,9 @@
  * another shorthand (`border` before `border-color` before `border-bottom-color`), and property
  * name ascending breaks every other tie. Nested blocks (`&:hover`, `& a`, `@--sm`) follow, by key
  * name: the repository has no selector-specificity helper, so specificity is not what orders them.
+ * The one exception is a breakpoint block, a nested key named `@--sm`, `@--dark` and the like: two
+ * breakpoints can set the same property, so name order would change the rendered style. Those
+ * follow the position of their key in the document's `$media` map, which keeps the author's order.
  */
 
 import type { JxDocumentValue } from "@jxsuite/schema/types";
@@ -83,9 +86,38 @@ function orderDeclarations(keys: readonly string[]): string[] {
   return out;
 }
 
-/** The keys of a style block in canonical order: declarations, then nested blocks. */
+/** The at-rule key a `$media` entry names: `$media` key `--sm` is written `@--sm` in a style block. */
+const BREAKPOINT_PREFIX = "@--";
+
+/**
+ * Order nested keys: by name, except that the `@--` breakpoint keys, which sort as one contiguous
+ * run by name, are reordered within that run. Those in `media` come first, in the position of their
+ * `$media` key (`@--sm` for `--sm`); any other `@--` key follows them, by name.
+ */
+function orderNested(nested: readonly string[], media: readonly string[]): string[] {
+  const sorted = nested.toSorted(byName);
+  const rank = new Map(media.map((key, index) => [`@${key}`, index]));
+  const breakpoints = sorted
+    .filter((key) => key.startsWith(BREAKPOINT_PREFIX))
+    .toSorted((a, b) => {
+      const ra = rank.get(a);
+      const rb = rank.get(b);
+      if (ra !== undefined && rb !== undefined) {
+        return ra - rb;
+      }
+      return ra !== undefined ? -1 : rb !== undefined ? 1 : byName(a, b);
+    });
+  const queue = [...breakpoints];
+  return sorted.map((key) => (key.startsWith(BREAKPOINT_PREFIX) ? queue.shift()! : key));
+}
+
+/**
+ * The keys of a style block in canonical order: declarations, then nested blocks. `media` is the
+ * key order of the document's `$media` map (`["--sm", "--md"]`), which orders `@--` breakpoints.
+ */
 export function canonicalStyleKeys(
   block: Readonly<Record<string, JxDocumentValue | undefined>>,
+  media: readonly string[] = [],
 ): string[] {
   const declarations: string[] = [];
   const nested: string[] = [];
@@ -95,20 +127,21 @@ export function canonicalStyleKeys(
     }
     (isJsonObject(value) ? nested : declarations).push(key);
   }
-  return [...orderDeclarations(declarations), ...nested.toSorted(byName)];
+  return [...orderDeclarations(declarations), ...orderNested(nested, media)];
 }
 
-/** A style block with its keys, and those of every nested block, in canonical order. */
 /** A style block, nested blocks included. */
 export type StyleBlock = Record<string, JxDocumentValue>;
 
+/** A style block with its keys, and those of every nested block, in canonical order. */
 export function canonicalStyle(
   block: Readonly<Record<string, JxDocumentValue | undefined>>,
+  media: readonly string[] = [],
 ): StyleBlock {
   return Object.fromEntries(
-    canonicalStyleKeys(block).map((key) => {
+    canonicalStyleKeys(block, media).map((key) => {
       const value = block[key]!;
-      return [key, isJsonObject(value) ? canonicalStyle(value) : value];
+      return [key, isJsonObject(value) ? canonicalStyle(value, media) : value];
     }),
   );
 }

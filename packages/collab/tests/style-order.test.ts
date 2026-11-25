@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { canonicalStyle, canonicalStyleKeys } from "../src/style-order.ts";
 
 describe("canonicalStyleKeys", () => {
@@ -85,5 +86,43 @@ describe("canonicalStyle", () => {
     expect(JSON.stringify(style)).toBe(
       '{"color":"red","&:hover":{"margin":"1em","marginLeft":"0","& b":{"x":"2","y":"1"}}}',
     );
+  });
+});
+
+describe("breakpoint blocks follow $media order", () => {
+  const media = ["--sm", "--md", "--lg", "--dark"];
+  test("a pair setting the same property keeps the authored order", () => {
+    const style = canonicalStyle(
+      { "@--md": { fontSize: "2rem" }, fontSize: "1rem", "@--sm": { fontSize: "1.5rem" } },
+      media,
+    );
+    expect(Object.keys(style)).toEqual(["fontSize", "@--sm", "@--md"]);
+  });
+  test("no $media falls back to name order", () => {
+    const block = { "@--sm": { a: "1" }, "@--md": { a: "2" }, "@--dark": { a: "3" } };
+    expect(Object.keys(canonicalStyle(block))).toEqual(["@--dark", "@--md", "@--sm"]);
+    expect(Object.keys(canonicalStyle(block, []))).toEqual(["@--dark", "@--md", "@--sm"]);
+  });
+  test("@--dark is ordered by $media when listed, and by name after the listed keys when not", () => {
+    const block = { "@--dark": { a: "1" }, "@--lg": { a: "2" }, "@--sm": { a: "3" } };
+    expect(Object.keys(canonicalStyle(block, ["--sm", "--dark", "--lg"]))).toEqual([
+      "@--sm",
+      "@--dark",
+      "@--lg",
+    ]);
+    expect(Object.keys(canonicalStyle(block, ["--lg", "--sm"]))).toEqual([
+      "@--lg",
+      "@--sm",
+      "@--dark",
+    ]);
+  });
+  test("selectors keep name order and stay out of the breakpoint run, at every depth", () => {
+    const style = canonicalStyle(
+      { "@--md": { "@--sm": { a: "1" }, "@--md": { a: "2" } }, "&:hover": { a: "1" }, "@--sm": {} },
+      media,
+    );
+    expect(Object.keys(style)).toEqual(["&:hover", "@--sm", "@--md"]);
+    const inner = style["@--md"];
+    expect(isJsonObject(inner) ? Object.keys(inner) : []).toEqual(["@--sm", "@--md"]);
   });
 });
