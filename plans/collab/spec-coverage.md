@@ -19,7 +19,7 @@ The whole-spec marker, `specs/collab.md` line 12:
 
 > **Status: Partial.** This is a stub spec for a shipped subsystem that grew ahead of its specification. It records the wire contract and the load-bearing invariants as implemented today; the room host (`packages/collab/src/ws-room.ts`), the dev server's explicit-save persistence (`packages/server/src/collab.ts`), the source-canonical lock (`packages/collab/src/source-lock.ts`), the envelope's frame types and control messages (`packages/collab/src/envelope.ts`) and the awareness state shape (`packages/collab/src/awareness-types.ts`) ship but are not yet specified here.
 
-The stub treated this as paper. Detailing found that four of the five modules do not do what the sections would have to say, so the plan became `implement`, and §1 and §2 (which stay paper) moved to `plan:collab/spec-coverage-backends`. Re-read against the tree on 2026-09-27.
+The stub treated this as paper. Detailing found that four of the five modules do not do what the sections would have to say, so the plan became `implement`, and §1 and §2 (which stay paper) moved to the landed §1 and §2 reconcile. Re-read against the tree on 2026-09-27.
 
 **What ships and is specified as it is.** The room host `createCollabHost` (`ws-room.ts`; the connect, open, sync, relay, read-only, epoch, leave and unknown-input behaviour §1.1 below states), the four frame types and eight control messages of `envelope.ts` with their `error` codes (`too-large` and `rate-limited` come only from the gateway) and the client's one `hydratePath` retry (`ws-client.ts`), the dev server's flush-only write-back, room-level `doc-dirty`, 30-second empty-room grace and external-change reset (`packages/server/src/collab.ts`, with the rename route's `onFileMoved` in `studio-api.ts`), the lock's flip, freeze, source reconciler and stale-parse discard (`source-lock.ts`, `sourceParseNow` and `setTransactGate` in `packages/studio/src/collab/collab-session.ts`, `replaceYStructure`'s `canonicalRev` bump in `diff.ts`), and the awareness fields and palette (`awareness-types.ts`). Each clause of the sections below was checked against those files.
 
@@ -122,7 +122,7 @@ Coverage: no new source file, so the manifest check finds nothing new. Per-file 
 
 - Delete the line-12 whole-spec marker, and on the footer line delete "— a stub, subject to expansion." (the footer's version is untouched).
 - §2's **Envelope** bullet ends "…see §3; the frame layout is §2.2 and the control messages §2.3." The **Awareness** bullet ends "…the state each client publishes is §2.4."
-- Add after §1's body, before §2 (after whatever `plan:collab/spec-coverage-backends` left there):
+- Add after §1's body, before §2 (after whatever the landed §1 reconcile left there):
 
 ```markdown
 ### 1.1 The Room Host
