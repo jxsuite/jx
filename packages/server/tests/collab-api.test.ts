@@ -128,7 +128,11 @@ describe("/__studio/collab", () => {
   test("the probe body is exactly what negotiateCollab reads", async () => {
     const res = await fetch(`http://localhost:${server.port}/__studio/collab`);
     const probe = await res.json();
-    expect(negotiateCollab(probe)).toEqual({ offer: [COLLAB_SUBPROTOCOL], refused: null });
+    expect(negotiateCollab(probe)).toEqual({
+      disabled: false,
+      offer: [COLLAB_SUBPROTOCOL],
+      refused: null,
+    });
   });
 
   test("an upgrade offering the subprotocol is echoed, and the socket opens", async () => {

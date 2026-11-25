@@ -196,7 +196,7 @@ interface TabRuntime {
   /** Bumped on every detach; in-flight attaches abandon when it moves. */
   generation: number;
   session: ActiveSession | null;
-  attaching: Promise<void> | null;
+  attaching: { generation: number; done: Promise<null> } | null;
   /** The re-read and re-attach a reset started, until it settles. */
   rejoining: Promise<void> | null;
   /**
@@ -219,6 +219,14 @@ interface StackItemEvent {
 }
 
 const runtimes = new WeakMap<Tab, TabRuntime>();
+
+/** The attempt holding each path on the wire, so no two attempts for one path overlap. */
+const attemptsByPath = new Map<string, Promise<null>>();
+
+/** The sentence of a failure, without a trailing full stop (callers close their own sentence). */
+function reasonOf(message: string): string {
+  return message.replace(/\.$/, "");
+}
 
 /** Callers hold either the raw tab or a reactive proxy of it; key runtimes by the raw object. */
 function rawTab(tab: Tab): Tab {
@@ -316,6 +324,7 @@ export function resetCollabForTests(): void {
   _parse = null;
   _reload = null;
   _notify = () => {};
+  attemptsByPath.clear();
 }
 
 function onTransact(tab: Tab, record: TransactionRecord, origin: TransactOrigin): void {
@@ -877,6 +886,10 @@ export function ensureCollab(tab: Tab): void {
 export function setCollabEnabled(tab: Tab, enabled: boolean): void {
   const runtime = runtimeFor(tab);
   if (runtime.optedOut.value === !enabled) {
+    /* Share is also the retry (collab.md §4): a failed tab attaches again, nothing else does. */
+    if (enabled && runtime.watcherInstalled && collabState(tab).status === "failed") {
+      void attachSession(tab);
+    }
     return;
   }
   runtime.optedOut.value = !enabled;
@@ -922,7 +935,7 @@ async function rejoin(tab: Tab, path: string): Promise<void> {
 
 async function attachSession(tab: Tab): Promise<void> {
   const runtime = runtimeFor(tab);
-  if (runtime.session || runtime.attaching) {
+  if (runtime.session || runtime.attaching?.generation === runtime.generation) {
     return;
   }
   const { documentPath: path } = tab;
@@ -943,12 +956,31 @@ async function attachSession(tab: Tab): Promise<void> {
   const state = collabState(tab);
   state.status = "connecting";
   state.attachError = "";
-  const attempt = (async () => {
+  /* An attach asked for while a superseded one is still ending waits for it (collab.md §4): the
+     earlier attempt destroys its handle when its generation moved, which frees the path. */
+  const earlier: Promise<null>[] = [];
+  for (const pending of [runtime.attaching?.done, attemptsByPath.get(path)]) {
+    if (pending) {
+      earlier.push(pending);
+    }
+  }
+  let handle: CollabHandle | null = null;
+  const gate = Promise.withResolvers<null>();
+  const registration = { done: gate.promise, generation };
+  void (async () => {
     try {
-      const [collab, handle] = await Promise.all([loadCollab(), platform.collab!(path)]);
+      await Promise.all(earlier);
+      if (runtime.generation !== generation) {
+        return;
+      }
+      const [collab, opened] = await Promise.all([loadCollab(), platform.collab!(path)]);
+      handle = opened;
       if (!handle) {
-        // The platform offers collaboration; this document is simply not shared. Solo, not broken.
-        state.status = "detached";
+        /* The platform answered that no room serves this document here: nothing went wrong, so
+           nothing is said (collab.md §4). `detached` is only the author having left. */
+        if (runtime.generation === generation) {
+          state.status = "unavailable";
+        }
         return;
       }
       if (runtime.generation !== generation) {
@@ -958,7 +990,10 @@ async function attachSession(tab: Tab): Promise<void> {
       // Assigned synchronously: a Promise executor runs before its constructor returns.
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("collab-sync-timeout")), SYNC_TIMEOUT_MS);
+        timer = setTimeout(
+          () => reject(new Error("The shared document did not finish its first sync.")),
+          SYNC_TIMEOUT_MS,
+        );
       });
       try {
         await Promise.race([handle.whenSynced, timeout]);
@@ -977,23 +1012,34 @@ async function attachSession(tab: Tab): Promise<void> {
       registerCollabPath(path);
       announceSession(tab);
     } catch (error) {
-      /* An attach that threw is a FAILURE, and it used to be reported as "detached" — the same
-         value a solo document carries. A relay that is down, a token that expired and a document
-         nobody shared were one indistinguishable state (collab.md §4). */
+      /* An attach that was tried and could not complete is `failed`, never `detached`: a relay that
+         is down and a document the author left must not look alike (collab.md §4). A failure the
+         author walked away from is not theirs to hear about. */
+      handle?.destroy();
+      if (runtime.generation !== generation) {
+        return;
+      }
       state.status = "failed";
       state.active = false;
-      state.attachError = error instanceof Error ? error.message : String(error);
-      notify.warn(`Live collaboration is not available for "${path}" — ${state.attachError}`, {
+      state.attachError = reasonOf(error instanceof Error ? error.message : String(error));
+      notify.warn(`Live collaboration is not available for "${path}" — ${state.attachError}.`, {
         key: `collab:${path}`,
         path,
         source: "Collaboration",
       });
     } finally {
-      runtime.attaching = null;
+      if (runtime.attaching === registration) {
+        runtime.attaching = null;
+      }
+      if (attemptsByPath.get(path) === registration.done) {
+        attemptsByPath.delete(path);
+      }
+      gate.resolve(null);
     }
   })();
-  runtime.attaching = attempt;
-  await attempt;
+  runtime.attaching = registration;
+  attemptsByPath.set(path, registration.done);
+  await registration.done;
 }
 
 function detachSession(tab: Tab): void {

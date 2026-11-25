@@ -83,22 +83,33 @@ The `source` text is the file. A client that mirrors structure into it writes a 
 
 ## 4. Enablement & Degradation
 
-> **Status: Partial.** The four states, the freeze and read-only indicators, clearing the awareness `selection` on unbind, the undo-scope sentence and the `project.json` exclusion ship (`packages/studio/src/collab/collab-state.ts`, `collab-session.ts`, `presence-chips.ts`, `monaco-binding.ts`). An attach that could not open never reaches `failed`: `openDoc` (`packages/collab/src/ws-client.ts`) resolves `null` when the open times out (a relay that is down, a handshake `selectSubprotocol` refused) or the server refuses before `opened`; both adapters (`packages/studio/src/platforms/devserver.ts`, `cloud.ts`) return `null` after logging `negotiateCollab`'s `refused` reason with `console.warn`; and the dev server adapter caches an unanswered probe as `null` for the life of the page. `attachSession` shows every null handle as Solo (`detached`), the collapse the table exists to prevent. The state machine this section promises is not written.
+> **Status: Implemented.** packages/studio/src/collab/collab-session.ts, collab-state.ts, collab-commands.ts, presence-chips.ts, monaco-binding.ts; packages/collab/src/ws-client.ts, negotiate.ts; packages/studio/src/platforms/devserver.ts, cloud.ts.
 
-Collab is a capability the platform may or may not expose. When disabled, `/__studio/collab` answers the probe negatively and the editor runs single-player. Enablement state and the seeding handshake are part of the session lifecycle; a full state machine will be documented here as it settles.
+Collab is a capability the platform may or may not expose. A backend with collaboration switched off answers the probe `{collab: false}`, and against it the editor runs single-player; so it does against a dev server whose probe answers 404, which has no collaboration endpoint (a gateway's unanswered probe is not that, §2.1). The lifecycle below is the whole state machine.
 
-A negative probe **may explain itself**: `{collab: false, detail}`. `negotiateCollab` (`packages/collab/src/negotiate.ts`) reports a non-blank `detail` as its `refused` reason in place of the generic "collaboration disabled", because a server knows which kind of no it is giving — a flag that is off, or a room an action would open (`desktop.md` §10.4) — and only one of those is true of "disabled".
+A negative probe **may explain itself**: `{collab: false, detail}`. `negotiateCollab` (`packages/collab/src/negotiate.ts`) reports a non-blank `detail` as its `refused` reason, which the author sees as a failed attach, while a bare `{collab: false}` is `disabled` and silent, because a server knows which kind of no it is giving — a flag that is off, or a room an action would open (`desktop.md` §10.4) — and only one of those is true of "disabled".
 
 A session is in exactly one of four states, and **only one of them is silent**:
 
-| State         | Means                           | Shown as                           |
-| ------------- | ------------------------------- | ---------------------------------- |
-| `unavailable` | this build has no collaboration | nothing — there is nothing to say  |
-| `detached`    | available, not joined           | **Solo**                           |
-| `attached`    | joined                          | the peer chips                     |
-| `failed`      | tried to join and could not     | **Not connected**, with the reason |
+| State         | Means                                      | Shown as                           |
+| ------------- | ------------------------------------------ | ---------------------------------- |
+| `unavailable` | no collaboration here for this document    | nothing — there is nothing to say  |
+| `detached`    | available, and the author left the session | **Solo**                           |
+| `attached`    | joined                                     | the peer chips                     |
+| `failed`      | tried to join and could not                | **Not connected**, with the reason |
 
 Collapsing `failed` into `detached` is the defect this table exists to prevent: a connection that died and a session nobody started look identical, so the author has no way to know whether to retry. An attach failure records its reason and reports it once.
+
+**What the platform answers decides the state.** The `collab` member (desktop.md §10.3) has three answers, and each is one state. A handle joins. `null` means no room serves this document here and nothing went wrong: a backend that answers `{collab: false}`, a dev server without the endpoint, a runtime that cannot open a WebSocket, and a path the room host refuses by nature (`binary-file`, or `content-not-loaded` for a file it cannot read) are all `unavailable`, because media, comparison and grid tabs carry a path too, and a fault reported for every image opened would teach the author to ignore the one that matters. A rejection means the attach was tried and could not complete, and its message is the reason: a probe the dev server could not answer (an unanswered gateway probe is not a failure, §2.1), a probe advertising only envelopes this client cannot parse (§2.1), any other refusal before `opened`, an `open` that no `opened` answers within ten seconds (named as an unreachable server when the socket is not connected at that moment, and as a silent one when it is), and a first sync that does not finish within eight seconds. The notification is keyed by the document's path, so a retry replaces it rather than adding another.
+
+**The lifecycle.**
+
+1. **Enablement**: a tab attaches when it opens if the platform has a `collab` member, the tab has a document path and the path is not `project.json` (below); otherwise it is `unavailable` and never attaches; a tab whose author left does not attach until shared again.
+2. **Attach**: the tab shows **Connecting…** while the platform probes and the client sends `open`; the host creates the room on the first `open`, seeding `source` from the file, and answers `opened` with the room's epoch (§2); the client sends sync step 1 and the attach completes on sync step 2; the first client able to write that finds the structure unseeded seeds it from the copy of the document it brought, and every later client adopts the shared structure (§3); the host reports the room's unsaved state in the same handshake; the tab is then `attached`, read-only when `hello` granted read permission. An attach asked for while an earlier one for the same tab or the same path is still ending waits for it, so no two attempts for one document overlap.
+3. **Reconnect**: a dropped socket shows **Offline — changes sync on reconnect** and edits keep applying locally; the client reconnects with a backoff starting at one second and doubling to thirty, re-offers its negotiated subprotocol, re-sends `open` for every document it holds and re-publishes its presence; the tab shows Live again once the socket is up; whether a room whose history moved meanwhile is merged or rebuilt is §3's epoch invariant.
+4. **Reset**: when a handle reports that its room's history was replaced (§3), the tab drops the session and attaches again from step 2; which copy of the document it brings into the new room is §3's rule.
+5. **Leaving and retrying**: `Collaborate: Stop sharing` makes the tab `detached` and `Collaborate: Share this document` attaches it again; on a `failed` tab Share is the retry, and it probes again when the last probe could not be answered; nothing retries a failed attach on its own.
+6. **Rename and close**: renaming a document detaches it and attaches under the new path; closing the tab destroys its session.
 
 Two further states must be _visible_ rather than inferred, because in both of them the editor stops responding the way it normally does:
 
@@ -113,7 +124,7 @@ Two further states must be _visible_ rather than inferred, because in both of th
 
 ## 5. Version Skew
 
-> **Status: Partial.** Frame-layout skew is handled: `negotiateCollab` and `selectSubprotocol` (`packages/collab/src/negotiate.ts`) keep a peer that speaks another `jx.collab` token out of the room. Merge-granularity skew is not: the §3.1 layout is versioned by `COLLAB_SCHEMA_VERSION` (`packages/collab/src/schema.ts`), which is written to the room's `meta` at seed and never validated or negotiated, so two clients that store §3.1 differently still share a room. Document-format skew is handled nowhere, spec.md §3.2 included, and telling the author why holds only as far as §4's marker records.
+> **Status: Partial.** Frame-layout skew is handled: `negotiateCollab` and `selectSubprotocol` (`packages/collab/src/negotiate.ts`) keep a peer that speaks another `jx.collab` token out of the room. Merge-granularity skew is not: the §3.1 layout is versioned by `COLLAB_SCHEMA_VERSION` (`packages/collab/src/schema.ts`), which is written to the room's `meta` at seed and never validated or negotiated, so two clients that store §3.1 differently still share a room. Document-format skew is handled nowhere, spec.md §3.2 included.
 
 Two different things can be out of step, and conflating them hid the tractable one.
 

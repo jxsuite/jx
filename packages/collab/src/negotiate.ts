@@ -34,6 +34,8 @@ export const COLLAB_SUBPROTOCOL = "jx.collab.v1";
 
 /** What the client should do with the socket, given what the server advertised. */
 export interface CollabNegotiation {
+  /** The server answered a bare `collab: false`: connect nothing and report nothing. */
+  disabled: boolean;
   /**
    * The subprotocols to offer as `Sec-WebSocket-Protocol`. **Empty means offer none**, which is the
    * correct answer against a server that advertises none: an offer it cannot echo would fail the
@@ -58,24 +60,28 @@ export function negotiateCollab(probe: JsonValue): CollabNegotiation {
   if (!isJsonObject(probe)) {
     /* A 200 that is not a JSON object: pre-negotiation server. Connect as before, offering nothing.
        (A JSON array lands here too; it carries no `protocols`, so it always meant the same.) */
-    return { offer: [], refused: null };
+    return { disabled: false, offer: [], refused: null };
   }
   const { collab, detail, protocols } = probe;
   if (collab === false) {
-    /* The server's own sentence wins when it sends one. "Disabled" is true of a flag that is off,
-       and false of a room an action would open: that server knows which it is and says so. */
+    /* A bare `{collab: false}` is a switched-off backend, not a refusal: the author edits
+       single-player. A server that explains itself knows its no is one an action would lift (a
+       room reserved for team members), so its own sentence is reported, as a failure. */
     const sentence = isString(detail) ? detail.trim() : "";
-    return { offer: [], refused: sentence || "This server has collaboration disabled." };
+    return sentence
+      ? { disabled: false, offer: [], refused: sentence }
+      : { disabled: true, offer: [], refused: null };
   }
   if (!Array.isArray(protocols) || protocols.length === 0) {
     // A server that predates negotiation. It would echo nothing, so we must offer nothing.
-    return { offer: [], refused: null };
+    return { disabled: false, offer: [], refused: null };
   }
   if (protocols.includes(COLLAB_SUBPROTOCOL)) {
-    return { offer: [COLLAB_SUBPROTOCOL], refused: null };
+    return { disabled: false, offer: [COLLAB_SUBPROTOCOL], refused: null };
   }
   const theirs = protocols.filter((p) => isString(p)).join(", ") || "none";
   return {
+    disabled: false,
     offer: [],
     refused: `This server speaks collab envelope ${theirs}; this editor speaks ${COLLAB_SUBPROTOCOL}.`,
   };

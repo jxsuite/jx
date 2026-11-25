@@ -253,6 +253,25 @@ export function createDevServerPlatform() {
    */
   let _collabProbe: Promise<CollabNegotiation | null> | null = null;
   /**
+   * Ask the dev server what it speaks. A 404 is a server with no collaboration (null); a fetch
+   * failure or any other non-OK answer rejects so the next attach asks again.
+   */
+  const probeCollab = async (): Promise<CollabNegotiation | null> => {
+    let res: Response;
+    try {
+      res = await fetch("/__studio/collab");
+    } catch {
+      throw new Error("Could not reach the dev server to start live collaboration.");
+    }
+    if (res.status === 404) {
+      return null;
+    }
+    if (!res.ok) {
+      throw new Error(`The dev server answered the collaboration probe with HTTP ${res.status}.`);
+    }
+    return negotiateCollab(await readJson<JsonValue>(res).catch(() => null));
+  };
+  /**
    * One multiplexed collab socket per page; per-doc handles come from openDoc. Memoized as a
    * promise so concurrent first opens share the connection instead of racing two sockets.
    */
@@ -760,32 +779,38 @@ export function createDevServerPlatform() {
 
     /**
      * Realtime co-editing over the dev server's /__studio/collab endpoint (rooms keyed by
-     * server-root-relative path). Probes capability once — older servers without the endpoint
-     * degrade to solo editing; the wire client's evaluation defers behind the dynamic import until
-     * a doc opens.
+     * server-root-relative path). Probes capability once per page, and again after a probe it could
+     * not complete. A 404 means this dev server has no collaboration and resolves null; an
+     * unanswerable probe rejects with the reason (collab.md §4). The wire client's evaluation
+     * defers behind the dynamic import until a doc opens.
      *
      * The same probe carries the subprotocol negotiation. A server that advertises no `protocols`
      * predates it and gets no offer, because an offer it cannot echo would fail the handshake
      * outright (RFC 6455 §4.1); a server that advertises an envelope this build does not speak is
-     * refused here, where the reason can be said, rather than in a room where the two would merge
-     * divergent histories.
+     * refused here with a rejection, where the reason can be said, rather than in a room where the
+     * two would merge divergent histories.
      */
     async collab(docPath: string) {
       if (typeof WebSocket === "undefined" || typeof location === "undefined") {
         return null;
       }
-      if (_collabProbe === null) {
-        _collabProbe = fetch("/__studio/collab")
-          .then(async (res) => (res.ok ? negotiateCollab(await readJson<JsonValue>(res)) : null))
-          .catch(() => null);
+      _collabProbe ??= probeCollab();
+      const probe = _collabProbe;
+      let negotiation: CollabNegotiation | null;
+      try {
+        negotiation = await probe;
+      } catch (error) {
+        // A probe that could not be answered is asked again by the next attach.
+        if (_collabProbe === probe) {
+          _collabProbe = null;
+        }
+        throw error;
       }
-      const negotiation = await _collabProbe;
-      if (negotiation === null) {
+      if (negotiation === null || negotiation.disabled) {
         return null;
       }
       if (negotiation.refused !== null) {
-        console.warn(`Collaboration unavailable: ${negotiation.refused}`);
-        return null;
+        throw new Error(negotiation.refused);
       }
       const { offer } = negotiation;
       _collabConnection ??= (async () => {
