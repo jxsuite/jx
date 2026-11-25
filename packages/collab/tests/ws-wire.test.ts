@@ -12,7 +12,13 @@ import type { WsCollabConnection, WsLike } from "../src/ws-client.ts";
 import { encodeFrame } from "../src/envelope.ts";
 import type { CollabConflict, CollabIdentity } from "../src/provider.ts";
 import { applyDocOpsToY, LOCAL_ORIGIN } from "../src/op-bridge.ts";
-import { seedStructure, sourceText, structureMap, yDocToJson } from "../src/schema.ts";
+import {
+  seedStructure,
+  sourceText,
+  structureMap,
+  updateSourceText,
+  yDocToJson,
+} from "../src/schema.ts";
 
 /** In-memory WebSocket wired straight into a host connection, with async delivery. */
 class LoopbackSocket implements WsLike {
@@ -107,7 +113,7 @@ interface Fixture {
 
 const cleanups: (() => void)[] = [];
 
-function fixture(): Fixture {
+function fixture(onFlush?: (path: string) => Promise<void> | void): Fixture {
   const files = new Map<string, string>([["pages/index.json", `{"tagName":"div"}`]]);
   const flushes: string[] = [];
   const flushOptions: Fixture["flushOptions"] = [];
@@ -121,6 +127,7 @@ function fixture(): Fixture {
     onFlush: (path, options) => {
       flushes.push(path);
       flushOptions.push(options);
+      return onFlush?.(path);
     },
     rejectPath: (path) => (path.endsWith(".png") ? "binary-file" : null),
   });
@@ -146,6 +153,16 @@ afterEach(() => {
     cleanup();
   }
 });
+
+/** The message a promise rejects with, or "" when it does not reject. */
+async function rejectionOf(pending: Promise<unknown>): Promise<string> {
+  try {
+    await pending;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return "";
+}
 
 describe("open + seed", () => {
   test("a handle syncs the server-seeded source and hello identity", async () => {
@@ -269,6 +286,106 @@ describe("lifecycle", () => {
     await handle!.whenSynced;
     await handle!.flush();
     expect(fx.flushes).toEqual(["pages/index.json"]);
+  });
+
+  test("flush rejects with the server's reason", async () => {
+    const fx = fixture(() => Promise.reject(new Error("Could not write pages/index.json: full")));
+    const handle = await fx.connect().openDoc("pages/index.json");
+    await handle!.whenSynced;
+    expect(await rejectionOf(handle!.flush())).toContain("Could not write pages/index.json: full");
+  });
+
+  test("flush while the socket is down rejects at once", async () => {
+    const fx = fixture();
+    const handle = await fx.connect().openDoc("pages/index.json");
+    await handle!.whenSynced;
+    fx.sockets[0]!.dropFromServer();
+    expect(await rejectionOf(handle!.flush())).toContain("not connected");
+  });
+
+  test("a flush pending when the socket closes rejects", async () => {
+    const fx = fixture(() => new Promise<void>(() => {}));
+    const handle = await fx.connect().openDoc("pages/index.json");
+    await handle!.whenSynced;
+    const pending = handle!.flush();
+    await settle();
+    fx.sockets[0]!.dropFromServer();
+    expect(await rejectionOf(pending)).toContain("connection closed");
+  });
+
+  test("a flush pending when the document resets rejects, and the reset handle's next flush rejects at once", async () => {
+    const fx = fixture(() => new Promise<void>(() => {}));
+    const handle = await fx.connect().openDoc("pages/index.json");
+    await handle!.whenSynced;
+    const pending = handle!.flush();
+    await settle();
+    fx.host.resetDoc("pages/index.json");
+    expect(await rejectionOf(pending)).toContain("reset");
+    expect(await rejectionOf(handle!.flush())).toContain("no longer shared");
+  });
+
+  test("destroying the handle or the connection rejects a pending flush", async () => {
+    const fx = fixture(() => new Promise<void>(() => {}));
+    const connection = fx.connect();
+    const handle = await connection.openDoc("pages/index.json");
+    await handle!.whenSynced;
+    const byHandle = handle!.flush();
+    await settle();
+    handle!.destroy();
+    expect(await rejectionOf(byHandle)).toContain("closed before the save");
+    const again = await connection.openDoc("pages/index.json");
+    await again!.whenSynced;
+    const byConnection = again!.flush();
+    await settle();
+    connection.destroy();
+    expect(await rejectionOf(byConnection)).toContain("closed before the save");
+  });
+
+  test("two flushes settle in order, each by its own ack", async () => {
+    const releases: (() => void)[] = [];
+    const fx = fixture(
+      () =>
+        new Promise<void>((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+    const handle = await fx.connect().openDoc("pages/index.json");
+    await handle!.whenSynced;
+    const settled: number[] = [];
+    const first = handle!.flush().then(() => settled.push(1));
+    const second = handle!.flush().then(() => settled.push(2));
+    await settle();
+    expect(releases).toHaveLength(1);
+    releases[0]!();
+    await first;
+    await settle();
+    expect(settled).toEqual([1]);
+    releases[1]!();
+    await second;
+    expect(settled).toEqual([1, 2]);
+  });
+
+  test("markPersisted with the text written keeps a room edited meanwhile unsaved", async () => {
+    const fx = fixture();
+    const a = await fx.connect().openDoc("pages/index.json");
+    const b = await fx.connect().openDoc("pages/index.json");
+    await a!.whenSynced;
+    await b!.whenSynced;
+    const seen = { a: false, b: false };
+    a!.onDirty((dirty) => {
+      seen.a = dirty;
+    });
+    b!.onDirty((dirty) => {
+      seen.b = dirty;
+    });
+    updateSourceText(a!.doc, `{"tagName":"div","a":1}`, "test");
+    await settle();
+    const captured = fx.host.sourceOf("pages/index.json")!;
+    updateSourceText(a!.doc, `{"tagName":"div","a":2}`, "test");
+    await settle();
+    fx.host.markPersisted("pages/index.json", captured);
+    await settle();
+    expect(seen).toEqual({ a: true, b: true });
   });
 
   test("a flush can name the base the save replaces (project-state.md §6.1)", async () => {

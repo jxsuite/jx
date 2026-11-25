@@ -6,6 +6,7 @@ import { colorForKey } from "../src/awareness-types.ts";
 import { diffDocs, replaceYStructure } from "../src/diff.ts";
 import { decodeFrame, encodeFrame } from "../src/envelope.ts";
 import { applyDocOpsToY, yEventsToDocOps } from "../src/op-bridge.ts";
+import { isStructureMirror } from "../src/source-lock.ts";
 import { seedStructure, yDocToJson } from "../src/schema.ts";
 
 describe("package barrel", () => {
@@ -21,6 +22,7 @@ describe("package barrel", () => {
     expect(collab.decodeFrame).toBe(decodeFrame);
     expect(collab.applyDocOpToDoc).toBe(applyDocOpToDoc);
     expect(collab.colorForKey).toBe(colorForKey);
+    expect(collab.isStructureMirror).toBe(isStructureMirror);
     expect(collab.LOCAL_ORIGIN).toBe("jx-local");
     expect(collab.PRESENCE_PALETTE.length).toBeGreaterThan(0);
   });

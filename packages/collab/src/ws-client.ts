@@ -79,6 +79,11 @@ const WS_OPEN = 1;
  */
 type DocTransactionOrigin = string | Y.UndoManager | null;
 
+interface PendingFlush {
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
+
 interface DocEntry {
   doc: Y.Doc;
   epoch: number;
@@ -89,7 +94,8 @@ interface DocEntry {
   resolveSynced: () => void;
   whenSynced: Promise<void>;
   resetCbs: Set<() => void>;
-  pendingFlush: Set<() => void>;
+  /** Flushes awaiting the server, oldest first: each `flush-ack` settles the first. */
+  pendingFlush: PendingFlush[];
   /** Reverts awaiting the server: settled by its `revert-ack`, or by the reset it caused. */
   pendingRevert: Set<() => void>;
   handleDestroyed: boolean;
@@ -219,11 +225,13 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
       }
       case "flush-ack": {
         const entry = docs.get(message.path);
-        if (entry) {
-          for (const resolve of entry.pendingFlush) {
-            resolve();
+        const waiting = entry?.pendingFlush.shift();
+        if (waiting) {
+          if (message.error === undefined) {
+            waiting.resolve();
+          } else {
+            waiting.reject(new Error(message.error));
           }
-          entry.pendingFlush.clear();
         }
         return;
       }
@@ -302,8 +310,17 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
     entry.pendingRevert.clear();
   };
 
+  /** Reject every save still waiting on the server: no answer can arrive for it now. */
+  const settleFlushes = (entry: DocEntry, reason: string) => {
+    const waiting = entry.pendingFlush.splice(0);
+    for (const flush of waiting) {
+      flush.reject(new Error(reason));
+    }
+  };
+
   const fireReset = (path: string, entry: DocEntry) => {
     docs.delete(path);
+    settleFlushes(entry, "The document was reset before the save was confirmed.");
     entry.resolveOpen?.(false);
     entry.resolveOpen = null;
     // The reset is what a revert asked for, whether or not its acknowledgement follows.
@@ -385,6 +402,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
       setStatus("offline");
       for (const entry of docs.values()) {
         entry.opened = false;
+        settleFlushes(entry, "The connection closed before the save was confirmed.");
       }
       reconnect.scheduleRetry();
     };
@@ -414,6 +432,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
       awareness.destroy();
       awarenessDoc.destroy();
       for (const [path, entry] of docs) {
+        settleFlushes(entry, "The document was closed before the save was confirmed.");
         entry.resolveOpen?.(false);
         entry.doc.destroy();
         docs.delete(path);
@@ -442,7 +461,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         handleDestroyed: false,
         hydrated: false,
         opened: false,
-        pendingFlush: new Set(),
+        pendingFlush: [],
         pendingRevert: new Set(),
         resetCbs: new Set(),
         resolveOpen: null,
@@ -494,6 +513,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
             return;
           }
           entry.handleDestroyed = true;
+          settleFlushes(entry, "The document was closed before the save was confirmed.");
           if (docs.get(path) === entry) {
             docs.delete(path);
             sendFrame({ path, type: "doc-close" });
@@ -502,8 +522,16 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         },
         doc: entry.doc,
         flush: (flushOptions) =>
-          new Promise<void>((resolve) => {
-            entry.pendingFlush.add(resolve);
+          new Promise<void>((resolve, reject) => {
+            if (socket?.readyState !== WS_OPEN || !entry.opened) {
+              reject(new Error("The collaboration server is not connected, so nothing was saved."));
+              return;
+            }
+            if (docs.get(path) !== entry) {
+              reject(new Error("This document is no longer shared, so nothing was saved."));
+              return;
+            }
+            entry.pendingFlush.push({ reject, resolve });
             const baseHash = flushOptions?.baseHash;
             sendFrame({
               message:

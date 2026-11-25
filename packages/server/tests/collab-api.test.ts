@@ -114,6 +114,16 @@ afterAll(() => {
   rmSync(FIXTURES, { force: true, recursive: true });
 });
 
+/** The message a promise rejects with, or "" when it does not reject. */
+async function rejectionOf(pending: Promise<unknown>): Promise<string> {
+  try {
+    await pending;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return "";
+}
+
 describe("/__studio/collab", () => {
   test("plain GET answers the capability probe, advertising the subprotocol", async () => {
     const res = await fetch(`http://localhost:${server.port}/__studio/collab`);
@@ -285,7 +295,7 @@ describe("watcher-driven resets", () => {
  * path.
  */
 describe("renames reach the collaboration registry", () => {
-  test("a renamed document keeps its room, and shutdown does not resurrect the old path", async () => {
+  test("a renamed document keeps its room, and no later save writes the old path back", async () => {
     const dir = resolve(import.meta.dir, "_collab_rename_fixtures");
     rmSync(dir, { force: true, recursive: true });
     mkdirSync(join(dir, "pages"), { recursive: true });
@@ -347,7 +357,8 @@ describe("renames reach the collaboration registry", () => {
       expect(readFileSync(join(dir, "pages/moved.md"), "utf8")).toBe("# Before\n\nunsaved\n");
       expect(resets).toBe(0);
 
-      await renamed.stop(true);
+      // The old path's tab saves into the moved document: nothing writes the old path back.
+      await handle!.flush();
       expect(existsSync(join(dir, "pages/moved.md"))).toBe(true);
       expect(existsSync(join(dir, "pages/movable.md"))).toBe(false);
     } finally {
@@ -360,8 +371,8 @@ describe("renames reach the collaboration registry", () => {
   });
 });
 
-describe("graceful shutdown", () => {
-  test("stop() flushes unsaved edits to disk and is idempotent", async () => {
+describe("stopping the registry", () => {
+  test("stop() drops unsaved edits and writes nothing, and a second stop() is a no-op", async () => {
     const dir = resolve(import.meta.dir, "_collab_stop_fixtures");
     rmSync(dir, { force: true, recursive: true });
     mkdirSync(dir, { recursive: true });
@@ -390,13 +401,12 @@ describe("graceful shutdown", () => {
           }
         });
       });
-      // No explicit flush — the file on disk is still the original.
-      expect(readFileSync(join(dir, "doc.md"), "utf8")).toBe("start\n");
-      // Graceful shutdown flushes the pending edit as a last-ditch safety.
       await registry.stop();
-      expect(readFileSync(join(dir, "doc.md"), "utf8")).toBe("start\n\nunsaved edit\n");
+      // Only a flush reaches the disk: stopping the registry wrote nothing.
+      expect(readFileSync(join(dir, "doc.md"), "utf8")).toBe("start\n");
       // A second stop() is idempotent.
       await registry.stop();
+      expect(readFileSync(join(dir, "doc.md"), "utf8")).toBe("start\n");
     } finally {
       connection.destroy();
       void srv.stop(true);
@@ -406,7 +416,7 @@ describe("graceful shutdown", () => {
 });
 
 describe("persist failures", () => {
-  test("a failed shutdown write-back is swallowed and stop() still completes", async () => {
+  test("a flush whose write fails is answered with the reason, the room stays unsaved, and the next flush writes", async () => {
     const dir = resolve(import.meta.dir, "_collab_persist_fail_fixtures");
     rmSync(dir, { force: true, recursive: true });
     mkdirSync(dir, { recursive: true });
@@ -425,24 +435,23 @@ describe("persist failures", () => {
     try {
       const handle = await connection.openDoc("doc.md");
       await handle!.whenSynced;
-      updateSourceText(handle!.doc, "start\n\nnever lands\n", "test");
-      await new Promise<void>((res) => {
-        const off = handle!.onDirty((d) => {
-          if (d) {
-            off();
-            res();
-          }
-        });
+      let dirty = false;
+      handle!.onDirty((now) => {
+        dirty = now;
       });
-      // Turn the target path into a directory: the shutdown write-back must fail (EISDIR),
-      // Be swallowed, and clear its optimistic signature without breaking stop().
+      updateSourceText(handle!.doc, "start\n\nlands later\n", "test");
+      await until(() => dirty);
+      // Turn the target path into a directory: the write fails (EISDIR) and the flush says so.
       rmSync(file);
       mkdirSync(file);
-      await registry.stop();
-      // The failed write left the directory in place; nothing was force-written.
+      expect(await rejectionOf(handle!.flush())).toContain("Could not write doc.md");
+      expect(dirty).toBe(true);
       expect(statSync(file).isDirectory()).toBe(true);
-      // A second stop() after the failure is still a no-op.
-      await registry.stop();
+      // The failure cleared the optimistic signature, so the next flush writes.
+      rmSync(file, { force: true, recursive: true });
+      await handle!.flush();
+      expect(readFileSync(file, "utf8")).toBe("start\n\nlands later\n");
+      await until(() => !dirty);
     } finally {
       connection.destroy();
       void srv.stop(true);

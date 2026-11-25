@@ -413,13 +413,14 @@ export async function publishChanges(
     const message = shell.git.commitMessage.trim();
     const plat = getPlatform();
     shell.git.commitMessage = "";
-    // Fold co-editing sessions into the backend's tree first so the commit never misses trailing
-    // Keystrokes (the mirror is debounced).
-    await flushAllCollab();
     let committed = false;
     // Whether the commit left for its destination. Only a deploy can say no without throwing.
     let shipped = true;
     try {
+      /* Fold co-editing sessions into the backend's tree first so the commit never misses trailing
+         keystrokes (the mirror is debounced). A file that cannot be saved stops the commit: it
+         would leave the commit without the session's latest text (collab.md §1.2). */
+      await flushAllCollab();
       if (includeAll) {
         const unstaged = filesToPublish(true)
           .filter((file) => !file.staged)

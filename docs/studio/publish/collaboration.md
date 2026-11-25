@@ -1,6 +1,9 @@
 ---
 title: "Real-time collaboration"
 description: "Co-edit Jx files live: presence chips, shared cursors on canvas and in code, merged edits and shared saves, and how Studio falls back to solo editing."
+spec:
+  - collab.md#1.2 # persistence: a flush answers once
+  - collab.md#2.4 # awareness state
 code:
   - packages/collab/src/provider.ts
   - packages/studio/src/collab/collab-session.ts
@@ -12,6 +15,7 @@ code:
   - packages/studio/src/collab/monaco-cursors.ts
   - packages/studio/src/collab/monaco-binding.ts
   - packages/server/src/collab.ts
+  - packages/collab/src/source-lock.ts
   - packages/studio/src/files/based-writes.ts
 ---
 
@@ -25,7 +29,7 @@ When two people open the same file through the same Studio backend, the tab beco
 
 - **A status pill** in the toolbar reads **Live** while the session is connected, and names every other state plainly: **Solo** when nobody else is here, **Connecting…**, **`Offline — changes sync on reconnect`**, or **Not connected** when the session could not start. Hover it for the reason. It replaces the usual unsaved-changes dot for this tab.
 - **Flags beside the pill**: **Read-only** when you may look but not publish, and **Code view held** while a collaborator has the text view (see below). Both are standing statements, not error messages.
-- **Presence chips**: one colored circle per collaborator, showing their avatar or initial. Hover one to see who it is and which file they're in; peers elsewhere in the project show up too, labeled with the file they're browsing.
+- **Presence chips**: one colored circle per collaborator, showing their avatar or initial. Hover one to see who it is and which file they're in; peers elsewhere in the project show up too, labeled with the file they're working in, and someone who has closed every shared file leaves the row. With several shared files open, a collaborator is labeled with the one they opened, or switched to Code view in, most recently.
 - **Selections on the canvas**: every element a peer has selected is outlined in their color, labeled with their name, and follows them live. A peer working across several elements at once shows all of them, so you can see the whole shape of what they are about to change rather than one node of it.
 - **Cursors in Code view**: in the **[Code](/docs/studio/logic/code)** mode the shared text carries every writer's caret and selection in their color, with their name on the caret. A caret goes away when its author leaves Code view, so the ones you can see are the people actually in the text with you.
 
@@ -62,7 +66,7 @@ Open the **[Command palette](/docs/studio/interface/commands)** and type `Collab
 
 ## Syncing is not saving
 
-Your edits reach your collaborators instantly, but the file on disk still changes only when someone saves. The explicit **Save** is unchanged. What _is_ shared is the unsaved state itself: the moment anyone edits, the file counts as unsaved for the whole session, and one person saving saves the shared result for everyone. Committing in **[Source control](/docs/studio/publish/source-control)** saves open co-edited files first, so a commit captures what the session currently sees, except for a file whose session is waiting on the changed-on-disk question below, which the commit takes as it is on disk.
+Your edits reach your collaborators instantly, but the file on disk still changes only when someone saves. The explicit **Save** is unchanged. What _is_ shared is the unsaved state itself: the moment anyone edits, the file counts as unsaved for the whole session, and one person saving saves the shared result for everyone. If the save can't be written, or the connection drops before the server confirms it, Studio says so and the file stays unsaved. Committing in **[Source control](/docs/studio/publish/source-control)** saves open co-edited files first, so a commit captures what the session currently sees, except for a file whose session is waiting on the changed-on-disk question below, which the commit takes as it is on disk. If a co-edited file can't be saved, the commit stops and names it.
 
 A save never overwrites a change it has not seen. On the dev server and on Jx Cloud, a session remembers the exact bytes it loaded or last saved, and its save is written only if the file on disk is still those bytes. When a change made outside the session (another editor, a script, a git checkout, or on Jx Cloud a pull, a discard, or a save from a tab that is not in the session) reaches a session with no unsaved edits, the session resets onto the new content, as described under [Falling back to solo](#falling-back-to-solo). When the session has unsaved edits, it keeps them: the file stays unsaved for everyone in the session, and [Problems](/docs/studio/interface/problems-and-progress) says that the file changed on disk. A save that lands before the outside change has reached the session finds the same thing and writes nothing.
 
@@ -79,7 +83,7 @@ Renaming or moving a co-edited file inside the open project, on the dev server o
 Opening another project on the same dev server, from any tab, ends the sessions of the project before it. Each one with unsaved edits is saved first. If that save is refused because the file changed on disk in the meantime, those unsaved edits are lost.
 
 :::doc-warning
-On a shared dev server, unsaved co-edits live only in the server's memory. If everyone closes the file without saving, those edits are discarded shortly after, so save before you all walk away.
+On a shared dev server, unsaved co-edits live only in the server's memory. If everyone closes the file without saving, those edits are discarded shortly after, so save before you all walk away. Stopping the dev server discards them too. A tab that is still open keeps your edits, so save it once the server is back.
 :::
 
 ## Which setups support it

@@ -9,15 +9,18 @@
  * last saved as the base, so a save over a file that changed under it is refused and the refusal
  * reaches every participant (`doc-conflict`). Outside it, a room is keyed by its path and saves
  * unconditionally, as before. A room's Y.Text source seeds from the file on disk. Persistence is
- * EXPLICIT: the shared source is written back to disk only on an explicit flush (Cmd+S / Save) and,
- * as a last-ditch safety, on graceful server shutdown. Unsaved collaborative edits therefore live
- * only in the room's in-memory Y.Doc until saved — non-collab consumers (preview, live reload,
- * plain editors) intentionally keep working off the last-saved file until then. The host owns the
- * room-level dirty signal broadcast to every peer; the embedder just tells it a persist landed via
- * `markPersisted`. Genuinely external file changes (not our own write-back echo) bump the doc's
- * epoch and reset subscribers, per the contract, except that a room inside the project holding
- * unsaved edits keeps them and tells its participants of the conflict instead. No persistence
- * beyond the files themselves: this is deliberately a reference implementation.
+ * EXPLICIT: the shared source is written back to disk only on an explicit flush (Cmd+S / Save), and
+ * stopping the server writes nothing (collab.md §1.2). Unsaved collaborative edits therefore live
+ * only in the room's in-memory Y.Doc until saved, and are dropped with it — non-collab consumers
+ * (preview, live reload, plain editors) intentionally keep working off the last-saved file until
+ * then. A flush is answered once: a write that fails, or a save the host refuses, rejects with the
+ * reason, which the host sends to the client as the `flush-ack`'s `error` and leaves the room
+ * unsaved. The host owns the room-level dirty signal broadcast to every peer; the embedder just
+ * tells it a persist landed via `markPersisted`. Genuinely external file changes (not our own
+ * write-back echo) bump the doc's epoch and reset subscribers, per the contract, except that a room
+ * inside the project holding unsaved edits keeps them and tells its participants of the conflict
+ * instead. No persistence beyond the files themselves: this is deliberately a reference
+ * implementation.
  */
 
 import { randomUUID } from "node:crypto";
@@ -89,7 +92,10 @@ export interface CollabRegistry {
   websocket: ServeWebSocketHandler<CollabSocketData>;
   /** Watcher hook: a file changed on disk (absolute path). Echoes of our write-back are ignored. */
   handleExternalChange: (absPath: string) => void;
-  /** Flush pending write-backs and tear everything down. */
+  /**
+   * Tear everything down. Saves already in flight settle; nothing else is written, so a room's
+   * unsaved edits are dropped with it (collab.md §1.2).
+   */
   stop: () => Promise<void>;
 }
 
@@ -124,7 +130,10 @@ export function createCollabRegistry(opts: {
   const ownWrites = new Set<string>();
 
   const destroyTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  /** Paths with unsaved edits (source changed since the last persist) — the shutdown worklist. */
+  /**
+   * Rooms with unsaved edits (source changed since the last persist): what a project switch saves
+   * before it closes the rooms it covers. Stopping the server does not read it.
+   */
   const pendingPersist = new Set<string>();
   /** Content we last wrote (or are about to write) per path — the watcher-echo signature. */
   const lastWritten = new Map<string, string>();
@@ -235,14 +244,15 @@ export function createCollabRegistry(opts: {
   ): Promise<void> => {
     const hash = await contentHash(source);
     const base = override === undefined ? room.base : override.baseHash;
+    const name = relative(room.root, room.abs).replaceAll("\\", "/");
     if (hash === base) {
       room.base = hash;
       pendingPersist.delete(key);
-      host.markPersisted(key);
+      host.markPersisted(key, source);
       return;
     }
     if (through === undefined && projectEvents?.root !== room.root) {
-      return;
+      throw new Error(`Could not write ${name}: its project is no longer open.`);
     }
     const writeId = `collab-${randomUUID()}`;
     ownWrites.add(writeId);
@@ -257,21 +267,27 @@ export function createCollabRegistry(opts: {
       if (result.ok) {
         room.base = result.hash;
         pendingPersist.delete(key);
-        host.markPersisted(key);
+        host.markPersisted(key, source);
         return;
       }
       ownWrites.delete(writeId);
       host.conflict(key, { diskHash: result.conflict.diskHash, docId: result.conflict.docId });
-    } catch {
-      // The write failed (or the host could not start): the next explicit save retries.
+    } catch (error) {
+      // The write failed (or the host could not start): the room stays unsaved, and the flush says why.
       ownWrites.delete(writeId);
+      throw new Error(
+        `Could not write ${name}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
+    throw new Error(`${name} changed on disk since it was opened, so nothing was saved.`);
   };
 
   /** Save a room keyed by its path, unconditionally: last writer wins, as before (§11.3). */
   const persistPlain = async (path: string, source: string): Promise<void> => {
     if (lastWritten.get(path) === source) {
       pendingPersist.delete(path);
+      host.markPersisted(path, source);
       return;
     }
     // Optimistic: closes the watcher-echo race (our own write must not read back as external).
@@ -279,11 +295,15 @@ export function createCollabRegistry(opts: {
     try {
       await writeFile(absPathFor(path), source, "utf8");
       pendingPersist.delete(path);
-      // Tell the host the room is durable now: it resets the dirty baseline and broadcasts clean.
-      host.markPersisted(path);
-    } catch {
+      // Tell the host what is durable now: it resets the dirty baseline and broadcasts clean.
+      host.markPersisted(path, source);
+    } catch (error) {
       // Write failed — clear the optimistic signature so the next explicit save retries.
       lastWritten.delete(path);
+      throw new Error(
+        `Could not write ${path}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
   };
 
@@ -292,13 +312,15 @@ export function createCollabRegistry(opts: {
    * so two saves pressed together never both name the base the first one replaces.
    */
   const serialize = (key: string, save: () => Promise<void>): Promise<void> => {
-    const next = (persisting.get(key) ?? Promise.resolve()).then(save);
+    // An earlier save that failed does not stop this one: it answered its own flush.
+    const next = (persisting.get(key) ?? Promise.resolve()).catch(() => {}).then(save);
     persisting.set(key, next);
-    void next.finally(() => {
+    const done = () => {
       if (persisting.get(key) === next) {
         persisting.delete(key);
       }
-    });
+    };
+    next.then(done, done);
     return next;
   };
 
@@ -315,7 +337,9 @@ export function createCollabRegistry(opts: {
     serialize(key, async () => {
       const source = host.sourceOf(key);
       if (source === null) {
-        return;
+        // The host only asks for a room it holds: this keeps an embedder change from turning a
+        // Missing room into a silent success.
+        throw new Error("The document is not open for co-editing, so nothing was saved.");
       }
       const room = hosted.get(key);
       await (room === undefined
@@ -378,8 +402,8 @@ export function createCollabRegistry(opts: {
       host.resetDoc(path);
     },
     onSourceChange: (path) => {
-      // No write-back: edits reach disk only on explicit flush (or graceful shutdown). The host
-      // Owns the dirty broadcast; we just note the path for the shutdown worklist.
+      // No write-back: edits reach disk only on explicit flush. The host owns the dirty broadcast;
+      // We just note the room for a project switch.
       pendingPersist.add(path);
     },
     rejectPath: (path) => {
@@ -513,7 +537,8 @@ export function createCollabRegistry(opts: {
       const saves: Promise<void>[] = [];
       for (const [key, room] of hosted) {
         if (room.root === running.root && pendingPersist.has(key)) {
-          saves.push(persist(key, running));
+          // A save that fails is dropped with its room: the activation is closing either way.
+          saves.push(persist(key, running).catch(() => {}));
         }
       }
       await Promise.all(saves);
@@ -538,7 +563,7 @@ export function createCollabRegistry(opts: {
         host.resetDoc(key);
         plain.delete(key);
         if (dirty && source !== null) {
-          void serialize(key, () => persistPlain(key, source));
+          serialize(key, () => persistPlain(key, source)).catch(() => {});
         }
       }
     },
@@ -608,14 +633,10 @@ export function createCollabRegistry(opts: {
       for (const timer of destroyTimers.values()) {
         clearTimeout(timer);
       }
-      // Last-ditch safety on graceful shutdown: flush every path with unsaved edits.
-      const flushes: Promise<void>[] = [...persisting.values()];
-      for (const path of pendingPersist) {
-        flushes.push(persist(path));
-      }
-      pendingPersist.clear();
       destroyTimers.clear();
-      await Promise.all(flushes);
+      // A save already in flight settles; none is started, so unsaved edits are dropped.
+      await Promise.allSettled(persisting.values());
+      pendingPersist.clear();
       host.destroy();
     },
 

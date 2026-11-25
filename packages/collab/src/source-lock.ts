@@ -76,6 +76,34 @@ export function otherSourceEditors(
 }
 
 /**
+ * The structure mirror of the room at `path`: the lowest write-capable clientID among the clients
+ * holding it, which keeps the shared source text in step with the structure while structure is
+ * canonical. A client holds a room when its state lists the path in `rooms`; a state with no
+ * `rooms` (a Studio built before the field) counts as holding every room. The local client never
+ * mirrors a room it does not hold, nor when it cannot write.
+ */
+export function isStructureMirror(awareness: Awareness, path: string): boolean {
+  const self = awareness.clientID;
+  /* SAFETY: every awareness state is peer-published and unchecked; `Partial` keeps each field
+     optional, and `rooms` is only read through `Array.isArray` and `includes`, so a malformed state
+     is counted as holding every room, as a pre-`rooms` Studio is. */
+  const states = awareness.getStates() as Map<number, Partial<CollabAwarenessState>>;
+  const selfState = states.get(self);
+  if (!selfState?.rooms?.includes(path) || selfState.canWrite === false) {
+    return false;
+  }
+  for (const [clientId, state] of states) {
+    if (clientId >= self || state.canWrite === false) {
+      continue;
+    }
+    if (!Array.isArray(state.rooms) || state.rooms.includes(path)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * The source reconciler — the lowest write-capable clientID among this doc's source editors
  * (including self when in source mode) — owns parsing Y.Text back into the structure tree.
  */

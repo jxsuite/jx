@@ -40,9 +40,12 @@ export interface CollabHandle {
   /** Identity issued by the server's hello; null until the connection greeted. */
   identity: () => CollabIdentity | null;
   /**
-   * Ask the provider to persist this doc to durable storage now (Cmd+S). `baseHash` names the bytes
-   * the save replaces in place of the room's own base (`null`: nothing is there), which is how the
-   * author keeps the room's edits over a file that changed under it (`project-state.md` §6.1).
+   * Ask the provider to persist this doc to durable storage now (Cmd+S). Resolves once the text is
+   * durable; rejects with the reason when nothing was written, or when no answer can arrive (the
+   * socket is down, the document reset, or the handle or connection was destroyed; collab.md §1.2).
+   * `baseHash` names the bytes the save replaces in place of the room's own base (`null`: nothing
+   * is there), which is how the author keeps the room's edits over a file that changed under it
+   * (`project-state.md` §6.1).
    */
   flush: (options?: { baseHash?: string | null }) => Promise<void>;
   /**

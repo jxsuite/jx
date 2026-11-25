@@ -375,6 +375,43 @@ describe("reconciler election", () => {
     expect(hub.serverDoc(PATH).getText("source").toString()).toBe("");
     low.destroy();
   });
+
+  test("a lower writer in another room does not stop this room's mirror", async () => {
+    const hub = createMockCollabHub();
+    const handles: CollabHandle[] = [];
+    installMockPlatform({
+      collab: async (p) => {
+        const h = await hub.capability(p);
+        if (h) {
+          handles.push(h);
+        }
+        return h;
+      },
+    });
+    configureCollabSerializer(jsonSerializer);
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+
+    const lowDoc = new Y.Doc();
+    lowDoc.clientID = 1;
+    const low = new Awareness(lowDoc);
+    low.setLocalState({
+      canWrite: true,
+      focusedPath: "pages/other.json",
+      rooms: ["pages/other.json"],
+      user: { color: "#000", login: "low-peer" },
+    });
+    applyAwarenessUpdate(handles[0]!.awareness, encodeAwarenessUpdate(low, [1]), "test");
+    await settleCollab();
+
+    await withFakeTimers(async (runPending) => {
+      transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Mine"));
+      await runPending();
+    });
+    await settleCollab();
+    expect(hub.serverDoc(PATH).getText("source").toString()).toContain("Mine");
+    low.destroy();
+  });
 });
 
 // ─── Mirror debounce ─────────────────────────────────────────────────────────
@@ -782,5 +819,32 @@ describe("flushAllCollab", () => {
     await flushAllCollab();
     expect(hub.flushes).toEqual([PATH]);
     expect(hub.serverDoc(PATH).getText("source").toString()).toContain("Flushed");
+  });
+
+  test("flushes every session and names every failure", async () => {
+    const hub = createMockCollabHub({
+      flushError: (path) => (path.startsWith("pages/bad") ? `no room for ${path}` : null),
+    });
+    installMockPlatform({ collab: hub.capability });
+    configureCollabSerializer(jsonSerializer);
+    for (const path of ["pages/bad-a.json", "pages/good.json", "pages/bad-b.json"]) {
+      openTab({ document: structuredClone(HELLO_DOC), documentPath: path, id: path });
+    }
+    await settleCollab();
+
+    let message = "";
+    try {
+      await flushAllCollab();
+    } catch (error) {
+      message = error instanceof Error ? error.message : "";
+    }
+    expect(message).toContain("pages/bad-a.json");
+    expect(message).toContain("pages/bad-b.json");
+    expect(message).not.toContain("pages/good.json");
+    expect(hub.flushes.toSorted()).toEqual([
+      "pages/bad-a.json",
+      "pages/bad-b.json",
+      "pages/good.json",
+    ]);
   });
 });

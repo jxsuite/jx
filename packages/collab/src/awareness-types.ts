@@ -17,7 +17,17 @@ export interface CollabUser {
 
 export interface CollabAwarenessState {
   user: CollabUser;
-  /** Project-relative path of the document the client is focused on, or null. */
+  /**
+   * Every document the client holds a session on, in the order it joined them. Absent from a Studio
+   * built before the field, which counts as present in every room (`isStructureMirror`).
+   */
+  rooms?: string[];
+  /**
+   * Project-relative path of the document the client is working in, or null. Joining a document
+   * focuses it unless a Code view holds focus; opening a Code view focuses its document; leaving
+   * the focused document focuses the most recently joined one still held. Focus does not follow the
+   * active tab (collab.md §2.4).
+   */
   focusedPath: string | null;
   /** Which representation the client is editing (drives the Phase-B canonical lock). */
   mode?: "structure" | "source";

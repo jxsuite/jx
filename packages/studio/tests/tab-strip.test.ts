@@ -61,8 +61,12 @@ function stripRow(into: HTMLElement): HTMLElement | null {
 }
 
 /** Another client in the session, focused on `focusedPath`. */
-function peerFocusedOn(focusedPath: string): PeerPresence {
-  return { clientId: 2, state: { focusedPath, user: { color: "#4f9cf9", login: "peer" } } };
+function peerFocusedOn(focusedPath: string, rooms?: string[]): PeerPresence {
+  const state: PeerPresence["state"] = { focusedPath, user: { color: "#4f9cf9", login: "peer" } };
+  if (rooms !== undefined) {
+    state.rooms = rooms;
+  }
+  return { clientId: 2, state };
 }
 
 /**
@@ -304,6 +308,36 @@ describe("tab strip interactions", () => {
     // The shared session lives on with the remaining peer — closing is safe, no prompt.
     expect(topDialog()).toBeNull();
     expect(workspace.tabs.has("a")).toBe(false);
+  });
+
+  test("a peer holding the document in another tab still counts", async () => {
+    const a = open("a");
+    a.doc.dirty = true;
+    const state = collabState(a);
+    state.active = true;
+    // The peer is focused elsewhere, but its rooms list this document.
+    state.peers = [
+      peerFocusedOn("/project/other.json", ["/project/a.json", "/project/other.json"]),
+    ];
+    await flush();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
+    await flush();
+    expect(topDialog()).toBeNull();
+    expect(workspace.tabs.has("a")).toBe(false);
+  });
+
+  test("a peer whose rooms omit the document does not", async () => {
+    const a = open("a");
+    a.doc.dirty = true;
+    const state = collabState(a);
+    state.active = true;
+    // Its focusedPath still names the document, but it has left it.
+    state.peers = [peerFocusedOn("/project/a.json", ["/project/other.json"])];
+    await flush();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
+    await flush();
+    expect(topDialog()).not.toBeNull();
+    expect(workspace.tabs.has("a")).toBe(true);
   });
 
   test("the last collaborator on a dirty doc is still prompted before closing", async () => {

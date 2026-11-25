@@ -6,6 +6,7 @@ import {
   canonicalOf,
   canonicalRevOf,
   isSourceReconciler,
+  isStructureMirror,
   otherSourceEditors,
   releaseSourceCanonical,
 } from "../src/source-lock.ts";
@@ -106,5 +107,73 @@ describe("source editor election", () => {
     const notInSource = awarenessWith([[7, { focusedPath: "a.md", mode: "structure" }]], 7);
     expect(isSourceReconciler(notInSource, "a.md")).toBe(false);
     notInSource.destroy();
+  });
+});
+
+describe("isStructureMirror", () => {
+  function awarenessWith(
+    states: [number, Partial<CollabAwarenessState>][],
+    selfId: number,
+  ): Awareness {
+    const awareness = new Awareness(new Doc());
+    Object.defineProperty(awareness, "clientID", { value: selfId });
+    const map = awareness.getStates();
+    map.clear();
+    for (const [id, state] of states) {
+      map.set(id, state);
+      awareness.meta.set(id, { clock: 1, lastUpdated: 0 });
+    }
+    return awareness;
+  }
+
+  test("the lowest writer among the room's holders mirrors, whoever is lower elsewhere", () => {
+    const awareness = awarenessWith(
+      [
+        [1, { focusedPath: "b.md", rooms: ["b.md"] }],
+        [4, { focusedPath: "a.md", rooms: ["a.md", "b.md"] }],
+        [6, { focusedPath: "a.md", rooms: ["a.md"] }],
+      ],
+      4,
+    );
+    expect(isStructureMirror(awareness, "a.md")).toBe(true);
+    // In b.md the client with id 1 is lower.
+    expect(isStructureMirror(awareness, "b.md")).toBe(false);
+    awareness.destroy();
+  });
+
+  test("a state with no rooms counts as present", () => {
+    const awareness = awarenessWith(
+      [
+        [1, { focusedPath: null }],
+        [4, { focusedPath: "a.md", rooms: ["a.md"] }],
+      ],
+      4,
+    );
+    expect(isStructureMirror(awareness, "a.md")).toBe(false);
+    awareness.destroy();
+  });
+
+  test("a read-only peer never wins, and a read-only self never mirrors", () => {
+    const peerReadOnly = awarenessWith(
+      [
+        [1, { canWrite: false, rooms: ["a.md"] }],
+        [4, { canWrite: true, rooms: ["a.md"] }],
+      ],
+      4,
+    );
+    expect(isStructureMirror(peerReadOnly, "a.md")).toBe(true);
+    peerReadOnly.destroy();
+    const selfReadOnly = awarenessWith([[4, { canWrite: false, rooms: ["a.md"] }]], 4);
+    expect(isStructureMirror(selfReadOnly, "a.md")).toBe(false);
+    selfReadOnly.destroy();
+  });
+
+  test("a client that does not hold the room never mirrors", () => {
+    const awareness = awarenessWith([[4, { rooms: ["b.md"] }]], 4);
+    expect(isStructureMirror(awareness, "a.md")).toBe(false);
+    const stateless = awarenessWith([], 4);
+    expect(isStructureMirror(stateless, "a.md")).toBe(false);
+    awareness.destroy();
+    stateless.destroy();
   });
 });

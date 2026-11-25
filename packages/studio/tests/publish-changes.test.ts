@@ -9,7 +9,7 @@
  * build check at all.
  */
 import "./with-dom.js";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { NotifyCall } from "./notify-mock";
 import type { PromptDialogOptions } from "../src/ui/layers";
@@ -43,6 +43,10 @@ const { installMockPlatform, resetStudioState } = await import("./harness");
 const { resetProjectShell, shell } = await import("../src/shell.js");
 const { setProjectState } = await import("../src/state.js");
 const pc = await import("../src/publish/publish-changes.js");
+const { createMockCollabHub, HELLO_DOC, waitForCollab } = await import("./collab-mock");
+const { closeAllTabs, openTab } = await import("../src/workspace/workspace.js");
+const { resetCollabForTests } = await import("../src/collab/collab-session.js");
+const { collabState } = await import("../src/collab/collab-state.js");
 
 const DEPLOY = {
   accountId: "a".repeat(32),
@@ -564,6 +568,47 @@ describe("publishChanges", () => {
   test("no pull request is on record before one is opened", () => {
     expect(pc.lastPullRequest()).toBeNull();
   });
+});
+
+describe("a co-edited file that cannot be saved", () => {
+  const ROOM_PATH = "pages/index.json";
+
+  /** A tab whose room cannot be written, attached through the mock hub. */
+  async function openUnsavable() {
+    const hub = createMockCollabHub({ flushError: () => "disk full" });
+    install({
+      collab: hub.capability,
+      createPullRequest: async () => ({ number: 3, url: "u" }),
+    });
+    const tab = openTab({
+      document: structuredClone(HELLO_DOC),
+      documentPath: ROOM_PATH,
+      id: ROOM_PATH,
+    });
+    await waitForCollab(() => collabState(tab).active);
+    expect(collabState(tab).active).toBe(true);
+    return tab;
+  }
+
+  afterEach(() => {
+    closeAllTabs();
+    resetCollabForTests();
+  });
+
+  for (const destination of ["live", "review"] as const) {
+    test(`a publish stops when it cannot be saved, and keeps its summary (${destination})`, async () => {
+      await openUnsavable();
+      status([{ path: "a.json", staged: true, status: "M" }]);
+      shell.git.branches = { branches: ["feature", "main"], current: "feature" };
+      shell.git.commitMessage = "Fix the header";
+      expect(await pc.publishChanges(destination)).toBe(false);
+      expect(asked()).not.toContain("gitCommit");
+      expect(shell.git.error).toContain(ROOM_PATH);
+      expect(shell.git.error).toContain("disk full");
+      expect(shell.git.commitMessage).toBe("Fix the header");
+      expect(shell.git.loading).toBe(false);
+    });
+  }
 });
 
 describe("a publish the remote conflicts with", () => {

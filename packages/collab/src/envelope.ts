@@ -57,8 +57,13 @@ export type ControlMessage =
    * host that saves without a base ignores it.
    */
   | { type: "flush"; path: string; baseHash?: string | null }
-  /** Server → client: the flush landed. */
-  | { type: "flush-ack"; path: string }
+  /**
+   * Server → client: the flush was handled, once per `flush` and in the order a path's flushes
+   * arrived. Without `error` the room's text as of the flush is durable (a `doc-dirty` `false`
+   * precedes it when that cleared the room). With `error` nothing was written, and `error` says why
+   * in a sentence an author can read (collab.md §1.2).
+   */
+  | { type: "flush-ack"; path: string; error?: string }
   /**
    * Client → server: discard the room's unsaved edits and reseed it from storage
    * (`project-state.md` §6.1, taking the disk's copy). The host answers every subscriber with

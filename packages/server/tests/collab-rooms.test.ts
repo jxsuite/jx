@@ -186,6 +186,16 @@ afterEach(async () => {
   rmSync(dir, { force: true, recursive: true });
 });
 
+/** The message a promise rejects with, or "" when it does not reject. */
+async function rejectionOf(pending: Promise<unknown>): Promise<string> {
+  try {
+    await pending;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return "";
+}
+
 describe("a room keyed by document (§11.3)", () => {
   test("follows its document across a rename, and saves there with the base it loaded", async () => {
     await events.start();
@@ -273,7 +283,7 @@ describe("a room keyed by document (§11.3)", () => {
     rmSync(join(project, "pages"), { force: true, recursive: true });
     emit({ docId: "dir", isDir: true, origin: "external", path: "pages", type: "fileRemoved" });
     await until(() => seen.count === 1);
-    // Nothing is left to flush on shutdown, so the removed file stays removed.
+    // The room is gone, so nothing can write the removed file back.
     await registry.stop();
     expect(hosts[0]!.writes).toEqual([]);
   });
@@ -351,7 +361,7 @@ describe("a room keyed by document (§11.3)", () => {
     expect(dirty).toBe(true);
     expect(sourceText(b.doc).toString()).toBe("# A\n\nmine\n");
     // A plain save is refused: the room's base is still the bytes it loaded.
-    await a.flush();
+    expect(await rejectionOf(a.flush())).toContain("changed on disk");
     await until(() => conflicts.length === 4);
     expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe("# theirs\n");
     // Keep Mine names what is on disk now, and the room's edits land.
@@ -395,7 +405,7 @@ describe("a room keyed by document (§11.3)", () => {
     writeFileSync(join(project, "pages/a.md"), "# theirs\n");
     await a.revert!();
     await until(() => seenA.count === 1 && seenB.count === 1);
-    // Nothing is left to flush on shutdown, and the room reopens from the file.
+    // The room reopens from the file.
     const again = await open("site/pages/a.md");
     expect(sourceText(again.doc).toString()).toBe("# theirs\n");
     await registry.stop();
@@ -412,23 +422,23 @@ describe("a room keyed by document (§11.3)", () => {
     await edit(a, "# A\n\nmine\n");
     const disk = await contentHash("# theirs\n");
     refuseNext = { conflict: { diskHash: disk, docId: "d1", path: "pages/a.md" }, ok: false };
-    await a.flush();
+    expect(await rejectionOf(a.flush())).toContain("changed on disk");
     await until(() => conflicts.length === 2);
     expect(conflicts[0]).toEqual({ diskHash: disk, docId: "d1" });
     expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe(ORIGINAL);
     // A write that fails outright is retried by the next save.
     refuseNext = new Error("disk full");
-    await a.flush();
+    expect(await rejectionOf(a.flush())).toContain("Could not write pages/a.md: disk full");
     await a.flush();
     expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe("# A\n\nmine\n");
   });
 
-  test("a shutdown flush that is refused leaves the disk untouched", async () => {
+  test("stopping the registry writes nothing, whatever the rooms hold", async () => {
     await events.start();
     const a = await open("site/pages/a.md");
     await edit(a, "# A\n\nunsaved\n");
-    refuseNext = { conflict: { diskHash: null, docId: null, path: "pages/a.md" }, ok: false };
     await registry.stop();
+    expect(hosts[0]!.writes).toEqual([]);
     expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe(ORIGINAL);
   });
 
@@ -618,7 +628,7 @@ describe("a room keyed by document (§11.3)", () => {
         release = resolve;
       });
     const switching = events.activate(dir);
-    await a.flush();
+    expect(await rejectionOf(a.flush())).toContain("no longer open");
     release();
     await switching;
     expect(hosts[0]!.writes).toHaveLength(1);
@@ -656,7 +666,7 @@ describe("a room keyed by document (§11.3)", () => {
     });
     const a = await open("site/pages/a.md");
     await edit(a, "# A\n\nkept\n");
-    await a.flush();
+    expect(await rejectionOf(a.flush())).toContain("Could not write pages/a.md: no watcher");
     expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe(ORIGINAL);
     expect(sourceText(a.doc).toString()).toBe("# A\n\nkept\n");
   });

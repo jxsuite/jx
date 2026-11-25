@@ -44,6 +44,7 @@ export {
   canonicalOf,
   canonicalRevOf,
   isSourceReconciler,
+  isStructureMirror,
   otherSourceEditors,
   releaseSourceCanonical,
 } from "./source-lock.ts";

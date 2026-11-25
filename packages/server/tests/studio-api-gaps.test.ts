@@ -821,9 +821,8 @@ describe("file endpoints — error paths", () => {
 
   /**
    * A live collaboration room is keyed by PATH, and a rename moves the file out from under it. Left
-   * alone, the room survives holding pre-rename content and the graceful-shutdown flush writes it
-   * back — recreating the file the rename deleted. `pendingPersist` receives a path on the room's
-   * seed transaction, so a clean editor is no protection either.
+   * alone, the room survives holding pre-rename content and the next save from anyone in it writes
+   * that back, recreating the file the rename deleted.
    */
   test("a successful rename tells the host the OLD path moved", async () => {
     writeFileSync(join(ROOT, "moved-src.json"), "{}");

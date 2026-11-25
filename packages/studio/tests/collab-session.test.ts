@@ -27,6 +27,7 @@ import { saveFile } from "../src/files/file-ops";
 import { getHistoryDelegate, mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
 import { seedStructure, sourceText, yDocToJson } from "@jxsuite/collab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import { problems, toasts } from "../src/services/notify";
 import { afterEach, describe, expect, test } from "bun:test";
 
 const PATH = "pages/index.json";
@@ -404,6 +405,37 @@ describe("file plumbing guards", () => {
     expect(await saveFile(tab)).toBe(false);
     // Nothing reached the source, so nothing reached the file the room is serving.
     expect(source.commits).toHaveLength(0);
+  });
+
+  test("a co-edited save the provider could not write says so and is not reported saved", async () => {
+    const hub = createMockCollabHub({ flushError: () => "disk full" });
+    const tab = openCollabTab(hub);
+    configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
+    await settleCollab();
+    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Unsaved"));
+
+    expect(await saveFile(tab)).toBe(false);
+    expect(hub.flushes).toEqual([PATH]);
+    const errors = [...problems, ...toasts].filter((note) => note.key === `save:${PATH}`);
+    expect(errors).toHaveLength(1);
+    expect(JSON.stringify(errors[0])).toContain("disk full");
+  });
+
+  test("a save while Code view holds the lock flushes the shared text as it is", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
+    await settleCollab();
+    const context = collabSourceContext(tab)!;
+    await context.enter();
+    const typed = `{ "tagName": "div", "children": [] }`;
+    sourceText(hub.serverDoc(PATH)).delete(0, sourceText(hub.serverDoc(PATH)).length);
+    sourceText(hub.serverDoc(PATH)).insert(0, typed);
+
+    await collabSave(tab);
+    expect(sourceText(hub.serverDoc(PATH)).toString()).toBe(typed);
+    expect(hub.flushes).toEqual([PATH]);
+    context.leave();
   });
 
   test("collabSave refreshes the source mirror before flushing", async () => {

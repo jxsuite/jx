@@ -14,7 +14,7 @@ size: S
 
 ## Context
 
-Split from `plan:collab/spec-coverage`, which keeps the whole-spec marker and the sections it needs. These two items are paper plus one regression test, share no decision with that work, and can land ahead of it.
+Split from collab.md's new sections (§1.1 to §3.2), which keeps the whole-spec marker and the sections it needs. These two items are paper plus one regression test, share no decision with that work, and can land ahead of it.
 
 `specs/collab.md` §1, line 16:
 
@@ -49,7 +49,7 @@ Both markers re-verified against the tree on 2026-09-27.
 1. `packages/server/tests/collab-api.test.ts`: import `connect` from `node:net`. Add a module-level helper `rawUpgrade(port: number, headers: Record<string, string>): Promise<string>` that opens a socket to `127.0.0.1:port`, writes `GET /__studio/collab HTTP/1.1` with `Host: localhost:<port>` (the loopback Host the studio gate accepts), `Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==`, `Sec-WebSocket-Version: 13` and the given headers, collects data until the first `\r\n\r\n`, destroys the socket and resolves the head. Use it in the new case under `describe("/__studio/collab")` (see Tests).
 2. No source change.
 
-**Integration contract.** Once this lands, collab.md §1 names both backends and the desktop app's absence, and §2's compression bullet says a backend declines `permessage-deflate`; `plan:collab/spec-coverage` adds §1.1, §1.2 and §2.2 to §2.4 as new subsections without touching the text written here, and `plan:collab/attach-failure-state` rewrites §4's first paragraph, which §1 now points at. `rawUpgrade` is there for later server tests of the handshake.
+**Integration contract.** Once this lands, collab.md §1 names both backends and the desktop app's absence, and §2's compression bullet says a backend declines `permessage-deflate`; collab.md's new sections (§1.1 to §3.2) adds §1.1, §1.2 and §2.2 to §2.4 as new subsections without touching the text written here, and `plan:collab/attach-failure-state` rewrites §4's first paragraph, which §1 now points at. `rawUpgrade` is there for later server tests of the handshake.
 
 ## Tests
 
