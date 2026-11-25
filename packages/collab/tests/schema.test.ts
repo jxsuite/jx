@@ -1,17 +1,26 @@
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { isString } from "@jxsuite/schema/guards";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import type { YStructureValue } from "../src/schema.ts";
 import {
   applyTextEdit,
   frontmatterMap,
+  mergeYChildren,
+  mergeYNode,
+  mergeYObject,
   metaMap,
   resolveYPath,
   seedStructure,
   sourceText,
   structureMap,
+  toYFunction,
   toYNode,
+  toYObject,
+  toYState,
+  toYNodeValue,
   updateSourceText,
+  writeNodeKey,
   yDocToJson,
   yValueToJson,
 } from "../src/schema.ts";
@@ -209,3 +218,228 @@ describe("updateSourceText", () => {
     expect(sourceText(ydoc).toString()).toBe("fresh");
   });
 });
+
+describe("the shared write rule", () => {
+  test("seedStructure stores root keys by the same rule as every node", () => {
+    const doc = new Y.Doc();
+    seedStructure(doc, {
+      children: ["a"],
+      state: { n: 1 },
+      style: { color: "red" },
+      tagName: "p",
+      textContent: "hi",
+    });
+    const root = structureMap(doc);
+    expect(root.get("textContent")).toBeInstanceOf(Y.Text);
+    expect(root.get("style")).toBeInstanceOf(Y.Map);
+    expect(root.get("children")).toBeInstanceOf(Y.Array);
+    expect(root.get("state")).toBeInstanceOf(Y.Map);
+    expect(yDocToJson(doc)["state"]).toEqual({ n: 1 });
+  });
+
+  test("mergeYChildren removes, inserts, edits in place and replaces a legacy item", () => {
+    const doc = new Y.Doc();
+    const array = new Y.Array<YStructureValue>();
+    doc.getMap<YStructureValue>("holder").set("children", array);
+    array.insert(0, [
+      toYNode({ tagName: "a", textContent: "one" }),
+      new Y.Text("text"),
+      "legacy",
+      toYNode({ tagName: "gone" }),
+    ]);
+    const node = array.get(0);
+    const text = array.get(1);
+    mergeYChildren(array, [
+      { tagName: "a", textContent: "one!" },
+      "text!",
+      "legacy!",
+      { tagName: "new" },
+    ]);
+    expect(yValueToJson(array)).toEqual([
+      { tagName: "a", textContent: "one!" },
+      "text!",
+      "legacy!",
+      { tagName: "new" },
+    ]);
+    expect(array.get(0)).toBe(node);
+    expect(array.get(1)).toBe(text);
+    expect(array.get(2)).toBeInstanceOf(Y.Text);
+  });
+
+  test("writeNodeKey skips a plain value equal to the stored one", () => {
+    const doc = new Y.Doc();
+    const root = doc.getMap<YStructureValue>("structure");
+    root.set("tagName", "p");
+    let updates = 0;
+    doc.on("update", () => {
+      updates += 1;
+    });
+    writeNodeKey(root, "tagName", "p");
+    expect(updates).toBe(0);
+  });
+
+  test("writeNodeKey and mergeYObject write a new null-valued key", () => {
+    const doc = new Y.Doc();
+    const root = doc.getMap<YStructureValue>("structure");
+    writeNodeKey(root, "meta", null);
+    expect(root.has("meta")).toBe(true);
+    const style = new Y.Map<YStructureValue>();
+    root.set("style", style);
+    mergeYObject(style, { color: null });
+    expect(style.has("color")).toBe(true);
+  });
+
+  test("mergeYNode deletes the keys the value no longer has", () => {
+    const node = new Y.Doc().getMap<YStructureValue>("structure");
+    mergeYNode(node, { a: 1, b: 2, tagName: "p" });
+    mergeYNode(node, { tagName: "p" });
+    expect(yValueToJson(node)).toEqual({ tagName: "p" });
+  });
+
+  test("an ordered style, state and function entry read back in their written order", () => {
+    const doc = new Y.Doc();
+    const root = doc.getMap<YStructureValue>("structure");
+    const value = {
+      onclick: { $prototype: "Function", body: "a()", name: "x" },
+      state: { z: { body: "1", name: "z" }, a: 1 },
+      style: { padding: "1px", ":hover": { b: "1", a: "2" }, color: "red" },
+    };
+    for (const [key, entry] of Object.entries(value)) {
+      root.set(key, toYNodeValue(key, entry));
+    }
+    mergeYNode(root, {
+      ...value,
+      state: { a: 1, z: { name: "z", body: "2" } },
+      style: { color: "red" },
+    });
+    const json = yValueToJson(root);
+    expect(keysOf(memberOf(json, "state"))).toEqual(["a", "z"]);
+    expect(memberOf(json, "style")).toEqual({ color: "red" });
+    // A map written before the companion array existed still reads, in its own order.
+    const legacy = new Y.Map<YStructureValue>();
+    legacy.set("b", 1);
+    legacy.set("a", 2);
+    root.set("attributes", legacy);
+    expect(keysAt(root, "attributes")).toEqual(["b", "a"]);
+    // A function entry changing type, and a state entry becoming a function and back, replace.
+    mergeYNode(root, { onclick: "text", state: { a: { body: "x" } } });
+    expect(memberOf(yValueToJson(root), "onclick")).toBe("text");
+    expect(memberOf(yValueToJson(root), "state")).toEqual({ a: { body: "x" } });
+    mergeYNode(root, { state: { a: 2 } });
+    expect(memberOf(yValueToJson(root), "state")).toEqual({ a: 2 });
+    // A stale key left in the companion array, and a duplicate, are ignored on read.
+    const style = new Y.Map<YStructureValue>();
+    const order = new Y.Array<YStructureValue>();
+    order.insert(0, ["x", "x", "gone", "y"]);
+    style.set("y", 1);
+    style.set("x", 2);
+    style.set("\0order", order);
+    root.set("style", style);
+    expect(keysAt(root, "style")).toEqual(["x", "y"]);
+    mergeYNode(root, { style: { y: 1, x: 2, w: 3 } });
+    expect(keysAt(root, "style")).toEqual(["y", "x", "w"]);
+  });
+
+  test("writers reject what is not a node or a child, and skip cleared keys", () => {
+    const doc = new Y.Doc();
+    const array = new Y.Array<YStructureValue>();
+    doc.getMap<YStructureValue>("holder").set("children", array);
+    expect(() => mergeYChildren(array, [1])).toThrow(TypeError);
+    array.insert(0, [1]);
+    expect(() => mergeYChildren(array, [])).toThrow(TypeError);
+    const root = doc.getMap<YStructureValue>("structure");
+    mergeYNode(root, {
+      onclick: { $prototype: "Function", body: "a", gone: undefined },
+      state: { f: { body: "a", gone: undefined }, g: undefined },
+      style: { a: "1", b: undefined, nested: { c: undefined, d: "1" } },
+      tagName: "p",
+    });
+    mergeYNode(root, {
+      onclick: { $prototype: "Function", body: "b" },
+      state: { f: { body: "b", extra: 1 } },
+      style: { a: "1", nested: { d: "2" } },
+      tagName: "p",
+    });
+    expect(yValueToJson(root)).toEqual({
+      onclick: { $prototype: "Function", body: "b" },
+      state: { f: { body: "b", extra: 1 } },
+      style: { a: "1", nested: { d: "2" } },
+      tagName: "p",
+    });
+    // A function entry whose body stopped being a string is stored plain, then text again.
+    mergeYNode(root, { onclick: { $prototype: "Function", body: "c", extra: 1 } });
+    const fn = root.get("onclick");
+    expect(fn).toBeInstanceOf(Y.Map);
+    mergeYNode(root, { onclick: { $prototype: "Function", body: "d", extra: 1 } });
+    expect(root.get("onclick")).toBe(fn);
+  });
+
+  test("stored shapes older writers left are healed and every cleared key is dropped", () => {
+    const doc = new Y.Doc();
+    const root = doc.getMap<YStructureValue>("structure");
+    // A style map with no companion array, a state map and a handler holding plain values.
+    const style = new Y.Map<YStructureValue>();
+    style.set("a", "1");
+    root.set("style", style);
+    const fn = new Y.Map<YStructureValue>();
+    fn.set("body", "plain body");
+    fn.set("keep", 1);
+    fn.set("drop", 1);
+    root.set("onclick", fn);
+    const state = new Y.Map<YStructureValue>();
+    state.set("keep", 1);
+    state.set("drop", 1);
+    root.set("state", state);
+    root.set("tagName", "p");
+    root.set("dropped", "x");
+    mergeYNode(root, {
+      dropped: undefined,
+      onclick: { $prototype: "Function", body: "text now", keep: 1, other: undefined },
+      state: { keep: 2, drop: undefined, skip: undefined, g: { body: "g" } },
+      style: { a: "1", z: "2" },
+      tagName: "p",
+    });
+    expect(yValueToJson(root)).toEqual({
+      onclick: { $prototype: "Function", body: "text now", keep: 1 },
+      state: { keep: 2, g: { body: "g" } },
+      style: { a: "1", z: "2" },
+      tagName: "p",
+    });
+    const handler = root.get("onclick");
+    expect(handler).toBeInstanceOf(Y.Map);
+    expect(handler instanceof Y.Map ? handler.get("body") : null).toBeInstanceOf(Y.Text);
+    // The state's own keys keep the written order, with a shared prefix left alone.
+    mergeYNode(root, { state: { keep: 2, h: 1, g: { body: "g" } } });
+    expect(keysAt(root, "state")).toEqual(["keep", "h", "g"]);
+    // Seeding drops cleared keys too.
+    const holder = new Y.Doc().getMap<YStructureValue>("holder");
+    holder.set("style", toYObject({ a: undefined, b: { c: undefined, d: 1 } }, true));
+    holder.set("state", toYState({ a: undefined, b: 1 }));
+    holder.set("onclick", toYFunction({ body: "x", y: undefined }));
+    const read = yValueToJson(holder);
+    expect(keysOf(memberOf(read, "style"))).toEqual(["b"]);
+    expect(keysOf(memberOf(read, "state"))).toEqual(["b"]);
+    expect(keysOf(memberOf(read, "onclick"))).toEqual(["body"]);
+  });
+});
+
+/** The own keys of an object value, in order. */
+function keysOf(value: JxDocumentValue | undefined): string[] {
+  if (!isJsonObject(value)) {
+    throw new TypeError("expected an object value");
+  }
+  return Object.keys(value);
+}
+
+/** One named member of an object value. */
+function memberOf(value: JxDocumentValue | undefined, key: string): JxDocumentValue | undefined {
+  if (!isJsonObject(value)) {
+    throw new TypeError("expected an object value");
+  }
+  return value[key];
+}
+
+/** The own keys of one node key's object value, in stored order. */
+function keysAt(root: Y.Map<YStructureValue>, key: string): string[] {
+  return keysOf(memberOf(yValueToJson(root), key));
+}

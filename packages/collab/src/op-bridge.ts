@@ -12,22 +12,17 @@
  */
 
 import * as Y from "yjs";
-import { cloneValue } from "@jxsuite/schema/doc-ops";
-import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
-import type { JxDocumentValue, JxPath } from "@jxsuite/schema/types";
+import { isNumber, isString } from "@jxsuite/schema/guards";
+import type { JxPath } from "@jxsuite/schema/types";
 import type { JxDocOp } from "./ops.ts";
 import {
   applyTextEdit,
   GRANULAR_OBJECT_KEYS,
-  mergeYObject,
-  mergeYTextObject,
   resolveYPath,
   TEXT_KEYS,
   TEXT_OBJECT_KEYS,
   toYChild,
-  toYChildren,
-  toYObject,
-  toYTextObject,
+  writeNodeKey,
   yChildToJson,
   yValueToJson,
 } from "./schema.ts";
@@ -70,53 +65,6 @@ function childrenOf(doc: Y.Doc, parentPath: JxPath, create: boolean): Y.Array<YS
   throw new CollabPathError([...parentPath, "children"]);
 }
 
-/**
- * Write a node key, preserving CRDT identity wherever the schema stores it granularly.
- *
- * Studio's mutators record whole-value `set-key` ops — `mutateUpdateStyle` replaces the entire
- * style object, an inline-edit commit replaces the entire `textContent`. Writing those straight
- * through with `Y.Map.set` mints a fresh Y type each time and throws away whatever a peer
- * concurrently did to the old one, which is exactly how "two people typing in one paragraph" became
- * last-writer-wins.
- *
- * So a whole-value op is diffed down onto the existing structure: text through {@link applyTextEdit}
- * (character-level), granular objects through {@link mergeYObject} (per-property). Only a TYPE
- * change — string text becoming a `$ref`, an object becoming a scalar — falls back to replacement,
- * because then there is no shared structure left to preserve.
- */
-function setNodeKey(node: Y.Map<YStructureValue>, key: string, value: JxDocumentValue): void {
-  const existing = node.get(key);
-  if (key === "children" && Array.isArray(value)) {
-    node.set(key, toYChildren(value));
-    return;
-  }
-  if (TEXT_KEYS.has(key) && isString(value)) {
-    if (existing instanceof Y.Text) {
-      applyTextEdit(existing, value);
-    } else {
-      node.set(key, new Y.Text(value));
-    }
-    return;
-  }
-  if (GRANULAR_OBJECT_KEYS.has(key) && isJsonObject(value)) {
-    if (existing instanceof Y.Map) {
-      mergeYObject(existing, value);
-    } else {
-      node.set(key, toYObject(value));
-    }
-    return;
-  }
-  if (TEXT_OBJECT_KEYS.has(key) && isJsonObject(value)) {
-    if (existing instanceof Y.Map) {
-      mergeYTextObject(existing, value);
-    } else {
-      node.set(key, toYTextObject(value));
-    }
-    return;
-  }
-  node.set(key, cloneValue(value));
-}
-
 function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
   // Read before the switch: an op from outside may carry a kind the union does not name.
   const { op: kind } = op;
@@ -126,7 +74,7 @@ function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
       if (op.value === undefined) {
         node.delete(op.key);
       } else {
-        setNodeKey(node, op.key, op.value);
+        writeNodeKey(node, op.key, op.value);
       }
       return;
     }
@@ -153,7 +101,7 @@ function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
       }
       // Text child → text child: edit the existing Y.Text in place. A delete+insert would replace the
       // Whole element and discard a peer's concurrent characters, which is the same clobber
-      // `setNodeKey` avoids for `textContent` — bare-string children are the other half of prose.
+      // `writeNodeKey` avoids for `textContent` — bare-string children are the other half of prose.
       const existing = children.get(op.index);
       if (existing instanceof Y.Text && isString(op.node)) {
         applyTextEdit(existing, op.node);
@@ -165,8 +113,8 @@ function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
     }
     case "move-child": {
       // Y.Array has no native move: re-insert the node's current JSON at the target. A remote
-      // Edit landing inside the moved subtree during the same round-trip is lost (documented v1
-      // Limitation); convergence itself is unaffected. Both parent paths resolve BEFORE the
+      // Edit landing inside the moved subtree during the same round-trip is lost (the case
+      // Collab.md §3.1 states: Y.Array has no move); convergence itself is unaffected. Both parent paths resolve BEFORE the
       // Removal splice — matching the plain applier's semantics — while toIndex is expressed in
       // Post-removal coordinates (the mutators pre-adjust same-parent moves).
       const from = childrenOf(doc, op.fromParentPath, false);
@@ -219,7 +167,12 @@ function granularOwner(path: JxPath): { nodePath: JxPath; key: string } | null {
     if (!isString(segment)) {
       continue;
     }
-    if (GRANULAR_OBJECT_KEYS.has(segment) || TEXT_OBJECT_KEYS.has(segment)) {
+    if (
+      GRANULAR_OBJECT_KEYS.has(segment) ||
+      TEXT_OBJECT_KEYS.has(segment) ||
+      segment === "state" ||
+      (segment.length > 2 && segment.startsWith("on"))
+    ) {
       return { key: segment, nodePath: path.slice(0, i) };
     }
     if (TEXT_KEYS.has(segment)) {
@@ -242,11 +195,70 @@ function isStructurePath(segments: readonly (string | number)[]): segments is Jx
   return segments.every((seg) => isString(seg) || isNumber(seg));
 }
 
+function sameOwner(
+  a: { nodePath: JxPath; key: string } | null,
+  b: { nodePath: JxPath; key: string } | null,
+): boolean {
+  return (
+    a !== null &&
+    b !== null &&
+    a.key === b.key &&
+    a.nodePath.length === b.nodePath.length &&
+    a.nodePath.every((seg, i) => seg === b.nodePath[i])
+  );
+}
+
+/**
+ * The deepest node path `P` such that every path starts with `[...P, "children"]`, or null when
+ * none does: the node whose `children` the events are confined to.
+ */
+function childrenOwner(paths: readonly JxPath[]): JxPath | null {
+  const first = paths[0] ?? [];
+  let common = first.length;
+  for (const path of paths) {
+    let k = 0;
+    while (k < common && k < path.length && path[k] === first[k]) {
+      k += 1;
+    }
+    common = k;
+  }
+  let walked = 0;
+  while (walked + 1 < common && first[walked] === "children" && isNumber(first[walked + 1])) {
+    walked += 2;
+  }
+  if (common > walked && first[walked] === "children") {
+    return first.slice(0, walked);
+  }
+  return walked > 0 ? first.slice(0, walked - 2) : null;
+}
+
+/**
+ * Events that all lie inside one node's `children` collapse to one whole-value `set-key children`
+ * for that node, as granular events collapse for the other keys (collab.md §3). Null when no such
+ * node exists or its array is gone.
+ */
+function collapseToChildren(
+  events: readonly Y.YEvent<Y.AbstractType<unknown>>[],
+  paths: readonly JxPath[],
+): JxDocOp[] | null {
+  const owner = childrenOwner(paths);
+  const doc = events[0]?.target.doc;
+  if (owner === null || !doc) {
+    return null;
+  }
+  const array = resolveYPath(doc, [...owner, "children"]);
+  if (!(array instanceof Y.Array)) {
+    return null;
+  }
+  return [{ key: "children", op: "set-key", path: owner, value: yValueToJson(array) }];
+}
+
 /**
  * Convert a remote transaction's deep events on the structure tree into JxDocOps (positions valid
- * at sequential apply time). Returns null when the shape is not provably safe to convert — multiple
- * overlapping events, more than one array event, or non-contiguous delete runs — and the caller
- * must reconcile by diffing instead.
+ * at sequential apply time). Returns null when the shape is not provably safe to convert —
+ * overlapping events and more than one array event collapse to one `children` write when they all
+ * lie inside one node's children; any other such shape, or a non-contiguous delete run, returns
+ * null and the caller must reconcile by diffing instead.
  */
 export function yEventsToDocOps(
   events: readonly Y.YEvent<Y.AbstractType<unknown>>[],
@@ -258,8 +270,10 @@ export function yEventsToDocOps(
   if (!paths.every((p) => isStructurePath(p))) {
     return null;
   }
+  const owners = paths.map((path) => granularOwner(path));
   // Overlap guard: one event's target must not sit inside another's subtree — later paths would
-  // Describe positions the earlier splice already shifted.
+  // Describe positions the earlier splice already shifted. Events inside one granular container
+  // Are exempt: they collapse to a single whole-value op for that container.
   for (let i = 0; i < paths.length; i++) {
     for (let j = 0; j < paths.length; j++) {
       if (i === j) {
@@ -267,14 +281,20 @@ export function yEventsToDocOps(
       }
       const a = paths[i]!;
       const b = paths[j]!;
-      if (a.length <= b.length && a.every((seg, k) => seg === b[k])) {
-        return null;
+      if (
+        a.length <= b.length &&
+        a.every((seg, k) => seg === b[k]) &&
+        !sameOwner(owners[i] ?? null, owners[j] ?? null)
+      ) {
+        return collapseToChildren(events, paths);
       }
     }
   }
-  const arrayEvents = events.filter((event) => event instanceof Y.YArrayEvent).length;
+  const arrayEvents = events.filter(
+    (event, i) => event instanceof Y.YArrayEvent && owners[i] === null,
+  ).length;
   if (arrayEvents > 1) {
-    return null;
+    return collapseToChildren(events, paths);
   }
 
   const ops: JxDocOp[] = [];
