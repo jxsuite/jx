@@ -22,6 +22,27 @@ import type { ReconnectPolicy } from "./reconnect.ts";
 import type { CollabFrame, ControlMessage } from "./envelope.ts";
 import type { CollabConflict, CollabHandle, CollabIdentity, CollabStatus } from "./provider.ts";
 
+/**
+ * Why an `openDoc` could not complete when the cause is a fault rather than a path no room serves
+ * (collab.md §4): the promise rejects with this, and its message is written for the author.
+ */
+export class CollabOpenError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "CollabOpenError";
+    this.code = code;
+  }
+}
+
+/** The refusal codes the client can phrase for the author; any other keeps the server's message. */
+const REFUSAL_REASONS = new Map<string, string>([
+  ["hydrate-failed", "The file could not be loaded for co-editing."],
+  ["rate-limited", "The collaboration server is refusing new sessions for now."],
+  ["too-large", "This file is too large for live collaboration."],
+]);
+
 /** The subset of the WebSocket API the connection uses (injectable for tests). */
 export interface WsLike {
   binaryType: string;
@@ -53,7 +74,7 @@ export interface WsCollabConnectionOptions {
    * caches it server-side) so the retry can seed. One retry per open.
    */
   hydratePath?: (path: string) => Promise<void>;
-  /** Give up on an openDoc after this long (falls back to solo editing). */
+  /** Give up on an openDoc after this long (it rejects with a `CollabOpenError`). */
   openTimeoutMs?: number;
   /** Initial reconnect backoff window (`ReconnectPolicy.baseMs`: doubles to 30s, equal jitter). */
   reconnectDelayMs?: number;
@@ -65,6 +86,11 @@ export interface WsCollabConnectionOptions {
 }
 
 export interface WsCollabConnection {
+  /**
+   * Resolves a handle, `null` where no room serves the path (a binary file, a file the server
+   * cannot read, a destroyed connection), and rejects with a `CollabOpenError` carrying the reason
+   * when the open was tried and could not complete (collab.md §4).
+   */
   openDoc: (path: string) => Promise<CollabHandle | null>;
   status: () => CollabStatus;
   destroy: () => void;
@@ -85,7 +111,7 @@ interface DocEntry {
   opened: boolean;
   synced: boolean;
   hydrated: boolean;
-  resolveOpen: ((ok: boolean) => void) | null;
+  resolveOpen: ((outcome: CollabOpenError | boolean) => void) | null;
   resolveSynced: () => void;
   whenSynced: Promise<void>;
   resetCbs: Set<() => void>;
@@ -259,15 +285,27 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
           void options.hydratePath(message.path).then(
             () => sendOpen(message.path!),
             () => {
-              entry.resolveOpen?.(false);
+              entry.resolveOpen?.(
+                new CollabOpenError(
+                  "hydrate-failed",
+                  "The file could not be loaded for co-editing.",
+                ),
+              );
               entry.resolveOpen = null;
             },
           );
           return;
         }
         if (!entry.opened) {
-          // Fatal refusal (binary-file, too-large, unresolved hydration): fall back to solo.
-          entry.resolveOpen?.(false);
+          /* A path no room serves is `null`; any other refusal is a fault the author is told about. */
+          entry.resolveOpen?.(
+            message.code === "binary-file" || message.code === "content-not-loaded"
+              ? false
+              : new CollabOpenError(
+                  message.code,
+                  REFUSAL_REASONS.get(message.code) ?? message.message,
+                ),
+          );
           entry.resolveOpen = null;
         }
         break;
@@ -427,7 +465,10 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
       }
       const existing = docs.get(path);
       if (existing && !existing.handleDestroyed) {
-        return null;
+        throw new CollabOpenError(
+          "already-open",
+          "This document is already open on this connection.",
+        );
       }
       let resolveSynced: () => void = () => {};
       const whenSynced = new Promise<void>((resolve) => {
@@ -467,11 +508,15 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         });
       });
 
-      const openedOk = await new Promise<boolean>((resolve) => {
+      const outcome = await new Promise<CollabOpenError | boolean>((resolve) => {
         entry.resolveOpen = resolve;
         const timer = setTimeout(() => {
           entry.resolveOpen = null;
-          resolve(false);
+          resolve(
+            status === "connected"
+              ? new CollabOpenError("open-timeout", "The collaboration server did not answer.")
+              : new CollabOpenError("unreachable", "Could not reach the collaboration server."),
+          );
         }, openTimeoutMs);
         entry.resolveOpen = (ok) => {
           clearTimeout(timer);
@@ -479,11 +524,14 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         };
         sendOpen(path);
       });
-      if (!openedOk) {
+      if (outcome !== true) {
         if (docs.get(path) === entry) {
           docs.delete(path);
         }
         entry.doc.destroy();
+        if (outcome instanceof CollabOpenError) {
+          throw outcome;
+        }
         return null;
       }
 

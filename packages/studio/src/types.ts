@@ -797,8 +797,10 @@ export interface StudioPlatform {
   /**
    * Open a realtime co-editing session for a project-relative document path. Optional: platforms
    * without a collab backend omit it and Studio edits solo with file-level saves. Resolves null
-   * when the backend refuses a room for this doc (binary, oversized). The returned handle's Y.Doc
-   * starts empty and fills from the provider — see `@jxsuite/collab/provider` for the contract.
+   * where no room serves the document (no endpoint, collaboration switched off, a path such as a
+   * binary file) and rejects with an author-readable reason when an attach was tried and could not
+   * open (collab.md §4). The returned handle's Y.Doc starts empty and fills from the provider — see
+   * `@jxsuite/collab/provider` for the contract.
    */
   collab?: (docPath: string) => Promise<CollabHandle | null>;
   // ─── Identity & hosting connections (publish surface) ───────────────────────

@@ -73,4 +73,9 @@ export interface CollabHandle {
   destroy: () => void;
 }
 
+/**
+ * The platform's `collab` member. Three answers, each one state in collab.md §4: a handle joins;
+ * `null` means no room serves this document here and nothing went wrong (unavailable); a rejection
+ * means an attach was tried and could not complete, and its message is the reason (failed).
+ */
 export type CollabCapability = (docPath: string) => Promise<CollabHandle | null>;

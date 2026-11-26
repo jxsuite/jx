@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-classes-per-file */
 /**
  * Host + client wired over an in-memory socket pair (no network): the full envelope contract —
  * seed-before-sync, two-client convergence, awareness relay, read-only enforcement, flush ack,
@@ -7,7 +8,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createCollabHost } from "../src/ws-room.ts";
 import type { CollabHost } from "../src/ws-room.ts";
-import { createWsCollabConnection } from "../src/ws-client.ts";
+import { CollabOpenError, createWsCollabConnection } from "../src/ws-client.ts";
 import type { WsCollabConnection, WsLike } from "../src/ws-client.ts";
 import { encodeFrame } from "../src/envelope.ts";
 import type { CollabConflict, CollabIdentity } from "../src/provider.ts";
@@ -73,6 +74,19 @@ class LoopbackSocket implements WsLike {
   }
 }
 
+/** The `CollabOpenError` an open rejects with, or null when it resolved. */
+async function openError(
+  connection: WsCollabConnection,
+  path: string,
+): Promise<CollabOpenError | null> {
+  try {
+    await connection.openDoc(path);
+  } catch (error_) {
+    return error_ instanceof CollabOpenError ? error_ : null;
+  }
+  return null;
+}
+
 async function settle(rounds = 12): Promise<void> {
   for (let i = 0; i < rounds; i++) {
     await new Promise((resolve) => {
@@ -108,6 +122,10 @@ interface Fixture {
 const cleanups: (() => void)[] = [];
 
 function fixture(): Fixture {
+  return fixtureWith();
+}
+
+function fixtureWith(refusals: Record<string, string> = {}): Fixture {
   const files = new Map<string, string>([["pages/index.json", `{"tagName":"div"}`]]);
   const flushes: string[] = [];
   const flushOptions: Fixture["flushOptions"] = [];
@@ -122,7 +140,7 @@ function fixture(): Fixture {
       flushes.push(path);
       flushOptions.push(options);
     },
-    rejectPath: (path) => (path.endsWith(".png") ? "binary-file" : null),
+    rejectPath: (path) => refusals[path] ?? (path.endsWith(".png") ? "binary-file" : null),
   });
   const connect = (identity: Partial<CollabIdentity> = {}) => {
     const connection = createWsCollabConnection({
@@ -159,13 +177,25 @@ describe("open + seed", () => {
     expect(handle!.identity()?.permission).toBe("write");
   });
 
-  test("a missing file resolves null (solo fallback)", async () => {
+  test("a file the server cannot read resolves null: no room serves it", async () => {
     const fx = fixture();
     const handle = await fx.connect().openDoc("pages/absent.json");
     expect(handle).toBeNull();
   });
 
-  test("a rejected path resolves null", async () => {
+  test("a refusal before opened rejects with its code and a sentence", async () => {
+    const fx = fixtureWith({ "pages/big.json": "too-large", "pages/odd.json": "odd-code" });
+    const connection = fx.connect();
+    const big = await openError(connection, "pages/big.json");
+    expect(big).not.toBeNull();
+    expect(big?.code).toBe("too-large");
+    expect(big?.message).toBe("This file is too large for live collaboration.");
+    const odd = await openError(connection, "pages/odd.json");
+    expect(odd?.code).toBe("odd-code");
+    expect(odd?.message).toBe("Refused: odd-code");
+  });
+
+  test("a binary path resolves null: no room serves it", async () => {
     const fx = fixture();
     const handle = await fx.connect().openDoc("assets/logo.png");
     expect(handle).toBeNull();
@@ -346,7 +376,8 @@ describe("lifecycle", () => {
     await handle!.whenSynced;
 
     // A second open of a live path is refused (one handle per doc per connection).
-    expect(await connection.openDoc("pages/index.json")).toBeNull();
+    const second = await openError(connection, "pages/index.json");
+    expect(second?.code).toBe("already-open");
 
     // Socket errors are absorbed (the close handler owns recovery).
     fx.sockets[0]!.onerror?.();
@@ -411,8 +442,32 @@ describe("lifecycle", () => {
       ),
     });
     cleanups.push(() => connection.destroy());
-    expect(await connection.openDoc("pages/index.json")).toBeNull();
+    const error = await openError(connection, "pages/index.json");
+    expect(error).not.toBeNull();
+    expect(error?.code).toBe("open-timeout");
     expect(connection.status()).toBe("connected");
+  });
+
+  test("an open whose socket never connects rejects as unreachable", async () => {
+    /* A socket that closes without ever opening: the LoopbackSocket's connect microtask sees a
+       non-zero readyState and gives up, so the host never hears of it. */
+    class DeadSocket extends LoopbackSocket {
+      constructor() {
+        super(fixture().host, { color: "#fff", login: "octocat", permission: "write" }, []);
+        this.readyState = 3;
+        queueMicrotask(() => this.onclose?.());
+      }
+    }
+    const connection = createWsCollabConnection({
+      openTimeoutMs: 20,
+      url: "ws://dead",
+      webSocketImpl: DeadSocket,
+    });
+    cleanups.push(() => connection.destroy());
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const error = await openError(connection, "pages/index.json");
+      expect(error?.code).toBe("unreachable");
+    }
   });
 
   test("an 'opened' control at a different epoch resets the live handle", async () => {
@@ -470,7 +525,7 @@ describe("lifecycle", () => {
     expect(sourceText(handle!.doc).toString()).toBe(`{"tagName":"div"}`);
   });
 
-  test("a failing hydratePath falls back to solo", async () => {
+  test("a failing hydratePath rejects as hydrate-failed", async () => {
     const fx = fixture();
     const connection = createWsCollabConnection({
       hydratePath: () => Promise.reject(new Error("no such file")),
@@ -483,7 +538,8 @@ describe("lifecycle", () => {
       ),
     });
     cleanups.push(() => connection.destroy());
-    expect(await connection.openDoc("pages/never.json")).toBeNull();
+    const error = await openError(connection, "pages/never.json");
+    expect(error?.code).toBe("hydrate-failed");
   });
 
   test("room-level dirty broadcasts to every subscriber on a source change", async () => {

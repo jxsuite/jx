@@ -34,7 +34,7 @@ The stub treated this as paper. Detailing found that four of the five modules do
 
 **Tests in the area**: `packages/collab/tests/ws-room-host.test.ts` (`recordingSocket`, `makeHost`), `ws-wire.test.ts` (`LoopbackSocket`, `fixture()`), `envelope.test.ts`, `source-lock.test.ts`, `index.test.ts`; `packages/server/tests/collab-api.test.ts`; `packages/studio/tests/collab-session.test.ts`, `collab-session-gaps.test.ts`, `collab-source.test.ts`, `collab-presence.test.ts`, `tab-strip.test.ts`, `publish-changes.test.ts` (which mocks `runDeploy` and `notify`, and builds no tabs), with `collab-mock.ts` (whose hub gives every handle its own `Awareness`, relayed only among handles of one path, unlike the wire client).
 
-**Related.** collab.md §3's epoch rule, including how a tab rejoins a restarted server (`plan:collab/epoch-continuity`), §4's lifecycle and refusal outcomes (`plan:collab/attach-failure-state`), §5's shared-document version in `open` (`plan:collab/room-schema-skew`). The new sections defer to those sections instead of restating them, so no edge is needed either way.
+**Related.** collab.md §3's epoch rule, including how a tab rejoins a restarted server (`plan:collab/epoch-continuity`), §4's lifecycle and refusal outcomes (the landed collab.md §4 work), §5's shared-document version in `open` (`plan:collab/room-schema-skew`). The new sections defer to those sections instead of restating them, so no edge is needed either way.
 
 ## Outcome
 

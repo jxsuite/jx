@@ -16,7 +16,9 @@ import type { ContentHash } from "@jxsuite/protocol/project-state";
  * collaboration at all, this project has collaboration but this tab is solo, and the attach was
  * tried and it FAILED. A freeze was indistinguishable from a bug, and so was a broken connection
  * (collab.md §4). `"unavailable"` and `"failed"` split the third and first cases out, so the chip
- * can say which one it is.
+ * can say which one it is. `"detached"` is now only the author having left the session,
+ * `"unavailable"` includes a path no room serves, and `"connecting"` is the attach in progress
+ * (collab.md §4).
  */
 export type CollabTabStatus =
   | "unavailable"
