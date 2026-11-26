@@ -27,6 +27,7 @@ describe("COLLAB_SUBPROTOCOL", () => {
 describe("negotiateCollab", () => {
   test("offers the token when the server advertises it", () => {
     expect(negotiateCollab({ collab: true, protocols: [COLLAB_SUBPROTOCOL], version: 1 })).toEqual({
+      disabled: false,
       offer: [COLLAB_SUBPROTOCOL],
       refused: null,
     });
@@ -34,16 +35,21 @@ describe("negotiateCollab", () => {
 
   test("offers NOTHING to a server that advertises no protocols", () => {
     // The pre-negotiation probe body. Offering here would fail the handshake (RFC 6455 §4.1).
-    expect(negotiateCollab({ collab: true, version: 1 })).toEqual({ offer: [], refused: null });
+    expect(negotiateCollab({ collab: true, version: 1 })).toEqual({
+      disabled: false,
+      offer: [],
+      refused: null,
+    });
     expect(negotiateCollab({ collab: true, protocols: [], version: 1 })).toEqual({
+      disabled: false,
       offer: [],
       refused: null,
     });
   });
 
   test("offers nothing when the body is not an object at all", () => {
-    expect(negotiateCollab(null)).toEqual({ offer: [], refused: null });
-    expect(negotiateCollab("collab")).toEqual({ offer: [], refused: null });
+    expect(negotiateCollab(null)).toEqual({ disabled: false, offer: [], refused: null });
+    expect(negotiateCollab("collab")).toEqual({ disabled: false, offer: [], refused: null });
   });
 
   test("refuses, naming both sides, when the envelopes cannot interoperate", () => {
@@ -53,29 +59,27 @@ describe("negotiateCollab", () => {
     expect(result.refused).toContain(COLLAB_SUBPROTOCOL);
   });
 
-  test("refuses a server that says collaboration is off", () => {
-    expect(negotiateCollab({ collab: false }).refused).toBe(
-      "This server has collaboration disabled.",
-    );
-  });
-
-  /* A refusal an action would lift is not "disabled", and only the server knows which one it is. */
-  test("a refusal that explains itself is reported in the server's own words", () => {
-    const result = negotiateCollab({
-      collab: false,
-      detail: "  Live collaboration on acme/site is for team members.  ",
+  test("a server with collaboration switched off is disabled, not refused", () => {
+    expect(negotiateCollab({ collab: false })).toEqual({
+      disabled: true,
+      offer: [],
+      refused: null,
     });
-    expect(result.offer).toEqual([]);
-    expect(result.refused).toBe("Live collaboration on acme/site is for team members.");
+    expect(negotiateCollab({ collab: false, detail: "   " }).disabled).toBe(true);
+    expect(negotiateCollab({ collab: false, detail: 42 }).disabled).toBe(true);
   });
 
-  test("a blank or non-string detail falls back to the generic sentence", () => {
-    expect(negotiateCollab({ collab: false, detail: "   " }).refused).toBe(
-      "This server has collaboration disabled.",
-    );
-    expect(negotiateCollab({ collab: false, detail: 42 }).refused).toBe(
-      "This server has collaboration disabled.",
-    );
+  test("a refusal that explains itself is reported in the server's own words", () => {
+    expect(
+      negotiateCollab({
+        collab: false,
+        detail: "  Live collaboration on acme/site is for team members.  ",
+      }),
+    ).toEqual({
+      disabled: false,
+      offer: [],
+      refused: "Live collaboration on acme/site is for team members.",
+    });
   });
 });
 

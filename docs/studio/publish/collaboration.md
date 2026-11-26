@@ -30,7 +30,7 @@ When two people open the same file through the same Studio backend, the tab beco
 
 ## What you see
 
-- **A status pill** in the toolbar reads **Live** while the session is connected, and names every other state plainly: **Solo** when nobody else is here, **Connecting…**, **`Offline — changes sync on reconnect`**, or **Not connected** when the session could not start. Hover it for the reason. It replaces the usual unsaved-changes dot for this tab.
+- **A status pill** in the toolbar reads **Live** while the session is connected, and names every other state plainly: **Solo** when you stopped sharing the document, **Connecting…**, **`Offline — changes sync on reconnect`**, or **Not connected** when the session could not start. Hover it for the reason. It replaces the usual unsaved-changes dot for this tab.
 - **Flags beside the pill**: **Read-only** when you may look but not publish, and **Code view held** while a collaborator has the text view (see below). Both are standing statements, not error messages.
 - **Presence chips**: one colored circle per collaborator, showing their avatar or initial. Hover one to see who it is and which file they're in; peers elsewhere in the project show up too, labeled with the file they're working in, and someone who has closed every shared file leaves the row. With several shared files open, a collaborator is labeled with the one they opened, or switched to Code view in, most recently.
 - **Selections on the canvas**: every element a peer has selected is outlined in their color, labeled with their name, and follows them live. A peer working across several elements at once shows all of them, so you can see the whole shape of what they are about to change rather than one node of it.
@@ -63,7 +63,7 @@ The consequence to plan around: **a collaborator does not see your configuration
 
 Open the **[Command palette](/docs/studio/interface/commands)** and type `Collaborate` for the session's verbs:
 
-- **Collaborate: Share this document** and **Collaborate: Stop sharing** join or leave the session for the open document.
+- **Collaborate: Share this document** and **Collaborate: Stop sharing** join or leave the session for the open document. Share also tries again when the pill reads **Not connected**.
 - **Collaborate: Copy session link** copies a reference to the room. It names the session; it does not grant anyone access to it.
 - **Collaborate: Follow a collaborator** reports which file a named collaborator is in, and offers to open it.
 - **Collaborate: What is happening in this document?** gives the full state in one place: connection, who is here, whether you can publish, whether the code view is held, and the undo rule.
@@ -100,9 +100,9 @@ On a shared dev server, unsaved co-edits live only in the server's memory. If ev
 
 Collaboration degrades, never blocks:
 
-- A backend without the endpoint simply gives you ordinary solo editing, with no errors and no pill.
-- A backend running a **different version of the co-editing wire format** also gives you solo editing, rather than a session. Studio and the backend agree on a format before the connection opens, and when they can't, joining anyway would mean two copies of the document merging edits neither side reads the same way. Updating whichever side is older restores it.
-- If a session can't sync within a few seconds of opening, the tab proceeds solo and the pill reads **Not connected** with the reason on hover. This is deliberately not the same as **Solo**: **Solo** means nobody else is here, **Not connected** means something went wrong, and the two never wear the same word.
+- A backend without the endpoint, a backend with collaboration switched off, and files no session covers (such as images) simply give you ordinary solo editing, with no errors and no pill.
+- A backend running a **different version of the co-editing wire format** gives you ordinary editing rather than a session, and the pill reads **Not connected** with the reason. Studio and the backend agree on a format before the connection opens, and when they can't, joining anyway would mean two copies of the document merging edits neither side reads the same way. Updating whichever side is older restores it.
+- If a session can't start (the server can't be reached, it turns the file away, or the first sync takes more than a few seconds), the tab proceeds on its own and the pill reads **Not connected** with the reason on hover. The reason is also posted once as a notification, and **Collaborate: Share this document** tries again. This is deliberately not the same as **Solo**: **Solo** means you left the session, **Not connected** means something went wrong, and the two never wear the same word.
 - If the connection drops, the pill reads **`Offline — changes sync on reconnect`**: keep editing, and your changes merge when the connection returns.
 - If the file is replaced underneath a session with no unsaved edits (a git pull or discard, an outside edit), the session resets and rejoins on the new content automatically. One with unsaved edits keeps them and asks when you save (see [Syncing is not saving](#syncing-is-not-saving)).
 

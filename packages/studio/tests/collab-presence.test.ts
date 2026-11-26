@@ -154,6 +154,7 @@ describe("collab honesty", () => {
     expect(projected.label).toBe("Not connected");
     expect(projected.status).toBe("failed");
     expect(projected.title).toContain("relay unreachable");
+    expect(projected.title).toContain("Collaborate: Share this document");
   });
 
   test("the source-canonical freeze gets a standing indicator, which the band draws as a flag", () => {

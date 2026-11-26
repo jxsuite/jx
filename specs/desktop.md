@@ -1113,6 +1113,8 @@ interface CollaborativePlatform extends StudioPlatform {
 
 What shipped is one optional PAL member — `collab?: (docPath) => Promise<CollabHandle | null>` — over a CRDT (`@jxsuite/collab`, Yjs). There are no locks: two authors edit the same document and the document converges, rather than one of them being refused. The adapter probes `/collab` once and passes the `protocols` the backend lists to the wire client, which offers one as `Sec-WebSocket-Protocol`; a client that offers a subprotocol the server does not echo fails the connection outright ([RFC 6455 §4.1](https://www.rfc-editor.org/rfc/rfc6455#section-4.1)), so an unconditional offer would break co-editing against every backend that predates negotiation.
 
+The member answers in one of three ways: a handle, `null` where no room serves the document, or a rejection whose message is the reason an attach could not open. collab.md §4 maps each to what the author sees.
+
 The member is still additive in the way this section intended: Studio checks for its presence and falls back to solo, file-level saves without it.
 
 ### 10.4 Backend-Directed Access

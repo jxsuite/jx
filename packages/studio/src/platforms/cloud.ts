@@ -1180,9 +1180,9 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
 
     /**
      * Realtime co-editing over the gateway's /collab WebSocket (rooms keyed by project-relative
-     * path, per the shared ProjectSession working tree). Backends without the endpoint (or with the
-     * flag off) refuse the upgrade and Studio degrades to solo editing. The wire client's
-     * evaluation defers behind the dynamic import until a doc opens.
+     * path, per the shared ProjectSession working tree). A backend answering `{collab: false}`
+     * resolves null; an envelope this build cannot parse rejects with the reason (collab.md §4).
+     * The wire client's evaluation defers behind the dynamic import until a doc opens.
      *
      * A plain GET on the same URL is the subprotocol negotiation, and this adapter did not make one
      * before. **A probe that does not answer is not a refusal here.** The gateway is deployed
@@ -1197,13 +1197,17 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       }
       collabNegotiation ??= api("/collab")
         .then(async (res) =>
-          res.ok ? negotiateCollab(await readJson<JsonValue>(res)) : { offer: [], refused: null },
+          res.ok
+            ? negotiateCollab(await readJson<JsonValue>(res))
+            : { disabled: false, offer: [], refused: null },
         )
-        .catch(() => ({ offer: [], refused: null }));
+        .catch(() => ({ disabled: false, offer: [], refused: null }));
       const negotiated = await collabNegotiation;
-      if (negotiated.refused !== null) {
-        console.warn(`Collaboration unavailable: ${negotiated.refused}`);
+      if (negotiated.disabled) {
         return null;
+      }
+      if (negotiated.refused !== null) {
+        throw new Error(negotiated.refused);
       }
       const { offer } = negotiated;
       collabConnection ??= (async () => {

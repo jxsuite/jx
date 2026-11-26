@@ -122,6 +122,8 @@ Studio always checks for presence before calling an optional member, so an omitt
 
 :::doc-note
 **`collab` probes before it connects, and the probe decides more than availability.** Both bundled adapters GET the collab URL once and pass the `protocols` it lists to the wire client, which offers one as `Sec-WebSocket-Protocol`. An adapter that skips the probe and opens the socket directly must offer no subprotocol at all: a client whose offer goes unechoed fails the connection outright ([RFC 6455 §4.1](https://www.rfc-editor.org/rfc/rfc6455#section-4.1)), so an unconditional offer breaks co-editing against every backend that predates negotiation. See [the backend protocol](/docs/extending/embedding/backend-protocol).
+
+The probe is asked once per page, and the dev server's adapter asks again after a probe it could not complete. Resolve `null` when no session can exist for the document, and Studio shows nothing. Reject with an `Error` an author can read when you tried and could not open one, and Studio shows **Not connected** with that message. The bundled wire client already rejects that way, so an adapter can return `openDoc`'s promise as it is.
 :::
 
 ### Capabilities beyond the interface

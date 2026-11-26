@@ -86,7 +86,9 @@ export function collabCommands(): AnyCommand[] {
         if (!active) {
           return;
         }
-        if (isCollabEnabled(active) === enabled) {
+        // Share on a failed tab is the retry (collab.md §4), so it is not a no-op.
+        const retry = enabled && collabState(active).status === "failed";
+        if (isCollabEnabled(active) === enabled && !retry) {
           return;
         }
         setCollabEnabled(active, enabled);

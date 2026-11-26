@@ -14,6 +14,7 @@ import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { collabState } from "../src/collab/collab-state";
+import { resetNotifications, toasts } from "../src/services/notify";
 import { mutateUpdateProperty, openBatchLane, transactDoc } from "../src/tabs/transact";
 import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
 import type { CollabHandle } from "@jxsuite/collab/provider";
@@ -764,22 +765,99 @@ describe("identity fallbacks", () => {
 // ─── Attach lifecycle races ──────────────────────────────────────────────────
 
 describe("attach lifecycle races", () => {
-  test("a leave-and-rejoin during the initial attach abandons the stale attempt", async () => {
+  test("a leave-and-rejoin during the initial attach abandons the stale attempt, then joins", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
-    // Leave and rejoin BEFORE the attach settles: the detach bumps the generation, so the
-    // In-flight attempt destroys its handle; the rejoin finds the attempt still pending → no-op.
+    /* Leave and rejoin BEFORE the attach settles: the detach bumps the generation, so the in-flight
+       attempt destroys its handle, and the rejoin waits for it rather than being lost. */
     setCollabEnabled(tab, false);
     setCollabEnabled(tab, true);
     await settleCollab();
-    expect(collabState(tab).active).toBe(false);
-    expect(hub.connectionCount(PATH)).toBe(0);
+    expect(collabState(tab).active).toBe(true);
+    expect(hub.connectionCount(PATH)).toBe(1);
 
     // Re-keying attaches cleanly against the same path.
     rekeyCollab(tab);
     await settleCollab();
     expect(collabState(tab).active).toBe(true);
     expect(hub.connectionCount(PATH)).toBe(1);
+  });
+
+  test("a rename during the initial attach joins under the new path", async () => {
+    const hub = createMockCollabHub();
+    let releaseSync!: () => void;
+    let first = true;
+    installMockPlatform({
+      collab: async (p) => {
+        const h = await hub.capability(p);
+        if (!h || !first) {
+          return h;
+        }
+        first = false;
+        return {
+          ...h,
+          whenSynced: new Promise<void>((resolve) => {
+            releaseSync = resolve;
+          }),
+        };
+      },
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    tab.documentPath = "pages/renamed.json";
+    rekeyCollab(tab);
+    releaseSync();
+    await settleCollab();
+    expect(collabState(tab).status).toBe("synced");
+    expect(hub.connectionCount("pages/renamed.json")).toBe(1);
+    expect(hub.connectionCount(PATH)).toBe(0);
+  });
+
+  test("a tab replaced while it attaches hands its path to the new tab", async () => {
+    resetNotifications();
+    const hub = createMockCollabHub();
+    let releaseSync!: () => void;
+    let first = true;
+    const live = new Set<CollabHandle>();
+    installMockPlatform({
+      collab: async (p) => {
+        // The wire client's guard: one handle per path, pending or live.
+        if (live.size > 0) {
+          throw new Error("This document is already open on this connection.");
+        }
+        const h = await hub.capability(p);
+        if (!h) {
+          return h;
+        }
+        const wrapped: CollabHandle = {
+          ...h,
+          destroy: () => {
+            live.delete(wrapped);
+            h.destroy();
+          },
+        };
+        if (first) {
+          wrapped.whenSynced = new Promise<void>((resolve) => {
+            releaseSync = resolve;
+          });
+        }
+        first = false;
+        live.add(wrapped);
+        return wrapped;
+      },
+    });
+    openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    const replacement = openTab({
+      document: structuredClone(HELLO_DOC),
+      documentPath: PATH,
+      id: PATH,
+    });
+    releaseSync();
+    await settleCollab();
+    expect(collabState(replacement).status).toBe("synced");
+    expect(hub.connectionCount(PATH)).toBe(1);
+    expect(toasts).toHaveLength(0);
   });
 
   test("a detach while awaiting the initial sync destroys the late handle", async () => {
@@ -845,14 +923,82 @@ describe("attach lifecycle races", () => {
 
   test("a capability that REJECTS reports a failure, not solo editing", async () => {
     /* This used to land on "detached" — the same value a document nobody shared carries — so a
-       dead relay and a solo file were one indistinguishable state (collab.md §4). Editing still
-       continues locally; what changed is that the app now says which of the two happened. */
+       dead relay and a solo file were one indistinguishable state (collab.md §4). */
+    resetNotifications();
     installMockPlatform({ collab: () => Promise.reject(new Error("boom")) });
     const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
     expect(collabState(tab).status).toBe("failed");
     expect(collabState(tab).attachError).toBe("boom");
     expect(collabState(tab).active).toBe(false);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]!.key).toBe(`collab:${PATH}`);
+    expect(toasts[0]!.message).toContain("boom.");
+    expect(toasts[0]!.message.endsWith("boom.")).toBe(true);
+  });
+
+  test("an initial sync that never finishes fails with a sentence and releases its handle", async () => {
+    const hub = createMockCollabHub({ neverSync: true });
+    await withFakeTimers(async (runPending) => {
+      const tab = openCollabTab(hub);
+      await settleCollab();
+      await runPending();
+      await settleCollab();
+      expect(collabState(tab).status).toBe("failed");
+      expect(collabState(tab).attachError).toBe(
+        "The shared document did not finish its first sync",
+      );
+    });
+    expect(hub.connectionCount(PATH)).toBe(0);
+  });
+
+  test("a failure after the author left stays Solo and says nothing", async () => {
+    resetNotifications();
+    let rejectCapability!: (error: Error) => void;
+    installMockPlatform({
+      collab: () =>
+        new Promise<CollabHandle | null>((_, reject) => {
+          rejectCapability = reject;
+        }),
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    setCollabEnabled(tab, false);
+    rejectCapability(new Error("late"));
+    await settleCollab();
+    expect(collabState(tab).status).toBe("detached");
+    expect(toasts).toHaveLength(0);
+  });
+
+  test("Share on a failed tab attaches again, and a second failure replaces the first notice", async () => {
+    resetNotifications();
+    const hub = createMockCollabHub();
+    let calls = 0;
+    installMockPlatform({
+      collab: (p) => {
+        calls += 1;
+        return calls <= 2 ? Promise.reject(new Error("down")) : hub.capability(p);
+      },
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    expect(collabState(tab).status).toBe("failed");
+    setCollabEnabled(tab, true);
+    await settleCollab();
+    expect(collabState(tab).status).toBe("failed");
+    expect(toasts).toHaveLength(1);
+    setCollabEnabled(tab, true);
+    await settleCollab();
+    expect(collabState(tab).status).toBe("synced");
+    expect(collabState(tab).attachError).toBe("");
+    expect(calls).toBe(3);
+  });
+
+  test("a reason's trailing full stop is not doubled", async () => {
+    installMockPlatform({ collab: () => Promise.reject(new Error("Nope.")) });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    expect(collabState(tab).attachError).toBe("Nope");
   });
 });
 

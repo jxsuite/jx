@@ -3,8 +3,9 @@
  * socket. Both adapters are under the same contract — the URL they build and the subprotocol they
  * offer — so both read this rather than each keeping a stub.
  *
- * The socket never answers, so the returned `openDoc` promise never resolves; that is deliberate.
- * The session-level timeout owns fallback, and only the handshake inputs are under test here.
+ * The socket never answers, so the returned `openDoc` promise settles only at the wire client's
+ * open timeout, which rejects and is swallowed here. The session owns the failure; only the
+ * handshake inputs are under test here.
  */
 
 import type { WsCollabConnectionOptions } from "@jxsuite/collab/client";
@@ -54,7 +55,7 @@ export async function recordCollabSockets(
   try {
     const platform = makePlatform();
     for (let i = 0; i < opens; i++) {
-      void platform.collab?.(`pages/${String.fromCodePoint(97 + i)}.md`);
+      void platform.collab?.(`pages/${String.fromCodePoint(97 + i)}.md`).catch(() => {});
     }
     const deadline = Date.now() + 3000;
     while (seen.length === 0 && Date.now() < deadline) {

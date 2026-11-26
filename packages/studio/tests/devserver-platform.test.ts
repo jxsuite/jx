@@ -1387,7 +1387,8 @@ describe("cloudflare publish surface", () => {
 });
 
 describe("collab capability", () => {
-  test("a server without the endpoint degrades to solo, probing once", async () => {
+  test("a server without the endpoint has no collaboration, probing once", async () => {
+    route("/__studio/collab", () => json({ error: "not found" }, 404));
     const platform = createDevServerPlatform();
     // Asked twice on purpose: the second answer must come from the remembered probe.
     const answers = [
@@ -1396,6 +1397,45 @@ describe("collab capability", () => {
     ];
     expect(answers).toEqual([null, null]);
     expect(callsTo("/__studio/collab")).toHaveLength(1);
+  });
+
+  test("a probe the server could not answer rejects and is asked again", async () => {
+    const platform = createDevServerPlatform();
+    route("/__studio/collab", () => json({ error: "boom" }, 500));
+    expect(platform.collab("pages/index.md")).rejects.toThrow("HTTP 500");
+    await Promise.resolve();
+    route("/__studio/collab", () => {
+      throw new Error("network down");
+    });
+    expect(platform.collab("pages/index.md")).rejects.toThrow("Could not reach the dev server");
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+    route("/__studio/collab", () => json({ collab: true, version: 1 }));
+    const seen = await recordCollabSockets(() => platform);
+    expect(seen).toHaveLength(1);
+    expect(callsTo("/__studio/collab")).toHaveLength(3);
+  });
+
+  test("a server with collaboration switched off is unavailable, not refused", async () => {
+    route("/__studio/collab", () => json({ collab: false }));
+    const warnings: unknown[] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args[0]);
+    };
+    try {
+      expect(await createDevServerPlatform().collab("pages/index.md")).toBeNull();
+    } finally {
+      console.warn = realWarn;
+    }
+    expect(warnings).toEqual([]);
+  });
+
+  test("a probe answering 200 with something other than JSON connects offering nothing", async () => {
+    route("/__studio/collab", () => textRes("<html>spa fallback</html>"));
+    const seen = await recordCollabSockets(() => createDevServerPlatform());
+    expect(seen).toEqual([{ url: `ws://${location.host}/__studio/collab` }]);
   });
 
   test("a capable server opens the multiplexed socket at /__studio/collab", async () => {
@@ -1424,18 +1464,8 @@ describe("collab capability", () => {
     route("/__studio/collab", () =>
       json({ collab: true, protocols: ["jx.collab.v9"], version: 9 }),
     );
-    const warnings: unknown[] = [];
-    const realWarn = console.warn;
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args[0]);
-    };
-    try {
-      const platform = createDevServerPlatform();
-      expect(await platform.collab("pages/index.md")).toBeNull();
-    } finally {
-      console.warn = realWarn;
-    }
-    expect(String(warnings[0])).toContain("jx.collab.v9");
+    const platform = createDevServerPlatform();
+    expect(platform.collab("pages/index.md")).rejects.toThrow("jx.collab.v9");
   });
 });
 

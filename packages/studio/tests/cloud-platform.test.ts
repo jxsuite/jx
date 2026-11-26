@@ -2037,15 +2037,14 @@ describe("collab capability", () => {
     ]);
   });
 
-  test("refuses a gateway speaking an envelope this build cannot parse", async () => {
+  test("rejects for a gateway speaking an envelope this build cannot parse", async () => {
     mockFetch({ "/collab": { body: { collab: true, protocols: ["jx.collab.v9"], version: 9 } } });
-    const realWarn = console.warn;
-    console.warn = () => {};
-    try {
-      expect(await createCloudPlatform(PROJECT).collab!("pages/a.md")).toBeNull();
-    } finally {
-      console.warn = realWarn;
-    }
+    expect(createCloudPlatform(PROJECT).collab!("pages/a.md")).rejects.toThrow("jx.collab.v9");
+  });
+
+  test("a gateway with collaboration switched off is unavailable", async () => {
+    mockFetch({ "/collab": { body: { collab: false } } });
+    expect(await createCloudPlatform(PROJECT).collab!("pages/a.md")).toBeNull();
   });
 });
 

@@ -18,7 +18,8 @@
  *   that band is a document now. What stays here is everything the TOOLBAR draws.
  * - **A failed attach.** It set `status = "detached"` — the same value a solo document carries — so a
  *   dead relay was indistinguishable from nobody having shared the file. `"failed"` and
- *   `"unavailable"` are now separate states with separate sentences.
+ *   `"unavailable"` are now separate states with separate sentences, and the failed one's title
+ *   says Share tries again (collab.md §4).
  *
  * **Undo says what it does.** The Y.UndoManager is constructed with `trackedOrigins:
  * {LOCAL_ORIGIN}`, so ⌘Z reaches your own actions and never a peer's. That is the correct behaviour
@@ -63,7 +64,7 @@ export function statusTitle(status: CollabTabStatus, attachError: string): strin
   if (status === "failed") {
     return (
       `Live collaboration could not start${attachError ? ` — ${attachError}` : ""}. ` +
-      "Your edits are saved to this machine as usual."
+      "Your edits are saved to this machine as usual. Collaborate: Share this document tries again."
     );
   }
   if (status === "synced" || status === "offline") {

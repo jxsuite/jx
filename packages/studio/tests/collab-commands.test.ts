@@ -21,6 +21,7 @@ import type { AnyCommand, Command } from "../src/commands/registry";
 import type { CommandArgValues } from "../src/commands/command-args";
 import type { PeerPresence } from "../src/collab/collab-state";
 import { EMPTY_DOC } from "./shared-fixtures";
+import { settleCollab } from "./collab-mock";
 
 const PATH = "pages/shared.json";
 
@@ -106,6 +107,26 @@ describe("collab.setEnabled", () => {
     await runDirect(byId("collab.setEnabled"), { enabled: false });
     await runDirect(byId("collab.setEnabled"), { enabled: true });
     expect(messages().at(-1)).toContain("Connecting");
+  });
+
+  test("Share on a failed tab tries again and says so", async () => {
+    let calls = 0;
+    installMockPlatform({
+      collab: () => {
+        calls += 1;
+        return Promise.reject(new Error("down"));
+      },
+    });
+    resetStudioState();
+    const tab = openTab({ document: structuredClone(EMPTY_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    expect(collabState(tab).status).toBe("failed");
+    expect(calls).toBe(1);
+    resetNotifications();
+    await runDirect(byId("collab.setEnabled"), { enabled: true });
+    await settleCollab();
+    expect(messages()).toContain("Connecting this document to its collaboration session…");
+    expect(calls).toBe(2);
   });
 
   test("it is hidden without an open document", () => {

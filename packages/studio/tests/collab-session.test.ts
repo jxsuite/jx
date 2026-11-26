@@ -136,12 +136,13 @@ describe("session attach", () => {
     expect(jsonClone(toRaw(tab.doc.document))).toEqual(shared);
   });
 
-  test("a refused path falls back to solo editing", async () => {
+  test("a path no room serves is unavailable and silent", async () => {
     const hub = createMockCollabHub({ refuse: [PATH] });
     const tab = openCollabTab(hub);
     await settleCollab();
 
     expect(collabState(tab).active).toBe(false);
+    expect(collabState(tab).status).toBe("unavailable");
     expect(isCollabPath(PATH)).toBe(false);
     transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "solo"));
     expect(tab.doc.dirty).toBe(true);
