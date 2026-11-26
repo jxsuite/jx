@@ -9,41 +9,21 @@
  * a yjs-sized chunk with them.
  */
 
-import { cloneValue } from "@jxsuite/schema/doc-ops";
-import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import { metaMap, structureMap, TEXT_OBJECT_KEYS, toYChildren, toYTextObject } from "./schema.ts";
+import { metaMap, mergeYNode, structureMap } from "./schema.ts";
 import type * as Y from "yjs";
 
 export * from "./diff-core.ts";
 
 /**
- * Hard-replace the structure tree with `document` (the diff-overflow escape hatch) and bump the
- * in-doc canonicalRev so stale mirror writes computed against the old tree are discarded.
+ * Write the whole document onto the structure tree (the diff-overflow escape hatch) and bump the
+ * in-doc canonicalRev so stale mirror writes computed against the old tree are discarded. Every
+ * container whose stored type is unchanged is kept and diffed in place ({@link mergeYNode}), so a
+ * peer's concurrent edit to an untouched part survives.
  */
 export function replaceYStructure(doc: Y.Doc, document: JxMutableNode, origin: string): void {
   doc.transact(() => {
-    const structure = structureMap(doc);
-    // Detached copy: keys are deleted while iterating.
-    const existingKeys = [...structure.keys()];
-    for (const key of existingKeys) {
-      if (!(key in document) || document[key] === undefined) {
-        structure.delete(key);
-      }
-    }
-    for (const [key, value] of Object.entries(document)) {
-      if (value === undefined) {
-        continue;
-      }
-      if (key === "children" && Array.isArray(value)) {
-        structure.set(key, toYChildren(value));
-      } else if (TEXT_OBJECT_KEYS.has(key) && isJsonObject(value)) {
-        // The scripts exist only on the root: left plain here, they would never be texts again.
-        structure.set(key, toYTextObject(value));
-      } else {
-        structure.set(key, cloneValue(value));
-      }
-    }
+    mergeYNode(structureMap(doc), document);
     const meta = metaMap(doc);
     meta.set("canonicalRev", Number(meta.get("canonicalRev") ?? 0) + 1);
   }, origin);

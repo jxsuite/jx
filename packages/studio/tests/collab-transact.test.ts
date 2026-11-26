@@ -14,6 +14,8 @@ import {
   transactDoc,
   undo,
 } from "../src/tabs/transact";
+import * as Y from "yjs";
+import { applyInlineCommit } from "../src/editor/inline-edit-apply";
 import { applyDocOpsToY, frontmatterMap, LOCAL_ORIGIN, yDocToJson } from "@jxsuite/collab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
@@ -32,9 +34,9 @@ const SECOND = "pages/second.json";
 
 const assistant = { id: "assistant:local:collab", kind: "assistant", turnId: "collab" } as const;
 
-async function openAttached(hub: ReturnType<typeof createMockCollabHub>) {
+async function openAttached(hub: ReturnType<typeof createMockCollabHub>, document = DOC) {
   installMockPlatform({ collab: hub.capability });
-  const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+  const tab = openTab({ document: structuredClone(document), documentPath: PATH, id: PATH });
   await settleCollab();
   return tab;
 }
@@ -106,6 +108,38 @@ describe("outbound publishing", () => {
 });
 
 describe("inbound application", () => {
+  test("a rich inline commit and a peer's concurrent edit to the same paragraph both survive", async () => {
+    const hub = createMockCollabHub();
+    const strong = { tagName: "strong", textContent: "bold" };
+    const tab = await openAttached(hub, {
+      children: [{ children: ["Hello ", strong, " end"], tagName: "p" }],
+      tagName: "div",
+    });
+    const server = hub.serverDoc(PATH);
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(server));
+    applyDocOpsToY(
+      peer,
+      [
+        {
+          key: "children",
+          op: "set-key",
+          path: ["children", 0],
+          value: ["Hello ", strong, " end!"],
+        },
+      ],
+      "peer",
+    );
+
+    applyInlineCommit(tab, ["children", 0], ["Hello there ", strong, " end"], null, {});
+    Y.applyUpdate(server, Y.encodeStateAsUpdate(peer, Y.encodeStateVector(server)), "peer");
+    await settleCollab();
+
+    const merged = ["Hello there ", strong, " end!"];
+    expect(childNode(tabJson(tab), 0).children).toEqual(merged);
+    expect(childNode(yDocToJson(server), 0).children).toEqual(merged);
+  });
+
   test("a peer's ops apply to the tab through the transaction pipeline", async () => {
     const hub = createMockCollabHub();
     const tab = await openAttached(hub);

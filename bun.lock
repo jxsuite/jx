@@ -155,6 +155,9 @@
         "y-protocols": "^1.0.7",
         "yjs": "13.6.33",
       },
+      "devDependencies": {
+        "@webref/css": "^8.7.10",
+      },
     },
     "packages/compiler": {
       "name": "@jxsuite/compiler",

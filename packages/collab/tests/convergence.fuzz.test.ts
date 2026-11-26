@@ -13,6 +13,7 @@ import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/typ
 import type { JxDocOp } from "../src/ops.ts";
 import { applyDocOpToDoc, getNodeAtPath } from "../src/ops.ts";
 import { applyDocOpsToY, LOCAL_ORIGIN, yEventsToDocOps } from "../src/op-bridge.ts";
+import { replaceYStructure } from "../src/diff.ts";
 import { seedStructure, yDocToJson } from "../src/schema.ts";
 
 /** Deterministic LCG (no bitwise per house rules; modulus keeps it in float-exact range). */
@@ -70,7 +71,7 @@ function randomNode(rng: Rng): JxMutableNode {
 /** One random op valid against the CURRENT doc state, or null when no target exists. */
 function randomOp(rng: Rng, doc: JxMutableNode): JxDocOp | null {
   const paths = collectNodePaths(doc);
-  const kind = rng.int(6);
+  const kind = rng.int(7);
   const parentPath = rng.pick(paths);
   const parent = getNodeAtPath(doc, parentPath);
   const children = Array.isArray(parent?.children) ? parent.children : [];
@@ -132,6 +133,18 @@ function randomOp(rng: Rng, doc: JxMutableNode): JxDocOp | null {
         toIndex: rng.int(maxIndex + 1),
         toParentPath: target,
       };
+    }
+    case 6: {
+      // The inline-commit shape: the target's whole children array, one string extended or one
+      // Node inserted.
+      const index = children.findIndex((child) => isString(child));
+      const next = structuredClone([...children]);
+      if (index !== -1 && rng.int(2) === 0) {
+        next[index] = `${String(next[index])}${rng.int(10)}`;
+      } else {
+        next.splice(rng.int(next.length + 1), 0, randomNode(rng));
+      }
+      return { key: "children", op: "set-key", path: parentPath, value: next };
     }
     default: {
       const path = rng.pick(paths);
@@ -225,8 +238,16 @@ function runFuzz(seed: number, rounds: number) {
         if (!op) {
           continue;
         }
-        applyDocOpToDoc(replica.mirror, op);
-        applyDocOpsToY(replica.ydoc, [op], LOCAL_ORIGIN);
+        if (rng.int(8) === 0) {
+          // One local op in eight arrives as a whole-document write, as past the diff limit.
+          const clone = structuredClone(replica.mirror);
+          applyDocOpToDoc(clone, op);
+          replica.mirror = clone;
+          replaceYStructure(replica.ydoc, clone, LOCAL_ORIGIN);
+        } else {
+          applyDocOpToDoc(replica.mirror, op);
+          applyDocOpsToY(replica.ydoc, [op], LOCAL_ORIGIN);
+        }
       }
       expect(yDocToJson(replica.ydoc)).toEqual(replica.mirror);
     }
