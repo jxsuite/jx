@@ -27,6 +27,7 @@ import { saveFile } from "../src/files/file-ops";
 import { getHistoryDelegate, mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
 import { seedStructure, sourceText, yDocToJson } from "@jxsuite/collab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import { problems, toasts } from "../src/services/notify";
 import { afterEach, describe, expect, test } from "bun:test";
 
 const PATH = "pages/index.json";
@@ -407,6 +408,37 @@ describe("file plumbing guards", () => {
     expect(source.commits).toHaveLength(0);
   });
 
+  test("a co-edited save the provider could not write says so and is not reported saved", async () => {
+    const hub = createMockCollabHub({ flushError: () => "disk full" });
+    const tab = openCollabTab(hub);
+    configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
+    await settleCollab();
+    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Unsaved"));
+
+    expect(await saveFile(tab)).toBe(false);
+    expect(hub.flushes).toEqual([PATH]);
+    const errors = [...problems, ...toasts].filter((note) => note.key === `save:${PATH}`);
+    expect(errors).toHaveLength(1);
+    expect(JSON.stringify(errors[0])).toContain("disk full");
+  });
+
+  test("a save while Code view holds the lock flushes the shared text as it is", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
+    await settleCollab();
+    const context = collabSourceContext(tab)!;
+    await context.enter();
+    const typed = `{ "tagName": "div", "children": [] }`;
+    sourceText(hub.serverDoc(PATH)).delete(0, sourceText(hub.serverDoc(PATH)).length);
+    sourceText(hub.serverDoc(PATH)).insert(0, typed);
+
+    await collabSave(tab);
+    expect(sourceText(hub.serverDoc(PATH)).toString()).toBe(typed);
+    expect(hub.flushes).toEqual([PATH]);
+    context.leave();
+  });
+
   test("collabSave refreshes the source mirror before flushing", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
@@ -450,6 +482,29 @@ describe("saving, comparing and reverting the room (project-state.md §6.1)", ()
     expect(hub.flushOptions.at(-1)).toEqual({ baseHash: null });
     expect(collabState(tab).conflicted).toBe(false);
     expect(await roomSource(tab)).toBe(JSON.stringify(HELLO_DOC));
+  });
+
+  test("a save whose flush is refused and then fails reports the refusal, not the failure", async () => {
+    const hub = createMockCollabHub();
+    installMockPlatform({
+      collab: async (path) => {
+        const handle = await hub.capability(path);
+        if (handle) {
+          // The refusal reaches every participant first, then the requester's own flush rejects.
+          handle.flush = () => {
+            hub.conflict(path, { diskHash: null, docId: null });
+            return Promise.reject(new Error("the room's save was refused"));
+          };
+        }
+        return handle;
+      },
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
+    await settleCollab();
+    hub.setDirty(PATH, true);
+    expect(await saveRoom(tab)).toBe("refused");
+    expect(tabBufferStatus(tab)).toBe("conflicted");
   });
 
   test("a provider that cannot revert discards nothing", async () => {

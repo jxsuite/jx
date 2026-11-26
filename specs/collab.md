@@ -9,8 +9,6 @@
 
 ---
 
-> **Status: Partial.** This is a stub spec for a shipped subsystem that grew ahead of its specification. It records the wire contract and the load-bearing invariants as implemented today; the room host (`packages/collab/src/ws-room.ts`), the dev server's explicit-save persistence (`packages/server/src/collab.ts`), the source-canonical lock (`packages/collab/src/source-lock.ts`), the envelope's frame types and control messages (`packages/collab/src/envelope.ts`) and the awareness state shape (`packages/collab/src/awareness-types.ts`) ship but are not yet specified here.
-
 ## 1. Overview
 
 `@jxsuite/collab` provides multi-participant, real-time co-editing of a Jx project. Documents are modeled as [Yjs](https://github.com/yjs/yjs) shared types; edits converge via CRDT merge, so concurrent editors do not clobber each other.
@@ -22,15 +20,43 @@ The transport is one WebSocket route, `collab`, and a plain GET on the same URL 
 
 **The desktop app offers no co-editing.** Neither launcher routes `collab` (the project server each starts, `packages/server/src/project-server.ts`, has no such route), and the platform adapter (`packages/desktop/src/webview/platform.ts`) has no `collab` member, so every document there is `unavailable` (§4) and edits solo with file-level saves (desktop.md §3, §10.3). What a backend without collaboration answers to the probe, and what the editor shows, is §4's rule.
 
+### 1.1 The Room Host
+
+> **Status: Implemented.** `packages/collab/src/ws-room.ts`, `packages/collab/tests/ws-room-host.test.ts`, `ws-wire.test.ts`.
+
+Every backend hosts its rooms with one module, `createCollabHost` (`@jxsuite/collab/room`, `packages/collab/src/ws-room.ts`). The host owns the wire; the embedder owns everything else: the sockets, an identity and permission per connection, the file text a room starts from (`loadSource`), the paths it refuses (`rejectPath`) and what a flush writes (`onFlush`, §1.2). The host never parses a Jx document: it seeds and reads `source` and never reads `structure` or `meta`.
+
+- **Connecting.** The host greets each connection with `hello`, carrying its identity and permission (§2.3), then sends the current presence roster (§2.4).
+- **Opening.** The first `open` for a path creates its room: one `Y.Doc` whose `source` the host seeds from the file. A path the embedder refuses, or whose text cannot be loaded, is answered with `error` before `opened`, so no document state moves (§4 says what the author sees). Otherwise the host subscribes the connection and sends `opened` with the room's epoch, `doc-dirty` with the room's unsaved state (§1.2) and sync step 1; the client answers with step 2 and its own step 1, and the attach completes on the host's step 2.
+- **Editing.** Every update the host applies is relayed to the room's other subscribers. A read-only connection's sync step 1 is answered and nothing else it sends to a document is applied; the first refusal is reported with `error` `read-only`, once per connection, and its `flush` and `revert` change nothing (§1.2).
+- **Epochs.** A room carries an epoch. A `doc-sync` at another epoch, for a path the connection has not opened, or for a room that no longer exists is answered with `doc-reset` at the path's current epoch, and `resetDoc` is how an embedder replaces a room's history. When the host issues a new epoch is §3's first bullet.
+- **Presence** is one channel per project, not per room: the host relays every awareness update to every other connection and, when a socket closes, withdraws the states it published and tells the rest (§2.4).
+- **Leaving.** `doc-close` unsubscribes a connection from one room, and a closed socket from all of them. When a room's last subscriber leaves, the host tells the embedder (`onEmpty`), which decides when to discard it (`destroyRoomIfEmpty`).
+- **Unknown input.** A frame the host cannot decode is answered with `error` `unknown-frame`, which carries no path, and dropped; a control message of a type it does not know is ignored (§2.2).
+
+### 1.2 Persistence
+
+> **Status: Implemented.** `packages/collab/src/ws-room.ts`, `ws-client.ts`, `packages/server/src/collab.ts`, `packages/studio/src/collab/collab-session.ts`, `packages/studio/src/publish/publish-changes.ts`, `packages/collab/tests/ws-wire.test.ts`, `packages/server/tests/collab-api.test.ts`, `collab-rooms.test.ts`.
+
+Syncing is not saving. Edits reach every peer as they are made, but a room's text reaches storage only when a client **flushes** it, and a flush is what an author's Save sends. Only saved edits reach disk.
+
+- **What is saved** is the room's `source`. Studio's Save mirrors the structure into it first while the structure is canonical, and flushes the text as it stands while a Code view holds the lock (§3.2), so what is written is what the saver sees.
+- **Unsaved state belongs to the room.** A room is unsaved while its `source` differs from the text last written or seeded. The host sends `doc-dirty` to every subscriber when that changes and to each joiner during `open`, so one author's edit marks the document unsaved for everyone and one author's save clears it for everyone. The embedder reports each durable write with the text it wrote (`markPersisted`), so an edit made while that text was being written leaves the room unsaved.
+- **A flush answers once.** Every `flush` gets one `flush-ack`: without `error` the text is durable; with `error` nothing was written, and `error` says why in a sentence an author can read. A flush from a read-only connection, or for a document the connection has not opened, is refused that way, and so is a save the embedder refused (a stale base, §2). The host handles a path's flushes one at a time, in the order they arrive, whichever connection sent them, so each answer follows its own write. Studio's Save fails with that reason, and fails too when the socket closes, the document resets or the connection ends before the answer arrives. Committing saves every co-edited document first and stops, naming each file it could not save.
+
+**The dev server** (`packages/server/src/collab.ts`) writes a flushed room's `source` to the file it was seeded from, skipping a write of the text it last wrote; a failed write answers the flush with the reason and leaves the room unsaved. It keeps a room nobody holds for 30 seconds and then discards it with any unsaved edits. A change to the file that is not its own write, whether the project state host saw it or the Studio API renamed the file, resets the room (§3) or, where the room holds unsaved edits inside the project, conflicts it (§2), so no peer can save the old text back over it. Stopping the dev server writes nothing: its rooms are dropped with any unsaved edits. A tab still open keeps those edits in its own document, and its author's next Save writes them once the server is back; how the tab rejoins is §3's. The one write the registry makes without a Save is when another project is activated: the rooms of the project being closed are saved through its host first, so switching projects loses nothing.
+
+**The gateway** keeps its rooms in its own storage, outside this repository, under the same contract.
+
 ## 2. Wire Protocol
 
 - **Transport:** a single WebSocket per project session. Sync and awareness frames use the standard `y-protocols` encodings (sync step 1/2, update, awareness).
 - **Reconnect:** a dropped socket retries on **equal-jitter** exponential backoff (`packages/collab/src/reconnect.ts`): the window doubles from 1 s to a 30 s ceiling, and each delay is drawn from the upper half of its window. Every client on a server loses its socket at the same restart, and plain doubling brings them back in lockstep, one spike per wave; the jitter spreads each wave while the half-window floor keeps a retry from firing straight back at a server that is still down. A retry that is **pending** runs immediately on the browser's wake signals — `online`, a `pageshow` restored from the back/forward cache, and the document becoming visible — and restarts the backoff, because a laptop that wakes onto a network should not sit out a timer measured against the network it lost. A socket that is open or mid-handshake ignores them. A successful open resets the backoff, re-opens every live doc and re-publishes the local awareness state.
-- **Envelope:** frames are wrapped with an **epoch** tag. The epoch is the load-bearing invariant — see §3.
-- **Awareness:** cursor/selection presence is carried out-of-band from document state via `y-protocols/awareness`, so presence churn never mutates the CRDT.
+- **Envelope:** frames are wrapped with an **epoch** tag. The epoch is the load-bearing invariant — see §3; the frame layout is §2.2 and the control messages §2.3.
+- **Awareness:** cursor/selection presence is carried out-of-band from document state via `y-protocols/awareness`, so presence churn never mutates the CRDT; the state each client publishes is §2.4.
 - **Subprotocol:** `jx.collab.v1` names the frame layout, negotiated on the handshake — see §2.1.
 - **Rooms by document:** a room is addressed by path in every frame, and a host may key it by something else: `createCollabHost` takes a `keyOf` from its embedder and answers each peer under the path that peer opened, so two paths naming one document share its room. The dev server keys a room inside the active project by its document, and the cloud session keys every room by its document, or by its path while the host has not indexed it (`project-state.md` §11.3), so a peer that opened a document before it moved keeps its room at the old path while a peer opening the new path joins it. Nothing on the wire changed for it.
-- **Refused saves:** a host that saves a room with a base (`project-state.md` §5), as the dev server does inside the active project and the cloud session does for every room (`project-state.md` §11.3), answers a refused save with the `doc-conflict` control message, `{ type: "doc-conflict", path, diskHash, docId }`, sent to every subscriber of the room under its own path, before the requester's `flush-ack`; `diskHash` and `docId` name what is on disk now, both `null` when nothing is, and the room stays dirty. The same message reports a file that another writer changed while the room held unsaved edits: the host keeps the room and its edits rather than resetting it, and its next save is refused until a participant chooses (`project-state.md` §6.1, §11.3). It is additive: a client that does not know the type skips it, as every control message, so it moves no token (§2.1). The browser client reports it through `CollabHandle.onConflict`.
+- **Refused saves:** a host that saves a room with a base (`project-state.md` §5), as the dev server does inside the active project and the cloud session does for every room (`project-state.md` §11.3), answers a refused save with the `doc-conflict` control message, `{ type: "doc-conflict", path, diskHash, docId }`, sent to every subscriber of the room under its own path, before the requester's `flush-ack` (which carries `error`, §1.2); `diskHash` and `docId` name what is on disk now, both `null` when nothing is, and the room stays dirty. The same message reports a file that another writer changed while the room held unsaved edits: the host keeps the room and its edits rather than resetting it, and its next save is refused until a participant chooses (`project-state.md` §6.1, §11.3). It is additive: a client that does not know the type skips it, as every control message, so it moves no token (§2.1). The browser client reports it through `CollabHandle.onConflict`.
 - **Resolving a conflict:** `flush` takes an optional `baseHash`, the bytes the save replaces in place of the room's own base (`null`: nothing is there), which is how a participant keeps the room's edits over what is on disk now; the host ignores one that names no content hash, and a host that saves without a base ignores it altogether. `{ type: "revert", path }` discards the room's unsaved edits: a writer's revert resets the room, so every subscriber receives `doc-reset` and reopens it seeded from the file, and the requester then receives `{ type: "revert-ack", path }`; a read-only connection, or a path the connection never opened, reverts nothing and is acknowledged all the same. Both are additive in the same way. The browser client exposes them as `CollabHandle.flush({ baseHash })` and `CollabHandle.revert()`, whose promise settles on the acknowledgement or on the reset it caused. A client whose room was reset re-reads the file before it reopens the room, so the first participant back seeds the room's structure from the file rather than from the edits the old room held. A Code view bound to the old room's shared text is mounted again for the fresh room (or for no room), since the text it was bound to is gone (`onCollabSessionChange` in `packages/studio/src/collab/collab-session.ts`, `packages/studio/src/canvas/canvas-render.ts`). Neither joining a room nor taking its source lock replaces text that already says what the tab holds: the Code view seeds the shared text from its serialization of the structure only when the text does not parse to the tab's document and frontmatter, and the structure mirror (a save's included) writes nothing over such a text and nothing at all while the source lock is held. So a room seeded from the file's bytes keeps them, byte for byte, until someone edits.
 - **No compression.** `permessage-deflate` (RFC 7692) is never negotiated. A browser's WebSocket offers it on every handshake and gives a page no way to withhold the offer, so the rule binds the server: a backend declines the extension, answering the upgrade with no `Sec-WebSocket-Extensions` header. The dev server declines it by leaving Bun's `perMessageDeflate` at its default, off, and a test pins the declined offer. The reasons are structural rather than a deferral: lib0-encoded Yjs updates are near-incompressible, the dominant frame volume is awareness cursors whose payload is smaller than a deflate block header, both transports are loopback or already compressed at the edge, and Bun allocates a zlib context per socket — a real per-connection cost on a server whose whole purpose is many concurrent sockets. Adopting it would cost memory to make the wire slightly larger.
 
@@ -53,6 +79,71 @@ The socket carries a **WebSocket subprotocol** (RFC 6455 §1.9, §4.2.2), and it
 **A version in the `hello` control message is not an alternative.** `hello` arrives after the socket is up and after frames may already have been exchanged, which is too late to prevent the divergent-history merge §3 exists to prevent. Negotiation concludes before a byte of document state moves.
 
 **An unanswered probe is not a refusal.** The cloud gateway ships separately from the Studio bundle, so a 404 or a network error on its probe means _older gateway_, and treating that as no-collab would take working co-editing away from every session pointed at one. It connects offering nothing, which is also the only handshake-safe answer to a server that would echo nothing.
+
+### 2.2 Frames
+
+> **Status: Implemented.** `packages/collab/src/envelope.ts`, `packages/collab/tests/envelope.test.ts`.
+
+Every message is one binary WebSocket frame; a text frame is ignored. A frame is a lib0 `varUint` type followed by its body, and `jx.collab.v1` names exactly this layout (§2.1):
+
+| Type | Frame       | Body                                                                        | Sent by    |
+| ---- | ----------- | --------------------------------------------------------------------------- | ---------- |
+| 0    | `doc-sync`  | `varString` path, `varUint` epoch, `varUint8Array` y-protocols sync message | both       |
+| 1    | `awareness` | `varUint8Array` y-protocols awareness update, for the whole project         | both       |
+| 2    | `doc-close` | `varString` path                                                            | the client |
+| 3    | `control`   | `varString` JSON control message (§2.3)                                     | both       |
+
+Paths are project-relative with `/` separators, and one socket carries every open document. A `doc-sync` at an epoch other than its room's is never applied (§1.1, §3). A frame of an unknown type is dropped by both halves (the host also answers `unknown-frame`), and a control message is read for the fields its receiver knows, so a new frame type, control message or field does not move the token.
+
+### 2.3 Control Messages
+
+> **Status: Implemented.** `packages/collab/src/envelope.ts`, `ws-room.ts`, `ws-client.ts`, `packages/collab/tests/envelope.test.ts`, `ws-wire.test.ts`.
+
+| Message        | Sent by    | Fields                                                                             | Means                                                                                                         |
+| -------------- | ---------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `hello`        | the host   | `login`, `name?`, `avatarUrl?`, `color`, `permission` (`admin`, `write` or `read`) | Once per connection: who it is and what it may do. `read` makes every document read-only (§4).                |
+| `open`         | the client | `path`                                                                             | Join the path's room with an empty local `Y.Doc`. Re-sent for every document held when the socket reconnects. |
+| `opened`       | the host   | `path`, `epoch`                                                                    | The room is ready at this epoch; sync follows (§1.1).                                                         |
+| `doc-reset`    | the host   | `path`, `epoch`                                                                    | The room's history was replaced: discard the local `Y.Doc` and open the document again (§3).                  |
+| `flush`        | the client | `path`, `baseHash?`                                                                | Save the room's text now (§1.2); `baseHash` is the base the save replaces (§2).                               |
+| `flush-ack`    | the host   | `path`, `error?`                                                                   | The flush was handled: durable without `error`, not written with it (§1.2).                                   |
+| `revert`       | the client | `path`                                                                             | Discard the room's unsaved edits and reseed it from storage (§2).                                             |
+| `revert-ack`   | the host   | `path`                                                                             | The revert was handled, whether or not it changed anything (§2).                                              |
+| `doc-dirty`    | the host   | `path`, `dirty`                                                                    | The room's unsaved state changed, or, during `open`, what it is (§1.2).                                       |
+| `doc-conflict` | the host   | `path`, `diskHash`, `docId`                                                        | A save was refused because the file changed under the room (§2).                                              |
+| `error`        | the host   | `path?`, `code`, `message`                                                         | A request was refused, with one of the codes below.                                                           |
+
+| Code                        | Sent when                                                                               | The client                                                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `binary-file`               | the embedder refuses a path it cannot co-edit (the dev server: media and archive files) | ends the attach before `opened` (§4)                                                                                                     |
+| `content-not-loaded`        | the path is outside the project or its text could not be loaded                         | reads the file over HTTP and asks once more when its adapter supplies that hook (the cloud adapter does); otherwise ends the attach (§4) |
+| `too-large`, `rate-limited` | the gateway declines the room                                                           | ends the attach before `opened` (§4)                                                                                                     |
+| `read-only`                 | a read-only connection sent a document write (once per connection)                      | nothing: the read-only banner already says so (§4)                                                                                       |
+| `unknown-frame`             | the host could not decode a frame                                                       | nothing (it carries no path)                                                                                                             |
+
+### 2.4 Awareness State
+
+> **Status: Implemented.** `packages/collab/src/awareness-types.ts`, `source-lock.ts`, `packages/studio/src/collab/collab-session.ts`, `packages/collab/tests/source-lock.test.ts`, `packages/studio/tests/collab-presence.test.ts`.
+
+Presence travels in y-protocols awareness (§2), one channel per project: each client publishes one state for the whole project (`CollabAwarenessState`, `packages/collab/src/awareness-types.ts`) and peers filter it by document. A client that holds no document publishes no state, so a person who has left every shared document leaves every roster.
+
+| Field                 | Holds                                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `user`                | `login`, `name?`, `avatarUrl?` and `color`, from `hello`                                                               |
+| `rooms`               | every document the client holds a session on, in the order it joined them                                              |
+| `focusedPath`         | the document the client is working in (below)                                                                          |
+| `mode`                | `"source"` while the client's Code view on `focusedPath` is open, otherwise `"structure"` (§3.2)                       |
+| `structuralSelection` | the JSON paths selected on `focusedPath`'s canvas, or `null`                                                           |
+| `selection`           | the Code view's text cursor as y-monaco relative positions, written only while a Code view is bound, `null` after (§4) |
+| `canWrite`            | whether `hello` granted write access: advisory, since the host enforces it (§1.1), and what §3.2's elections count     |
+
+**Focus.** Joining a document focuses it, unless a Code view holds focus. Opening a Code view focuses its document. Leaving the focused document focuses the most recently joined one still held. Only the focused document's session publishes `structuralSelection`, so a selection is never drawn on a document it does not belong to.
+
+**Colour.** The backend assigns `color` in `hello`. The dev server, which has no accounts, derives it from the login with `colorForKey`, which maps the same login to the same one of eight hues (`PRESENCE_PALETTE`).
+
+Fields are additive and a peer ignores one it does not know. A state with no `rooms`, from a Studio built before the field, counts as present in every room.
+
+> **Status: Future.** Presence per document. A client with several documents open, in split panes or background tabs, is shown and counted as a source editor only in its focused document (§3.2), and focus does not follow the active tab. Following it would drop a Code view's holder from its document's count while that view is still bound in another pane, so the lock could be released under it; the answer is a state per document.
 
 ## 3. Invariants (load-bearing)
 
@@ -90,6 +181,19 @@ A **type change** — text becoming a `$ref`, an object becoming a scalar — re
 `$script` is a `Y.Map` holding one `Y.Text` per side, so one author editing the client script and another the server script never meet, and adding or removing a side is one key. A room written before scripts were stored this way holds `$script` as a whole value; it reads the same, and the first write to it replaces it with the tabled form. Nothing a peer on either side of that change writes is misread by the other, so it moves no schema version (§5).
 
 The `source` text is the file. A client that mirrors structure into it writes a format file (`.jxn`, Markdown) through its serializer over the room's current `source`, not over the text that client last read, so the merge keeps what a peer typed into the text since: a `.jxn` comment survives a peer's canvas edit. The write is a minimal character edit in one transaction.
+
+### 3.2 The Source-Canonical Lock
+
+> **Status: Implemented.** `packages/collab/src/source-lock.ts`, `packages/studio/src/collab/collab-session.ts`, `packages/collab/tests/source-lock.test.ts`, `packages/studio/tests/collab-source.test.ts`.
+
+A room stores its document twice, as the `structure` tree the canvas edits and as the `source` text the Code view edits and a flush saves (§1.2), and exactly one is authoritative at a time. `meta.canonical` names it, `"structure"` (the default) or `"source"`, and every flip adds one to `meta.canonicalRev` (`packages/collab/src/source-lock.ts`).
+
+- **Structure canonical.** Edits reach `structure` through the op bridge (§3), and one writer keeps `source` in step by serializing its own copy: the **structure mirror**, the lowest write-capable client among those holding the room (§2.4). It mirrors 800 ms after the last edit, and never lets the text fall more than 2.5 s behind while edits continue. Every Save mirrors first, whoever saves.
+- **Taking the lock.** A writer opening Code view writes its own serialization of the structure into `source`, unless the text already says what the tab holds (§3.1), and sets `canonical` to `"source"` in one transaction. While the room is source-canonical every client refuses structural edits, the holder's own included, and says so (§4's freeze).
+- **Source canonical.** Writers co-edit `source` character by character. The **source reconciler**, the lowest write-capable client among those whose Code view is open on the document (as their focused document, §2.4), parses the text back into `structure` 600 ms after the last keystroke, so every canvas previews it. A parse is discarded when `canonicalRev` moved while it ran (a whole-document write to the structure moves it too), and text that does not parse leaves the last good structure. A Save flushes the text as it stands.
+- **Releasing it.** When the last writer with a Code view open on the document (again, as their focused document) leaves, it parses once more and sets `canonical` back to `"structure"`. A read-only client neither takes nor releases the lock and never counts as a source editor.
+
+Both elections read awareness, so while a joiner's state is still arriving two writers can briefly write the same text; the next mirror or parse restores it.
 
 ## 4. Enablement & Degradation
 
@@ -176,4 +280,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/collab` Specification v0.2.15-draft — a stub, subject to expansion._
+_Jx `@jxsuite/collab` Specification v0.2.15-draft_

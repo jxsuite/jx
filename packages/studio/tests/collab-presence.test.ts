@@ -1,7 +1,12 @@
 import { installMockPlatform } from "./harness";
 import { createMockCollabHub, settleCollab } from "./collab-mock";
-import { closeAllTabs, openTab } from "../src/workspace/workspace";
-import { resetCollabForTests } from "../src/collab/collab-session";
+import { closeAllTabs, closeTab, openTab } from "../src/workspace/workspace";
+import {
+  collabSourceContext,
+  configureCollabSerializer,
+  resetCollabForTests,
+} from "../src/collab/collab-session";
+import type { CollabHandle } from "@jxsuite/collab/provider";
 import { collabState } from "../src/collab/collab-state";
 import type { TabCollabState } from "../src/collab/collab-state";
 import { presenceProjection, statusTitle } from "../src/collab/presence-chips";
@@ -165,5 +170,88 @@ describe("collab honesty", () => {
     expect(statusTitle("offline", "")).toContain("never a collaborator's");
     expect(statusTitle("failed", "boom")).toContain("boom");
     expect(statusTitle("connecting", "")).toBe("Connecting…");
+  });
+});
+
+// ─── collab.md §2.4: presence names the rooms a client holds ─────────────────
+
+describe("presence names the rooms a client holds", () => {
+  const A = "pages/a.json";
+  const B = "pages/b.json";
+  const C = "pages/c.json";
+
+  /** Open one tab per path over one shared awareness, and return it with the tabs. */
+  async function openAll(paths: string[]) {
+    const hub = createMockCollabHub({ sharedAwareness: true });
+    let awareness: CollabHandle["awareness"] | null = null;
+    installMockPlatform({
+      collab: async (path) => {
+        const handle = await hub.capability(path);
+        awareness ??= handle?.awareness ?? null;
+        return handle;
+      },
+    });
+    configureCollabSerializer((tab) => Promise.resolve(JSON.stringify(tab.doc.document)));
+    const tabs = paths.map((path) =>
+      openTab({ document: structuredClone(PARAGRAPH_DOC), documentPath: path, id: path }),
+    );
+    await settleCollab();
+    /* SAFETY: every Studio client publishes a CollabAwarenessState through the setLocalState calls
+       in collab-session.ts; `Partial` keeps each field optional for the test's reads. */
+    const local = () => awareness!.getLocalState() as Partial<CollabAwarenessState> | null;
+    return { local, tabs };
+  }
+
+  test("the state lists every document the client holds, in join order", async () => {
+    const { local } = await openAll([A, B]);
+    expect(local()?.rooms).toEqual([A, B]);
+    expect(local()?.focusedPath).toBe(B);
+    expect(local()?.mode).toBe("structure");
+  });
+
+  test("leaving the focused document focuses the most recently joined one still held", async () => {
+    const { local, tabs } = await openAll([A, B, C]);
+    expect(local()?.focusedPath).toBe(C);
+    closeTab(tabs[2]!.id);
+    await settleCollab();
+    expect(local()?.rooms).toEqual([A, B]);
+    expect(local()?.focusedPath).toBe(B);
+    // Leaving one that is not focused leaves the focus alone.
+    closeTab(tabs[0]!.id);
+    await settleCollab();
+    expect(local()?.rooms).toEqual([B]);
+    expect(local()?.focusedPath).toBe(B);
+  });
+
+  test("leaving the last document withdraws presence", async () => {
+    const { local, tabs } = await openAll([A]);
+    expect(local()).not.toBeNull();
+    closeTab(tabs[0]!.id);
+    await settleCollab();
+    expect(local()).toBeNull();
+  });
+
+  test("a background tab's selection is not published under another document", async () => {
+    const { local, tabs } = await openAll([A, B]);
+    tabs[0]!.session.selection = [["children", 0]];
+    await settleCollab();
+    expect(local()?.focusedPath).toBe(B);
+    expect(local()?.structuralSelection).toBeNull();
+    tabs[1]!.session.selection = [["children", 0]];
+    await settleCollab();
+    expect(local()?.structuralSelection).toEqual([["children", 0]]);
+  });
+
+  test("opening Code view focuses its document, and joining another keeps that focus", async () => {
+    const { local, tabs } = await openAll([A, B]);
+    expect(local()?.focusedPath).toBe(B);
+    await collabSourceContext(tabs[0]!)!.enter();
+    expect(local()?.focusedPath).toBe(A);
+    expect(local()?.mode).toBe("source");
+    openTab({ document: structuredClone(PARAGRAPH_DOC), documentPath: C, id: C });
+    await settleCollab();
+    expect(local()?.rooms).toEqual([A, B, C]);
+    expect(local()?.focusedPath).toBe(A);
+    expect(local()?.mode).toBe("source");
   });
 });

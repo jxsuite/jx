@@ -71,7 +71,7 @@ Two kinds of change have no comparison, and the middle column says so. An **imag
 2. Write a summary of your work in the **Summary** box. It becomes the commit message.
 3. Choose **Publish live** or **Send for review**, and click the button under the summary. Its words say what it will do. **[Publish](/docs/studio/publish)** describes each destination.
 
-The button is disabled, with the reason beside it, until there is something to publish: a file included and a summary written. Studio folds any live [co-editing](/docs/studio/publish/collaboration) session into the files first, so a commit never misses the last few keystrokes a collaborator typed.
+The button is disabled, with the reason beside it, until there is something to publish: a file included and a summary written. Studio folds any live [co-editing](/docs/studio/publish/collaboration) session into the files first, so a commit never misses the last few keystrokes a collaborator typed. If one of those files can't be saved, the commit stops, keeps your summary, and says which file.
 
 If the commit fails, the summary goes back into the box, so you can fix the problem and publish again without retyping it. A summary you started typing while the commit was running is left alone. A push that fails after the commit landed does not offer the same summary again.
 

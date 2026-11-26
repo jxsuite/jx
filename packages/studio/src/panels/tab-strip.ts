@@ -1376,7 +1376,14 @@ export function shouldWarnOnClose(tab: Tab): boolean {
   if (residue || image) {
     return true;
   }
-  const peersHere = state.peers.filter((p) => p.state.focusedPath === tab.documentPath);
+  /* A peer is still in the document when it holds it (`rooms`), or, when it predates `rooms`, when it
+     is focused on it. A peer that has left it still publishes its old `focusedPath` until it moves
+     on, so focus alone is not the question (collab.md §2.4). */
+  const peersHere = state.peers.filter(({ state: peer }) =>
+    peer.rooms === undefined
+      ? peer.focusedPath === tab.documentPath
+      : tab.documentPath !== null && peer.rooms.includes(tab.documentPath),
+  );
   return peersHere.length === 0;
 }
 

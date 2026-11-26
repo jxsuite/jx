@@ -49,8 +49,12 @@ export interface CollabHostOptions {
   /** A room's source text changed (debounce and persist in the embedder). */
   onSourceChange?: (key: string) => void;
   /**
-   * A client asked to persist this room now; resolve when durable or refused. `baseHash`, when the
-   * client named one, is the base the save replaces in place of the room's own (`flush`).
+   * A client asked to persist this room now. Called one at a time per room, in the order the
+   * flushes arrived, and only for a connection that may write and has opened the path. Resolve when
+   * the text is durable and report the write with {@link CollabHost.markPersisted}; reject with an
+   * author-readable reason when nothing was written, which the host sends as the `flush-ack`'s
+   * `error`. `baseHash`, when the client named one, is the base the save replaces in place of the
+   * room's own (`flush`).
    */
   onFlush?: (key: string, options?: { baseHash?: string | null }) => Promise<void> | void;
   /**
@@ -106,11 +110,12 @@ export interface CollabHost {
   /** Destroy an empty room (embedder teardown after its grace period). */
   destroyRoomIfEmpty: (key: string) => void;
   /**
-   * The embedder folded the room's source to durable storage: reset the dirty baseline to the
-   * current source and broadcast `doc-dirty{false}` to every subscriber. Called from `onFlush`
-   * after a successful write.
+   * The embedder folded the room's source to durable storage. `text` is what it wrote (default: the
+   * room's current source): it becomes the dirty baseline, so an edit made while it was being
+   * written leaves the room unsaved. `doc-dirty` is broadcast to every subscriber when the room's
+   * state changed. Called from `onFlush` after a successful write.
    */
-  markPersisted: (key: string) => void;
+  markPersisted: (key: string, text?: string) => void;
   /**
    * The embedder refused to save the room because the file is no longer what the room was loaded
    * from (`project-state.md` §5): tell every subscriber with `doc-conflict`. The room stays dirty.
@@ -140,6 +145,8 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
   const epochFor = (key: string, path: string): number =>
     Math.max(epochs.get(key) ?? 0, pathEpochs.get(path) ?? 0);
   const connections = new Set<InternalConnection>();
+  /** The tail of each room's flush chain: a room's flushes run one at a time (collab.md §1.2). */
+  const flushQueue = new Map<string, Promise<void>>();
   const awarenessDoc = new Y.Doc();
   const awareness = new Awareness(awarenessDoc);
   // The host's own (empty) local state must not leak into rosters.
@@ -337,6 +344,47 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
     }
   };
 
+  /** Answer a `flush` once: refuse it, or run the embedder's write and report how it went. */
+  const handleFlush = (
+    conn: InternalConnection,
+    path: string,
+    baseHash: string | null | undefined,
+  ) => {
+    const run = async () => {
+      const key = conn.subscribed.get(path);
+      let refusal: string | undefined;
+      if (conn.identity.permission === "read") {
+        refusal = "Write access required";
+      } else if (key === undefined) {
+        refusal = "The document is not open for co-editing, so nothing was saved.";
+      } else {
+        try {
+          await (baseHash === undefined
+            ? options.onFlush?.(key)
+            : options.onFlush?.(key, { baseHash }));
+        } catch (error) {
+          refusal = error instanceof Error ? error.message : String(error);
+        }
+      }
+      sendControl(
+        conn,
+        refusal === undefined
+          ? { path, type: "flush-ack" }
+          : { error: refusal, path, type: "flush-ack" },
+      );
+    };
+    /* One queue per path: flushes of a document stay in order whichever connection sent them, and a
+       refusal queues too, so a connection's answers for a path arrive as it asked. */
+    const queueKey = path;
+    const next = (flushQueue.get(queueKey) ?? Promise.resolve()).then(run);
+    flushQueue.set(queueKey, next);
+    void next.finally(() => {
+      if (flushQueue.get(queueKey) === next) {
+        flushQueue.delete(queueKey);
+      }
+    });
+  };
+
   const handleAwareness = (conn: InternalConnection, body: Uint8Array) => {
     // Track which clientIDs this socket controls so its states drop on close.
     try {
@@ -431,17 +479,7 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
               if (message.type === "open") {
                 void handleOpen(conn, message.path);
               } else if (message.type === "flush") {
-                // A path this connection has not opened names no room of its: nothing to save.
-                const key = conn.subscribed.get(message.path);
-                const { baseHash } = message;
-                void (async () => {
-                  if (key !== undefined) {
-                    await (baseHash === undefined
-                      ? options.onFlush?.(key)
-                      : options.onFlush?.(key, { baseHash }));
-                  }
-                  sendControl(conn, { path: message.path, type: "flush-ack" });
-                })();
+                handleFlush(conn, message.path, message.baseHash);
               } else if (message.type === "revert") {
                 const key = conn.subscribed.get(message.path);
                 // Discarding everyone's edits is a write: a read-only peer reverts nothing.
@@ -531,16 +569,17 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
       }
     },
 
-    markPersisted(key) {
+    markPersisted(key, text) {
       const room = rooms.get(key);
       if (!room) {
         return;
       }
-      room.baseline = sourceText(room.doc).toString();
-      if (room.dirty) {
-        room.dirty = false;
+      room.baseline = text ?? sourceText(room.doc).toString();
+      const nowDirty = sourceText(room.doc).toString() !== room.baseline;
+      if (nowDirty !== room.dirty) {
+        room.dirty = nowDirty;
         broadcastToRoom(room, (at) => ({
-          message: { dirty: false, path: at, type: "doc-dirty" },
+          message: { dirty: nowDirty, path: at, type: "doc-dirty" },
           type: "control",
         }));
       }

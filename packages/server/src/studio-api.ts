@@ -381,10 +381,9 @@ export interface StudioApiOptions {
    * uses (`server.ts`), handed to the one mutation the watcher cannot describe.
    *
    * A rename MOVES a file, and a live room is keyed by the old path. Without this the room survives
-   * the move holding pre-rename content, and `stop()`'s graceful-shutdown flush writes it back —
-   * RECREATING the file the rename deleted. `pendingPersist` receives a path on the room's seed
-   * transaction, so a clean editor does not protect against it either. Passing the OLD absolute
-   * path lets the registry reset that room, which deletes it and makes the later flush a no-op.
+   * the move holding pre-rename content, and the next save from anyone in it writes that back —
+   * RECREATING the file the rename deleted. Passing the OLD absolute path lets the registry reset
+   * that room, so a later save from a peer of the old path writes nothing.
    */
   onFileMoved?: (absPath: string) => void;
   /**
@@ -1440,7 +1439,7 @@ export async function handleStudioApi(
       return problem("internalError", errorMessage(error));
     }
     // Immediately, and before the refactor pass: a room still keyed to the old path would be
-    // Flushed back onto disk at shutdown, recreating the file this rename just moved.
+    // Written back onto disk by the next save from anyone in it, recreating the file this rename just moved.
     opts.onFileMoved?.(absFrom);
     // Refactor pass: rewrite path references project-wide and, for a component, auto-rename its tag.
     // The move already succeeded, so a refactor failure is reported but never fails the rename.

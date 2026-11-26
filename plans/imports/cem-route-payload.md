@@ -73,7 +73,7 @@ The body under it still says the route "Returns the full Custom Elements Manifes
 
 > **Status: Removed.** The route answered one dependency's Custom Elements Manifest, wrapped as `{ cem }`, and no Studio platform ever called it: dependency components reach Studio as the `source: "npm"` entries of `GET /__studio/components` (§4.1), read from the manifests §2 describes. No backend serves it, and the protocol's route table does not declare it.
 
-**`specs/server.md` §4.1**, the **Documents / components / formats** bullet: "component discovery, CEM extraction, the project's format/extension registry" becomes "component discovery (the project's components and the Custom Elements Manifest components of its installed dependencies), the project's format/extension registry". The rest of the bullet is unchanged. `plan:collab/spec-coverage` edits the co-editing bullet above it, and whichever pull request lands second resolves that adjacency.
+**`specs/server.md` §4.1**, the **Documents / components / formats** bullet: "component discovery, CEM extraction, the project's format/extension registry" becomes "component discovery (the project's components and the Custom Elements Manifest components of its installed dependencies), the project's format/extension registry". The rest of the bullet is unchanged. collab.md's new sections (§1.1 to §3.2) edits the co-editing bullet above it, and whichever pull request lands second resolves that adjacency.
 
 **Fragments:**
 

@@ -35,16 +35,16 @@ frame          := varUint frameType, body
 0 DOC_SYNC     := varString path, varUint docEpoch, varUint8Array y-protocols sync body
 1 AWARENESS    := varUint8Array y-protocols awareness update (project-scoped)
 2 DOC_CLOSE    := varString path
-3 CONTROL      := varString json    — hello | open | opened | doc-reset | flush | flush-ack | error
+3 CONTROL      := varString json    — hello | open | opened | doc-reset | flush | flush-ack | doc-dirty | error
 ```
 
 `docEpoch` is the server-owned lifetime counter of a doc's Y history. **Y history is never deleted or replaced without an epoch bump**: out-of-band content replacement (git discard/pull/rename, non-collab writes) bumps it and broadcasts `doc-reset`; clients destroy their `Y.Doc` and re-open. Stale-epoch frames are dropped. This invariant is what prevents divergent-history duplicate-content merges.
 
-Session flow: connect → server sends `hello{login, name?, avatarUrl?, color, permission}` → client sends `open{path}` per document → server ensures the room (loads persisted Y state or seeds `source` from the file) → `opened{path, epoch}` → y-protocols sync handshake → updates flow. Read-only sockets receive sync and may publish awareness, but their doc updates are dropped with one `error{read-only}`.
+Session flow: connect → server sends `hello{login, name?, avatarUrl?, color, permission}` → client sends `open{path}` per document → server ensures the room (loads persisted Y state or seeds `source` from the file) → `opened{path, epoch}` → y-protocols sync handshake → updates flow. Read-only sockets receive sync and may publish awareness, but their doc updates are dropped with one `error{read-only}`. Every `flush` is answered by one `flush-ack`, in the order a document's flushes arrived, carrying `error` when nothing was written (collab.md §1.2).
 
 ## Awareness (`./awareness-types`)
 
-One project-level `Awareness` per connection. State shape: `{ user: {login, name?, avatarUrl?, color}, focusedPath, mode?, structuralSelection?, selection? }`. File-tree presence (the plain `selection` field is the code view's in-buffer cursor) and per-document cursor overlays both filter the same states. Identity comes from the server `hello`; colors are deterministic (`colorForKey`).
+One project-level `Awareness` per connection. State shape: `{ user: {login, name?, avatarUrl?, color}, rooms?, focusedPath, mode?, structuralSelection?, selection?, canWrite? }` (collab.md §2.4). File-tree presence (the plain `selection` field is the code view's in-buffer cursor) and per-document cursor overlays both filter the same states. Identity comes from the server `hello`; colors are deterministic (`colorForKey`).
 
 ## Provider contract (`./provider`, type-only)
 

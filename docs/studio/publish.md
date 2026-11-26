@@ -62,6 +62,8 @@ If your repository's rules on GitHub only let changes into a branch through a pu
 
 Confirm, and Studio moves you onto the new branch, pushes it, and opens a pull request from it into the protected branch. Where Studio can't open the pull request itself, it opens GitHub's page for creating it, with both branches filled in. Choose **Cancel** to leave the commit where it is.
 
+Publishing first saves any file you are co-editing with someone else. If one of them can't be saved, nothing is committed: your summary stays in the box and the error names the file.
+
 ## The four views
 
 - **Review changes** is three columns: your changes on the left, each named as your site names it (a page by its name and address, a post by its title) with a tag saying what happened, the comparison of the change you pick in the middle, and the destination, the summary and the publish button on the right. The checks sit at the foot of the list. See **[Source control](/docs/studio/publish/source-control)**.

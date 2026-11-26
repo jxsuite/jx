@@ -98,6 +98,16 @@ export function createMockCollabHub(
      * file's bytes; `null` or absent leaves the shared text empty.
      */
     source?: (path: string) => string | null;
+    /**
+     * One `Awareness` for every handle the hub issues, as `createWsCollabConnection` has: there is
+     * no relay between them, and a handle's `destroy` leaves it alive.
+     */
+    sharedAwareness?: boolean;
+    /**
+     * A reason a save of `path` fails with, or `null` to let it succeed: the handle's `flush`
+     * records the path, then rejects with it, as a provider that could not write the file does.
+     */
+    flushError?: (path: string) => string | null;
   } = {},
 ): MockCollabHub {
   const servers = new Map<string, Y.Doc>();
@@ -106,6 +116,7 @@ export function createMockCollabHub(
   const flushOptions: MockCollabHub["flushOptions"] = [];
   const reverts: string[] = [];
   const refuse = new Set(opts.refuse);
+  const shared = opts.sharedAwareness ? new Awareness(new Y.Doc()) : null;
 
   const identity: CollabIdentity = {
     color: "#4f9cf9",
@@ -143,7 +154,7 @@ export function createMockCollabHub(
     const server = serverDoc(docPath);
     const conns = connsFor(docPath);
     const conn: Connection = {
-      awareness: new Awareness(new Y.Doc()),
+      awareness: shared ?? new Awareness(new Y.Doc()),
       destroyed: false,
       conflictCbs: new Set(),
       dirty: false,
@@ -172,7 +183,7 @@ export function createMockCollabHub(
       changes: { added: number[]; updated: number[]; removed: number[] },
       origin: string,
     ) => {
-      if (origin === "mock-hub" || conn.destroyed) {
+      if (origin === "mock-hub" || conn.destroyed || shared) {
         return;
       }
       const changed = [...changes.added, ...changes.updated, ...changes.removed];
@@ -199,13 +210,19 @@ export function createMockCollabHub(
         conn.doc.off("update", clientListener);
         server.off("update", serverListener);
         conn.awareness.off("update", awarenessListener);
-        conn.awareness.destroy();
+        if (!shared) {
+          conn.awareness.destroy();
+        }
         conns.delete(conn);
       },
       doc: conn.doc,
       flush: (options) => {
         flushes.push(docPath);
         flushOptions.push(options);
+        const failure = opts.flushError?.(docPath) ?? null;
+        if (failure !== null) {
+          return Promise.reject(new Error(failure));
+        }
         hub.onFlush?.(docPath, options);
         return Promise.resolve();
       },

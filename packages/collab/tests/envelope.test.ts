@@ -44,6 +44,7 @@ describe("envelope roundtrip", () => {
       { epoch: 4, path: "p.md", type: "doc-reset" },
       { path: "p.md", type: "flush" },
       { path: "p.md", type: "flush-ack" },
+      { error: "Could not write p.md: disk full", path: "p.md", type: "flush-ack" },
       { dirty: true, path: "p.md", type: "doc-dirty" },
       { dirty: false, path: "p.md", type: "doc-dirty" },
       { diskHash: null, docId: "d1", path: "p.md", type: "doc-conflict" },

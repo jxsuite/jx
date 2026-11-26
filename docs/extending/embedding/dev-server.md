@@ -45,7 +45,7 @@ Ordering is load-bearing: the privileged endpoints must be claimed before the st
 
 Format and extension behavior is served from a per-project **extension registry**, built by scanning the project's dependencies and cached against the project file's mtime. Edit the manifest and the next request rebuilds the registry. The `formats`, `format`, and `project-schemas` routes all answer from it.
 
-A host embedding `handleStudioApi` directly passes `onFileMoved` alongside `allowedRoots` and `onProjectCreated`, and `projectEvents` to serve the project state routes below. `createDevServer` wires `onFileMoved` to the collaboration registry, and a host running its own collab layer must do the same for every room it keys by path: a rename moves the file out from under such a room, and its shutdown flush would write its pre-rename content back, recreating the file the rename deleted. It is called with the OLD absolute path, and it is the same hook the file watcher already uses. A room `createDevServer` keys by document (below) ignores it.
+A host embedding `handleStudioApi` directly passes `onFileMoved` alongside `allowedRoots` and `onProjectCreated`, and `projectEvents` to serve the project state routes below. `createDevServer` wires `onFileMoved` to the collaboration registry, and a host running its own collab layer must do the same for every room it keys by path: a rename moves the file out from under such a room, and the next save from anyone still in the room would write its pre-rename content back, recreating the file the rename deleted. It is called with the OLD absolute path, and it is the same hook the file watcher already uses. A room `createDevServer` keys by document (below) ignores it.
 
 ## The project state stream
 

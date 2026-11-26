@@ -42,9 +42,15 @@ import type { CollabHandle } from "@jxsuite/collab/provider";
 import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import type * as CollabNS from "@jxsuite/collab";
 import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
+import { errorMessage } from "@jxsuite/schema/parse";
 import type { DocumentRecord } from "@jxsuite/collab/schema";
 import type * as Y from "yjs";
-import { collabState, registerCollabPath, unregisterCollabPath } from "./collab-state";
+import {
+  collabState,
+  isCollabPath,
+  registerCollabPath,
+  unregisterCollabPath,
+} from "./collab-state";
 import type { PeerPresence } from "./collab-state";
 import { notify } from "../services/notify";
 import { noteRoomConflict } from "../project-state/buffer";
@@ -441,19 +447,15 @@ function reconcileTabFromY(session: ActiveSession): void {
 
 // ─── Source mirror (Phase A: canonical is always "structure") ────────────────
 
-/** The elected reconciler: lowest write-capable clientID keeps source Y.Text fresh. */
+/**
+ * The elected structure mirror: the lowest write-capable client among those holding this room keeps
+ * its source Y.Text fresh (collab.md §3.2). Presence is one channel per project, so a client that
+ * holds another document never stands in for this one.
+ */
 function isReconciler(session: ActiveSession): boolean {
-  if (!session.canWrite) {
-    return false;
-  }
-  const { awareness } = session.handle;
-  let lowest = awareness.clientID;
-  for (const [clientId, state] of awareness.getStates()) {
-    if (state["canWrite"] !== false && clientId < lowest) {
-      lowest = clientId;
-    }
-  }
-  return lowest === session.handle.awareness.clientID;
+  return (
+    session.canWrite && session.collab.isStructureMirror(session.handle.awareness, session.path)
+  );
 }
 
 function scheduleMirror(session: ActiveSession): void {
@@ -635,7 +637,7 @@ export function collabSourceContext(tab: Tab): {
       session.sourceLockOwner = claim;
       const local = handle.awareness.getLocalState();
       if (local) {
-        handle.awareness.setLocalState({ ...local, mode: "source" });
+        handle.awareness.setLocalState({ ...local, focusedPath: session.path, mode: "source" });
       }
       if (!session.canWrite) {
         return;
@@ -755,7 +757,10 @@ async function mirrorForSave(session: ActiveSession): Promise<void> {
     clearTimeout(session.mirrorTimer);
     session.mirrorTimer = null;
   }
-  await mirrorNow(session);
+  // While the Code view holds the lock the text is the document: it is flushed as it stands.
+  if (session.collab.canonicalOf(session.handle.doc) === "structure") {
+    await mirrorNow(session);
+  }
 }
 
 /**
@@ -775,10 +780,18 @@ export async function saveRoom(
   }
   await mirrorForSave(session);
   const { refusals } = session;
-  await (options.baseHash === undefined
-    ? session.handle.flush()
-    : session.handle.flush({ baseHash: options.baseHash }));
-  // A refusal reaches every participant before the requester's acknowledgement (collab.md §2).
+  try {
+    await (options.baseHash === undefined
+      ? session.handle.flush()
+      : session.handle.flush({ baseHash: options.baseHash }));
+  } catch (error) {
+    /* A refusal reaches every participant before the requester's acknowledgement (collab.md §2.3):
+       it is the one failed save with an answer of its own. */
+    if (session.refusals !== refusals) {
+      return "refused";
+    }
+    throw error;
+  }
   if (session.refusals !== refusals) {
     return "refused";
   }
@@ -816,13 +829,26 @@ export async function revertRoom(tab: Tab): Promise<boolean> {
   return true;
 }
 
-/** Refresh mirrors and flush every active session (call before commits). */
+/**
+ * Refresh mirrors and flush every active session (call before commits). Every co-edited tab is
+ * tried; it then throws one error naming each file that could not be saved (collab.md §1.2).
+ */
 export async function flushAllCollab(): Promise<void> {
+  const failures: { path: string; reason: string }[] = [];
   for (const tab of liveTabs) {
     const session = runtimeOf(tab)?.session;
-    if (session?.synced) {
-      await collabSave(tab);
+    if (!session?.synced) {
+      continue;
     }
+    try {
+      await collabSave(tab);
+    } catch (error) {
+      failures.push({ path: session.path, reason: errorMessage(error) });
+    }
+  }
+  if (failures.length > 0) {
+    const paths = failures.map((failure) => failure.path).join(", ");
+    throw new Error(`Could not save ${paths}: ${failures[0]!.reason}`);
   }
 }
 
@@ -1047,6 +1073,38 @@ async function attachSession(tab: Tab): Promise<void> {
   await registration.done;
 }
 
+/**
+ * This client stops holding the room at `path`: it leaves its `rooms`, focus moves to the most
+ * recently joined room still held, and a client that holds none withdraws its state, so a person
+ * who has left every shared document leaves every roster (collab.md §2.4).
+ */
+function leaveRoom(awareness: CollabHandle["awareness"], path: string): void {
+  /* SAFETY: every Studio client publishes its state through createSession's setLocalState call,
+     which writes a CollabAwarenessState; `Partial` keeps each field optional for a state this
+     client has not finished writing. */
+  const local = awareness.getLocalState() as Partial<CollabAwarenessState> | null;
+  if (local === null) {
+    return;
+  }
+  const rooms = (local.rooms ?? []).filter((room) => room !== path);
+  if (rooms.length === 0) {
+    awareness.setLocalState(null);
+    return;
+  }
+  if (local.focusedPath !== path) {
+    awareness.setLocalState({ ...local, rooms });
+    return;
+  }
+  awareness.setLocalState({
+    ...local,
+    focusedPath: rooms.at(-1) ?? null,
+    mode: "structure",
+    rooms,
+    selection: null,
+    structuralSelection: null,
+  });
+}
+
 function detachSession(tab: Tab): void {
   const runtime = runtimeOf(tab);
   if (!runtime) {
@@ -1066,6 +1124,9 @@ function detachSession(tab: Tab): void {
     return;
   }
   unregisterCollabPath(session.path);
+  if (!isCollabPath(session.path)) {
+    leaveRoom(session.handle.awareness, session.path);
+  }
   announceSession(tab);
   if (session.mirrorTimer) {
     clearTimeout(session.mirrorTimer);
@@ -1174,11 +1235,21 @@ function createSession(
     session.disposers.push(offConflict);
   }
 
-  // Presence identity + write capability (drives reconciler election).
+  /* Presence identity + write capability (drives reconciler election). The connection has one state
+     for every document this client holds: it joins this one's `rooms`, and takes focus unless a
+     Code view on another document holds it (collab.md §2.4). */
+  /* SAFETY: this client's own state, written by this function and `leaveRoom` as a
+     CollabAwarenessState; `Partial` keeps each field optional before the first write. */
+  const previous = handle.awareness.getLocalState() as Partial<CollabAwarenessState> | null;
+  const codeViewElsewhere = previous?.mode === "source" && previous.focusedPath !== path;
+  const focus: Partial<CollabAwarenessState> = codeViewElsewhere
+    ? { focusedPath: previous.focusedPath ?? null }
+    : { focusedPath: path, mode: "structure", structuralSelection: null };
   handle.awareness.setLocalState({
+    ...previous,
     canWrite: session.canWrite,
-    focusedPath: path,
-    structuralSelection: null,
+    rooms: [...new Set([...(previous?.rooms ?? []), path])],
+    ...focus,
     user: identity
       ? {
           avatarUrl: identity.avatarUrl,
@@ -1351,7 +1422,8 @@ function createSession(
       const structuralSelection =
         tab.session.selection.length > 0 ? cloneSelection(tab.session.selection) : null;
       const local = handle.awareness.getLocalState();
-      if (local) {
+      // Only the focused document's session publishes: the state names one document's selection.
+      if (local && local["focusedPath"] === path) {
         handle.awareness.setLocalState({ ...local, structuralSelection });
       }
     });

@@ -12,7 +12,7 @@ import * as Y from "yjs";
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
-import { closeAllTabs, openTab } from "../src/workspace/workspace";
+import { closeAllTabs, closeTab, openTab } from "../src/workspace/workspace";
 import { collabState } from "../src/collab/collab-state";
 import { resetNotifications, toasts } from "../src/services/notify";
 import { mutateUpdateProperty, openBatchLane, transactDoc } from "../src/tabs/transact";
@@ -451,6 +451,43 @@ describe("reconciler election", () => {
     await settleCollab();
     expect(childNode(serverJson(hub), 0).textContent).toBe("Mine");
     expect(hub.serverDoc(PATH).getText("source").toString()).toBe("");
+    low.destroy();
+  });
+
+  test("a lower writer in another room does not stop this room's mirror", async () => {
+    const hub = createMockCollabHub();
+    const handles: CollabHandle[] = [];
+    installMockPlatform({
+      collab: async (p) => {
+        const h = await hub.capability(p);
+        if (h) {
+          handles.push(h);
+        }
+        return h;
+      },
+    });
+    configureCollabSerializer(jsonSerializer);
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+
+    const lowDoc = new Y.Doc();
+    lowDoc.clientID = 1;
+    const low = new Awareness(lowDoc);
+    low.setLocalState({
+      canWrite: true,
+      focusedPath: "pages/other.json",
+      rooms: ["pages/other.json"],
+      user: { color: "#000", login: "low-peer" },
+    });
+    applyAwarenessUpdate(handles[0]!.awareness, encodeAwarenessUpdate(low, [1]), "test");
+    await settleCollab();
+
+    await withFakeTimers(async (runPending) => {
+      transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Mine"));
+      await runPending();
+    });
+    await settleCollab();
+    expect(hub.serverDoc(PATH).getText("source").toString()).toContain("Mine");
     low.destroy();
   });
 });
@@ -1005,5 +1042,61 @@ describe("flushAllCollab", () => {
     await flushAllCollab();
     expect(hub.flushes).toEqual([PATH]);
     expect(hub.serverDoc(PATH).getText("source").toString()).toContain("Flushed");
+  });
+
+  test("skips a session that has not finished its first sync", async () => {
+    const hub = createMockCollabHub({ neverSync: true });
+    const tab = openCollabTab(hub);
+    configureCollabSerializer(jsonSerializer);
+    await settleCollab();
+    expect(collabState(tab).status).not.toBe("synced");
+    await flushAllCollab();
+    expect(hub.flushes).toEqual([]);
+  });
+
+  test("flushes every session and names every failure", async () => {
+    const hub = createMockCollabHub({
+      flushError: (path) => (path.startsWith("pages/bad") ? `no room for ${path}` : null),
+    });
+    installMockPlatform({ collab: hub.capability });
+    configureCollabSerializer(jsonSerializer);
+    for (const path of ["pages/bad-a.json", "pages/good.json", "pages/bad-b.json"]) {
+      openTab({ document: structuredClone(HELLO_DOC), documentPath: path, id: path });
+    }
+    await settleCollab();
+
+    let message = "";
+    try {
+      await flushAllCollab();
+    } catch (error) {
+      message = error instanceof Error ? error.message : "";
+    }
+    expect(message).toContain("pages/bad-a.json");
+    expect(message).toContain("pages/bad-b.json");
+    expect(message).not.toContain("pages/good.json");
+    expect(hub.flushes.toSorted()).toEqual([
+      "pages/bad-a.json",
+      "pages/bad-b.json",
+      "pages/good.json",
+    ]);
+  });
+});
+
+describe("leaving a room whose awareness state is already gone", () => {
+  test("closing the tab does not publish a state for the person who left", async () => {
+    const hub = createMockCollabHub({ sharedAwareness: true });
+    let awareness: Awareness | null = null;
+    installMockPlatform({
+      collab: async (path) => {
+        const handle = await hub.capability(path);
+        awareness = handle?.awareness ?? null;
+        return handle;
+      },
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    awareness!.setLocalState(null);
+    closeTab(tab.id);
+    expect(awareness!.getLocalState()).toBeNull();
   });
 });

@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import * as encoding from "lib0/encoding";
 import { createCollabHost } from "../src/ws-room.ts";
-import type { CollabHost, RoomSocket } from "../src/ws-room.ts";
+import type { CollabHost, CollabHostOptions, RoomSocket } from "../src/ws-room.ts";
 import { decodeFrame, encodeFrame } from "../src/envelope.ts";
 import type { CollabFrame, ControlMessage } from "../src/envelope.ts";
 import type { CollabIdentity } from "../src/provider.ts";
@@ -40,8 +40,11 @@ async function settle(rounds = 6): Promise<void> {
 
 const cleanups: (() => void)[] = [];
 
-function makeHost(loadSource: (path: string) => Promise<string | null>): CollabHost {
-  const host = createCollabHost({ loadSource });
+function makeHost(
+  loadSource: (path: string) => Promise<string | null>,
+  rest: Omit<CollabHostOptions, "loadSource"> = {},
+): CollabHost {
+  const host = createCollabHost({ ...rest, loadSource });
   cleanups.push(() => host.destroy());
   return host;
 }
@@ -222,7 +225,7 @@ describe("rooms keyed by document (keyOf)", () => {
     expect(conflicts(both.frames).map((message) => message.path)).toEqual(["old.md", "new.md"]);
 
     // A flush names the room by whichever path the peer holds; one it never opened saves nothing,
-    // And is acknowledged all the same.
+    // And is refused (the acknowledgement carries the reason).
     b.handleMessage(encodeFrame({ message: { path: "new.md", type: "flush" }, type: "control" }));
     b.handleMessage(encodeFrame({ message: { path: "old.md", type: "flush" }, type: "control" }));
     await settle();
@@ -295,5 +298,138 @@ describe("revert (project-state.md §6.1)", () => {
     ).toEqual(["a.md", "b.md"]);
     // The embedder decides: this one kept the room.
     expect(host.sourceOf("doc:1")).toBe("# A\n");
+  });
+});
+
+describe("flush answers", () => {
+  const OPEN_FIRST = "The document is not open for co-editing, so nothing was saved.";
+
+  const flushOf = (path: string) =>
+    encodeFrame({ message: { path, type: "flush" }, type: "control" });
+  const acks = (frames: CollabFrame[]) =>
+    controls(frames).flatMap((message) => (message.type === "flush-ack" ? [message] : []));
+
+  const lastDirty = (frames: CollabFrame[]) =>
+    controls(frames).findLast((message) => message.type === "doc-dirty");
+
+  async function openOn(conn: ReturnType<CollabHost["connect"]>, path: string): Promise<void> {
+    conn.handleMessage(encodeFrame({ message: { path, type: "open" }, type: "control" }));
+    await settle();
+  }
+
+  test("a flush whose embedder rejects is answered with the reason", async () => {
+    const host = makeHost(() => Promise.resolve("x"), {
+      onFlush: () => Promise.reject(new Error("Could not write a.md: disk full")),
+    });
+    const { frames, socket } = recordingSocket();
+    const conn = host.connect(socket, IDENTITY);
+    await openOn(conn, "a.md");
+    conn.handleMessage(flushOf("a.md"));
+    await settle();
+    expect(acks(frames)).toEqual([
+      { error: "Could not write a.md: disk full", path: "a.md", type: "flush-ack" },
+    ]);
+  });
+
+  test("a rejection that is not an Error is answered with its text", async () => {
+    // oxlint-disable-next-line prefer-promise-reject-errors
+    const host = makeHost(() => Promise.resolve("x"), { onFlush: () => Promise.reject("nope") });
+    const { frames, socket } = recordingSocket();
+    const conn = host.connect(socket, IDENTITY);
+    await openOn(conn, "a.md");
+    conn.handleMessage(flushOf("a.md"));
+    await settle();
+    expect(acks(frames)).toEqual([{ error: "nope", path: "a.md", type: "flush-ack" }]);
+  });
+
+  test("a read-only connection's flush is refused and never reaches the embedder", async () => {
+    const flushed: string[] = [];
+    const host = makeHost(() => Promise.resolve("x"), {
+      onFlush: (key) => {
+        flushed.push(key);
+      },
+    });
+    const { frames, socket } = recordingSocket();
+    const conn = host.connect(socket, { ...IDENTITY, permission: "read" });
+    await openOn(conn, "a.md");
+    conn.handleMessage(flushOf("a.md"));
+    await settle();
+    expect(flushed).toEqual([]);
+    expect(acks(frames)).toEqual([
+      { error: "Write access required", path: "a.md", type: "flush-ack" },
+    ]);
+  });
+
+  test("a flush for a path the connection has not opened is refused and never reaches the embedder", async () => {
+    const flushed: string[] = [];
+    const host = makeHost(() => Promise.resolve("x"), {
+      onFlush: (key) => {
+        flushed.push(key);
+      },
+    });
+    const { frames, socket } = recordingSocket();
+    const conn = host.connect(socket, IDENTITY);
+    conn.handleMessage(flushOf("a.md"));
+    await settle();
+    await openOn(conn, "a.md");
+    host.resetDoc("a.md");
+    conn.handleMessage(flushOf("a.md"));
+    await settle();
+    expect(flushed).toEqual([]);
+    expect(acks(frames)).toEqual([
+      { error: OPEN_FIRST, path: "a.md", type: "flush-ack" },
+      { error: OPEN_FIRST, path: "a.md", type: "flush-ack" },
+    ]);
+  });
+
+  test("a path's flushes reach the embedder one at a time and are answered in order", async () => {
+    const started: number[] = [];
+    const releases: (() => void)[] = [];
+    const host = makeHost(() => Promise.resolve("x"), {
+      onFlush: () =>
+        new Promise<void>((resolve) => {
+          started.push(started.length + 1);
+          releases.push(resolve);
+        }),
+    });
+    const first = recordingSocket();
+    const second = recordingSocket();
+    const a = host.connect(first.socket, IDENTITY);
+    const b = host.connect(second.socket, IDENTITY);
+    await openOn(a, "a.md");
+    await openOn(b, "a.md");
+    a.handleMessage(flushOf("a.md"));
+    b.handleMessage(flushOf("a.md"));
+    await settle();
+    // The second flush waits for the first to settle.
+    expect(started).toEqual([1]);
+    releases[0]!();
+    await settle();
+    expect(started).toEqual([1, 2]);
+    expect(acks(first.frames)).toHaveLength(1);
+    expect(acks(second.frames)).toHaveLength(0);
+    releases[1]!();
+    await settle();
+    expect(acks(second.frames)).toEqual([{ path: "a.md", type: "flush-ack" }]);
+  });
+
+  test("markPersisted takes the text written, so an edit made meanwhile stays unsaved", async () => {
+    const host = makeHost(() => Promise.resolve("seed"));
+    const { frames, socket } = recordingSocket();
+    const conn = host.connect(socket, IDENTITY);
+    await openOn(conn, "a.md");
+    // Written text differs from the room's own: the room is unsaved against it.
+    host.markPersisted("a.md", "written elsewhere");
+    expect(lastDirty(frames)).toEqual({
+      dirty: true,
+      path: "a.md",
+      type: "doc-dirty",
+    });
+    host.markPersisted("a.md", "seed");
+    expect(lastDirty(frames)).toEqual({
+      dirty: false,
+      path: "a.md",
+      type: "doc-dirty",
+    });
   });
 });
