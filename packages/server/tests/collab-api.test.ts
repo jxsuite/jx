@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
+import { connect as netConnect } from "node:net";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createDevServer } from "../src/server.ts";
 import { createCollabRegistry } from "../src/collab.ts";
@@ -34,6 +35,41 @@ function connect(): WsCollabConnection {
   });
   connections.push(connection);
   return connection;
+}
+
+/**
+ * Send a raw HTTP/1.1 WebSocket upgrade to the dev server and resolve the response head. A raw
+ * request makes the extension offer explicit and exposes the answer header by header.
+ */
+function rawUpgrade(port: number, headers: Record<string, string>): Promise<string> {
+  return new Promise((resolveHead, reject) => {
+    const socket = netConnect(port, "127.0.0.1");
+    let head = "";
+    socket.setEncoding("utf8");
+    socket.on("error", reject);
+    socket.on("connect", () => {
+      const lines = [
+        "GET /__studio/collab HTTP/1.1",
+        `Host: localhost:${port}`,
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+        "Sec-WebSocket-Version: 13",
+        ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
+        "",
+        "",
+      ];
+      socket.write(lines.join("\r\n"));
+    });
+    socket.on("data", (chunk: string) => {
+      head += chunk;
+      const end = head.indexOf("\r\n\r\n");
+      if (end !== -1) {
+        socket.destroy();
+        resolveHead(head.slice(0, end));
+      }
+    });
+  });
 }
 
 /** Resolve when the socket completes its handshake; reject if it fails. */
@@ -133,6 +169,16 @@ describe("/__studio/collab", () => {
       offer: [COLLAB_SUBPROTOCOL],
       refused: null,
     });
+  });
+
+  test("an upgrade offering permessage-deflate opens without the extension", async () => {
+    const head = await rawUpgrade(server.port!, {
+      "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits",
+      "Sec-WebSocket-Protocol": COLLAB_SUBPROTOCOL,
+    });
+    expect(head.startsWith("HTTP/1.1 101")).toBe(true);
+    expect(head).toMatch(/^sec-websocket-protocol: jx\.collab\.v1\r?$/im);
+    expect(head).not.toMatch(/^sec-websocket-extensions:/im);
   });
 
   test("an upgrade offering the subprotocol is echoed, and the socket opens", async () => {

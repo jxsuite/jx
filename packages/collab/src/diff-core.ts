@@ -23,7 +23,8 @@
  * {@link matchChildren} is exported for that studio caller: `diffDocs` emits a REPLAY SCRIPT whose
  * paths are post-splice coordinates valid only in `b`, and a side-by-side comparison needs both
  * sides' coordinates and the pairing between them. That is what a `ChildMatch` is, and re-deriving
- * it would mean a second definition of "the same node".
+ * it would mean a second definition of "the same node". `schema.ts`'s `mergeYChildren` uses it too,
+ * so a whole-document write aligns children exactly as the studio's diff does.
  */
 
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
@@ -31,7 +32,10 @@ import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/typ
 import type { JxDocOp } from "./ops.ts";
 
 export interface DiffOptions {
-  /** Abort (return null) when the diff would exceed this many ops; caller hard-replaces instead. */
+  /**
+   * Abort (return null) when the diff would exceed this many ops; caller writes the whole document
+   * by merge instead.
+   */
   maxOps?: number;
 }
 

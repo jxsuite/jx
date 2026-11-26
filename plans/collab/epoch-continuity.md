@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - collab.md#3
-requires:
-  - collab/granular-writes
+requires: []
 workspaces:
   - packages/collab
   - packages/server
@@ -37,7 +36,7 @@ The first bullet ("Y history is never deleted or replaced without an epoch bump"
 - A new epoch whenever the host discards a history (teardown as well as reset), and epochs a restarted host does not reissue.
 - A rule for which copy of the document a tab brings into the new room, and docs that state it.
 - Regression tests that close both ends, reset, tear down or restart while the client is away, reconnect, and assert one reset and no doubled content, through the bare host and through the dev server's registry.
-- §3's third bullet is §3.1's work (audit record, spec-wide decisions): §3 flips only after `plan:collab/granular-writes` lands.
+- §3's third bullet is §3.1's work (audit record, spec-wide decisions): §3 flips only after the §3.1 merge-granularity change (landed) lands.
 
 **Related.** collab.md §2 (the epoch tag), collab.md §2.1 (the token's bump rule), collab.md §3.1. `plan:collab/spec-coverage`'s §1.1 "Epochs" bullet and its §2.3 `doc-reset` row defer when the host issues an epoch to §3's first bullet, so this plan edits neither. the landed collab.md §4 work writes §4's state machine with its reconnect and reset steps deferring to §3 both the epoch rule and which copy of the document a re-attaching tab brings; it also changes `openDoc` in `ws-client.ts` and `attachSession`'s failure path, and `plan:collab/room-schema-skew` adds a check to `attachSession` after `whenSynced`, beside step 5's parse: textual rebases rather than edges. `plan:collab/room-schema-skew` also reads `DocEntry.joined` and factors the same `discardRoom(path, room): number` out of `resetDoc`, bumping and returning the epoch as this plan's does: whichever lands second keeps the one helper, and adds the other's discard to §3's list (Specs & docs).
 
@@ -53,7 +52,7 @@ The first bullet ("Y history is never deleted or replaced without an epoch bump"
 - **Open:** how a restarted host avoids reissuing an epoch a client still holds. Recommendation: a host-wide counter that starts at a random 32-bit value per host instance (`uint32` from `lib0/random`, the source Yjs draws client ids from), not persisted, because every host instance builds fresh histories from `loadSource`, so a persisted counter would buy continuity with a history that no longer exists; it needs no storage hook, and the platform's Durable Object is fixed by a package upgrade rather than new code outside this repository. The costs to sign: an epoch grows from 1 varUint byte to about 5 on every doc-sync frame, and a restart collides with a held epoch only with probability about n / 2^32 for n epochs issued.
 - **Decided:** no subprotocol token bump and no frame-layout change, because both sides compare epochs only for equality and lib0's varUint and the JSON control messages carry any safe integer, so no peer mis-parses a frame (collab.md §2.1's bump rule). An older client against a newer host behaves as today; a newer client against an older host gains the reconnect check.
 - **Open:** which copy of the document a tab brings into a room whose history was replaced. Today it is always the tab's own (Context): right after a teardown or restart, where the file holds only the last save and the tab may hold unsaved or offline edits, and wrong after an out-of-band replacement, where it puts the replaced content back. Recommendation: decide by the tab's unsaved state at the reset. A tab with nothing unsaved re-attaches from the new room's `source`, parsed by the parser the source reconciler uses; a tab with unsaved edits (its own, offline ones included, or peers' it had synced) brings its own document and mirrors it into `source`, so the room reports it unsaved as the tab did; the first writer into an unseeded room seeds from what it brought, and every later client adopts that tree, as today. Because `tab.doc.dirty` already tracks the room's unsaved state (`onDirty`) plus local edits, it is the one signal that separates a returning author's work from a stale copy, and a rebase would need the last-synced base no client keeps. The cost to sign: a replacement that lands while the room holds unsaved edits is overwritten by them, as it is today. If signed as "keep today's rule", Implementation step 5 and its tests go, and the §3 sentence and the docs say the returning copy wins even over a replacement.
-- **Decided:** one plan with a `requires` edge on `plan:collab/granular-writes` rather than an enabling split, because §3 cannot be marked Implemented while its op-bridge bullet is false, and a split would add a plan whose only content is a marker flip for a gain of one pull request's ordering in the same spec's queue.
+- **Decided:** one plan with a `requires` edge on the §3.1 merge-granularity change (landed) rather than an enabling split, because §3 cannot be marked Implemented while its op-bridge bullet is false, and a split would add a plan whose only content is a marker flip for a gain of one pull request's ordering in the same spec's queue.
 
 ## Implementation
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp } from "../src/ops.ts";
 import { applyDocOpToDoc } from "../src/ops.ts";
@@ -9,7 +10,13 @@ import {
   LOCAL_ORIGIN,
   yEventsToDocOps,
 } from "../src/op-bridge.ts";
-import { seedStructure, yDocToJson } from "../src/schema.ts";
+import {
+  resolveYPath,
+  seedStructure,
+  structureMap,
+  yDocToJson,
+  yValueToJson,
+} from "../src/schema.ts";
 
 const BASE: JxMutableNode = {
   children: [
@@ -337,7 +344,7 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     expect(ops![0]).toMatchObject({ op: "insert-child", parentPath: ["children", 1] });
   });
 
-  test("overlapping multi-target transactions bail to null (diff fallback)", () => {
+  test("events inside one children array collapse to one children set-key", () => {
     const result = captureRemote((a) => {
       // One transaction touching the root children array AND a nested node (post-insert path).
       applyDocOpsToY(
@@ -355,7 +362,141 @@ describe("yEventsToDocOps (fast inbound path)", () => {
       );
     });
     expect(result.observed).toBe(true);
+    expect(result.ops).toHaveLength(1);
+    expect(result.ops?.[0]).toMatchObject({ key: "children", op: "set-key", path: [] });
+  });
+
+  test("overlapping events that share no children array still bail to null", () => {
+    const result = captureRemote((a) => {
+      applyDocOpsToY(
+        a,
+        [
+          { key: "tagName", op: "set-key", path: [], value: "main" },
+          { index: 0, node: { tagName: "x" }, op: "insert-child", parentPath: [] },
+        ],
+        "x",
+      );
+    });
+    expect(result.observed).toBe(true);
     expect(result.ops).toBeNull();
+  });
+
+  test("a merged children commit converts faithfully", () => {
+    assertFaithful(
+      captureRemote((a) => {
+        applyDocOpsToY(
+          a,
+          [
+            {
+              key: "children",
+              op: "set-key",
+              path: ["children", 1],
+              value: [{ tagName: "i", textContent: "new" }, "kept", { tagName: "em" }],
+            },
+          ],
+          "x",
+        );
+      }),
+    );
+  });
+
+  test("a new style declaration collapses to one op", () => {
+    const a = new Y.Doc();
+    const b = new Y.Doc();
+    seedStructure(a, { children: [{ style: { color: "red" }, tagName: "p" }], tagName: "div" });
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    let ops: JxDocOp[] | null | "unset" = "unset";
+    b.getMap("structure").observeDeep((events) => {
+      ops = yEventsToDocOps(events);
+    });
+    applyDocOpsToY(
+      a,
+      [
+        {
+          key: "style",
+          op: "set-key",
+          path: ["children", 0],
+          value: { margin: "1px", color: "red" },
+        },
+      ],
+      "x",
+    );
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
+    expect(Array.isArray(ops)).toBe(true);
+    for (const op of Array.isArray(ops) ? ops : []) {
+      expect(op).toMatchObject({ key: "style", op: "set-key", path: ["children", 0] });
+      // The op carries the block in canonical order, not the order the author wrote it in.
+      const value = "value" in op ? op.value : undefined;
+      expect(isJsonObject(value) ? Object.keys(value) : []).toEqual(["color", "margin"]);
+    }
+    expect(yValueToJson(resolveYPath(b, ["children", 0, "style"]))).toEqual({
+      margin: "1px",
+      color: "red",
+    });
+  });
+
+  test("a style change at two depths in one transaction collapses to one op", () => {
+    const a = new Y.Doc();
+    const b = new Y.Doc();
+    seedStructure(a, {
+      children: [{ style: { ":hover": { color: "red" }, width: "1px" }, tagName: "p" }],
+      tagName: "div",
+    });
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    let ops: JxDocOp[] | null | "unset" = "unset";
+    b.getMap("structure").observeDeep((events) => {
+      ops = yEventsToDocOps(events);
+    });
+    applyDocOpsToY(
+      a,
+      [
+        {
+          key: "style",
+          op: "set-key",
+          path: ["children", 0],
+          value: { ":hover": { color: "blue" }, height: "2px", width: "1px" },
+        },
+      ],
+      "x",
+    );
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
+    expect(Array.isArray(ops) ? ops.length : -1).toBeGreaterThan(0);
+    for (const op of Array.isArray(ops) ? ops : []) {
+      expect(op).toMatchObject({ key: "style", op: "set-key", path: ["children", 0] });
+    }
+  });
+
+  test("an event that is not a map, array or text event bails to null", () => {
+    expect(yEventsToDocOps([fakeEvent({ path: [], target: { doc: null } })])).toBeNull();
+  });
+
+  test("a collapse whose container is gone bails to null", () => {
+    const gone = fakeEvent({ path: ["children"], target: { doc: null } });
+    const inner = fakeEvent({ path: ["children", 0], target: { doc: null } });
+    expect(yEventsToDocOps([gone, inner])).toBeNull();
+    const doc = new Y.Doc();
+    seedStructure(doc, { tagName: "div" });
+    const withDoc = fakeEvent({ path: ["children"], target: { doc } });
+    const withDocInner = fakeEvent({ path: ["children", 0], target: { doc } });
+    expect(yEventsToDocOps([withDoc, withDocInner])).toBeNull();
+  });
+
+  test("a peer's state function body edit collapses to one state set-key", () => {
+    const result = captureRemote((a) => {
+      applyDocOpsToY(
+        a,
+        [
+          {
+            key: "state",
+            op: "set-key",
+            path: [],
+            value: { n: { $prototype: "Function", body: "1" }, m: 2 },
+          },
+        ],
+        "x",
+      );
+    });
+    assertFaithful(result);
   });
 
   test("empty event list produces no ops", () => {
@@ -418,7 +559,7 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     expect(yEventsToDocOps([fake])).toBeNull();
   });
 
-  test("two array events in one transaction bail to null", () => {
+  test("two children arrays under one node collapse to that node's children", () => {
     const a = new Y.Doc();
     const b = new Y.Doc();
     seedStructure(a, {
@@ -429,12 +570,12 @@ describe("yEventsToDocOps (fast inbound path)", () => {
       tagName: "div",
     });
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
-    let ops: JxDocOp[] | null | "unset" = "unset";
+    const seen: (JxDocOp[] | null)[] = [];
     b.getMap("structure").observeDeep((events) => {
-      ops = yEventsToDocOps(events);
+      seen.push(yEventsToDocOps(events));
     });
     // One transaction splicing two disjoint children arrays: neither path contains the other, so
-    // The overlap guard passes and the multi-array guard must bail.
+    // The overlap guard passes and the multi-array guard collapses them to the shared owner.
     applyDocOpsToY(
       a,
       [
@@ -444,7 +585,16 @@ describe("yEventsToDocOps (fast inbound path)", () => {
       "x",
     );
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
-    expect(ops).toBeNull();
+    expect(seen).toEqual([
+      [
+        {
+          key: "children",
+          op: "set-key",
+          path: [],
+          value: yValueToJson(structureMap(b).get("children")),
+        },
+      ],
+    ]);
   });
 
   test("an array event off the children key bails to null", () => {

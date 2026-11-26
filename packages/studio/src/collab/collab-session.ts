@@ -401,7 +401,10 @@ function publishRecord(session: ActiveSession, record: TransactionRecord): void 
   }
 }
 
-/** Make the Y structure tree match the tab's document (diff when possible, hard replace beyond). */
+/**
+ * Make the Y structure tree match the tab's document (diff when possible, whole-document merge
+ * beyond).
+ */
 function publishDiff(session: ActiveSession): void {
   const { collab, handle, tab } = session;
   const before = collab.yDocToJson(handle.doc);
@@ -566,6 +569,8 @@ async function sourceParseNow(session: ActiveSession): Promise<void> {
     // The lock flipped while parsing; this mirror was computed against a dead representation.
     return;
   }
+  // Diff when possible; past its limit or on a replay failure the whole-document merge keeps every
+  // Container whose type is unchanged (collab.md §3.1), so nothing a peer is editing is orphaned.
   const ops = collab.diffDocs(collab.yDocToJson(handle.doc), parsed.document);
   if (ops === null) {
     collab.replaceYStructure(handle.doc, parsed.document, collab.MIRROR_ORIGIN);
