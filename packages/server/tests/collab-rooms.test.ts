@@ -472,6 +472,45 @@ describe("a room keyed by document (§11.3)", () => {
     expect(hosts.at(-1)!.writes.map((write) => write.path)).toEqual(["outside.md"]);
   });
 
+  test("a room keyed by its path whose save fails is closed all the same", async () => {
+    const outside = await open("outside.md");
+    const seen = resets(outside);
+    await edit(outside, "outside, unsaved\n");
+    // The path becomes a directory, so the save the switch asks for fails and is dropped.
+    rmSync(join(dir, "outside.md"));
+    mkdirSync(join(dir, "outside.md"));
+    await events.activate(dir);
+    await until(() => seen.count === 1);
+  });
+
+  test("the save a switch asks for runs behind a save of the room that failed", async () => {
+    await events.start();
+    const a = await open("site/pages/a.md");
+    await edit(a, "# A\n\nunsaved\n");
+    const stand = hosts[0]!;
+    const realWrite = stand.write;
+    let entered = false;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    stand.write = async () => {
+      entered = true;
+      await gate;
+      throw new Error("the disk is gone");
+    };
+    const failing = rejectionOf(a.flush());
+    await until(() => entered);
+    // The switch's own save queues behind the failing one, and runs once it has failed.
+    stand.write = realWrite;
+    const switching = events.activate(dir);
+    await Bun.sleep(20);
+    release();
+    expect(await failing).toContain("the disk is gone");
+    await switching;
+    expect(readFileSync(join(project, "pages/a.md"), "utf8")).toBe("# A\n\nunsaved\n");
+  });
+
   test("a room keyed by its path the next project does not cover stays open", async () => {
     mkdirSync(join(dir, "other"));
     const outside = await open("outside.md");
