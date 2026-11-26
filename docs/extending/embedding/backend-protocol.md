@@ -7,6 +7,8 @@ spec:
   - collab.md#1.1 # the room host
   - collab.md#1.2 # persistence and the flush answer
   - collab.md#2.3 # control messages
+  - collab.md#1 # the backends that serve collab
+  - collab.md#2 # the wire protocol and compression
 code:
   - packages/protocol/src/routes.ts
   - packages/protocol/src/problem.ts
@@ -120,6 +122,8 @@ Route shapes alone don't capture everything. These semantics are part of the con
 - **`collab`** is a WebSocket upgrade speaking the `@jxsuite/collab` wire envelope: one socket per project, documents multiplexed by path. A plain GET (no Upgrade) answers `{ collab: true, protocols, version }` as the capability probe. Answer each `flush` control message exactly once, with `flush-ack`, in the order a document's flushes arrive. When nothing was written, add `error`, a sentence Studio shows the author; refuse a flush from a read-only connection, or for a document the connection has not opened, the same way. A `flush-ack` without `error` tells Studio the file is saved.
 
   `protocols` lists the WebSocket subprotocols the backend speaks, currently `["jx.collab.v1"]`, and it is also the negotiation: Studio offers one of them as `Sec-WebSocket-Protocol` and the backend must echo the one it accepts. **A backend that lists none is offered none**, because [RFC 6455 §4.1](https://www.rfc-editor.org/rfc/rfc6455#section-4.1) makes a client whose offer went unechoed fail the connection. An older backend keeps working exactly as before. A backend that lists only tokens Studio cannot parse gets no socket at all, which is the point: two peers whose envelopes disagree would merge divergent histories.
+
+  Decline `permessage-deflate`. Browsers offer it on every handshake, and a backend answers the upgrade without a `Sec-WebSocket-Extensions` header, because the envelope's frames are already compact binary and a compression context per socket costs more than it saves (collab.md §2).
 
 - **`files`** answers in **stable path order**, both when listing a directory (`?dir=`) and when searching (`?glob=`). `readdir` and glob scans report in filesystem order, which varies with a directory's write history; Studio's collection grid inserts rows in listing order, so an unsorted listing reaches the user as a table that reshuffles itself between opens. Sort by codepoint rather than locale collation, so two backends and two machines agree.
 - **`cf/proxy`** is an allowlisted Cloudflare API passthrough (accounts and Pages projects/deployments only). The backend injects credentials (a header-borne user token on the dev server, a vaulted OAuth token on cloud), and stateless implementations must never persist them.

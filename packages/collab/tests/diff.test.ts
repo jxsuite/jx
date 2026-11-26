@@ -235,7 +235,7 @@ describe("replaceYStructure", () => {
     expect(yDocToJson(ydoc).$script).toEqual({ client: "export const bump = () => 1;\n" });
   });
 
-  test("hard-replaces the tree and bumps canonicalRev", () => {
+  test("writes the whole tree, drops stale keys and bumps canonicalRev", () => {
     const ydoc = new Y.Doc();
     seedStructure(ydoc, DOC);
     const before = Number(metaMap(ydoc).get("canonicalRev"));
@@ -245,5 +245,22 @@ describe("replaceYStructure", () => {
     expect(Number(metaMap(ydoc).get("canonicalRev"))).toBe(before + 1);
     // Stale keys from the old tree are gone.
     expect("state" in yDocToJson(ydoc)).toBe(false);
+  });
+
+  test("a key reorder is not a change in style, state or attributes", () => {
+    const base: JxMutableNode = { style: { a: "1", b: "2" }, tagName: "p" };
+    expect(diffDocs(base, { style: { b: "2", a: "1" }, tagName: "p" })).toEqual([]);
+    const state = (inner: Record<string, number>): JxMutableNode => ({
+      state: { list: [inner] },
+      tagName: "p",
+    });
+    expect(diffDocs(state({ x: 1, y: 2 }), state({ y: 2, x: 1 }))).toEqual([]);
+    expect(diffDocs(state({ x: 1 }), state({ x: 2 }))).toHaveLength(1);
+    expect(
+      diffDocs(
+        { attributes: { a: "1", b: "2" }, tagName: "p" },
+        { attributes: { b: "2", a: "1" }, tagName: "p" },
+      ),
+    ).toEqual([]);
   });
 });

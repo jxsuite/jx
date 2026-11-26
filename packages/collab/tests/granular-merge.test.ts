@@ -11,7 +11,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { applyDocOpsToY, LOCAL_ORIGIN, yEventsToDocOps } from "../src/op-bridge.ts";
 import {
   resolveYPath,
@@ -21,7 +21,8 @@ import {
   yValueToJson,
 } from "../src/schema.ts";
 import { applyDocOpToDoc, childArray } from "../src/ops.ts";
-import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import { replaceYStructure } from "../src/diff.ts";
 import type { JxDocOp } from "../src/ops.ts";
 import type { YStructureValue } from "../src/schema.ts";
 
@@ -292,8 +293,8 @@ describe("concurrent edits to one document script (spec.md §23.2)", () => {
     const scripts = scriptMap(a);
     expect(scripts.get("client")).toBeInstanceOf(Y.Text);
     expect(scripts.get("server")).toBeInstanceOf(Y.Text);
-    // And the state beside it is the whole value it always was.
-    expect(structureMap(a).get("state")).toEqual(COUNTER.state);
+    // And the state beside it reads back as the value it was.
+    expect(yValueToJson(structureMap(a).get("state"))).toEqual(COUNTER.state);
   });
 
   test("one author in the client module and one in the server module do not meet", () => {
@@ -488,5 +489,323 @@ describe("undo keeps a peer's concurrent edit", () => {
     // A's undo reverts A's own colour change; B's padding is untouched. Origin-scoped undo is the
     // Reason this holds, and it is why the Y.UndoManager delegate stays.
     expect(styleA).toEqual({ color: "red", padding: "4px" });
+  });
+});
+
+/** The first child's own children, where the fixture put an element there. */
+function firstChildren(tree: JxMutableNode): readonly (JxMutableNode | string)[] {
+  const child = firstChildOf(tree);
+  if (isString(child)) {
+    throw new TypeError("fixture's first child is a bare string, not an element");
+  }
+  return childArray(child);
+}
+
+/** The own keys of an object value, in order. */
+function keysOf(value: JxDocumentValue | undefined): string[] {
+  if (!isJsonObject(value)) {
+    throw new TypeError("expected an object value");
+  }
+  return Object.keys(value);
+}
+
+/** One named member of an object value. */
+function memberOf(value: JxDocumentValue | undefined, key: string): JxDocumentValue | undefined {
+  if (!isJsonObject(value)) {
+    throw new TypeError("expected an object value");
+  }
+  return value[key];
+}
+
+/** Run `fn` against a pair, sync, and return both replicas' trees. */
+function concurrently(
+  document: JxMutableNode,
+  editA: (a: Y.Doc) => void,
+  editB: (b: Y.Doc) => void,
+) {
+  const { a, b, sync } = pair(document);
+  editA(a);
+  editB(b);
+  sync();
+  return { a, b, treeA: yDocToJson(a), treeB: yDocToJson(b) };
+}
+
+function setKey(doc: Y.Doc, path: JxPath, key: string, value: JxDocumentValue): void {
+  applyDocOpsToY(doc, [{ key, op: "set-key", path, value }], LOCAL_ORIGIN);
+}
+
+describe("the root merges like every node below it", () => {
+  test("concurrent first edits to the root's style both survive", () => {
+    const { treeA, treeB } = concurrently(
+      { style: { color: "red" }, tagName: "main" },
+      (a) => setKey(a, [], "style", { color: "blue" }),
+      (b) => setKey(b, [], "style", { color: "red", padding: "4px" }),
+    );
+    expect(treeA).toEqual(treeB);
+    expect(treeA["style"]).toMatchObject({ padding: "4px" });
+  });
+
+  test("concurrent first edits to the root's textContent both survive", () => {
+    const { treeA, treeB } = concurrently(
+      { tagName: "p", textContent: "Hello world" },
+      (a) => setKey(a, [], "textContent", "Hello dear world"),
+      (b) => setKey(b, [], "textContent", "Hello world!"),
+    );
+    expect(treeA).toEqual(treeB);
+    const text = String(treeA["textContent"]);
+    expect(text).toContain("dear");
+    expect(text.endsWith("!")).toBe(true);
+  });
+});
+
+const STRONG: JxMutableNode = { tagName: "strong", textContent: "bold" };
+const RICH_PARAGRAPH: JxMutableNode = {
+  children: [{ children: ["Hello ", STRONG, " end"], tagName: "p" }],
+  tagName: "div",
+};
+
+describe("rich paragraphs merge per element and per character", () => {
+  test("two concurrent children commits to one paragraph both survive", () => {
+    const { treeA, treeB } = concurrently(
+      RICH_PARAGRAPH,
+      (a) => setKey(a, ["children", 0], "children", ["Hello there ", STRONG, " end"]),
+      (b) => setKey(b, ["children", 0], "children", ["Hello ", STRONG, " end!"]),
+    );
+    expect(treeA).toEqual(treeB);
+    expect(firstChildren(treeA)).toEqual(["Hello there ", STRONG, " end!"]);
+  });
+
+  test("a children commit keeps the Y.Array and every surviving member", () => {
+    const { a } = pair(RICH_PARAGRAPH);
+    const array = resolveYPath(a, ["children", 0, "children"]);
+    const text = resolveYPath(a, ["children", 0, "children", 0]);
+    const strong = resolveYPath(a, ["children", 0, "children", 1]);
+    setKey(a, ["children", 0], "children", ["Hello there ", STRONG, " end"]);
+    expect(resolveYPath(a, ["children", 0, "children"])).toBe(array);
+    expect(resolveYPath(a, ["children", 0, "children", 0])).toBe(text);
+    expect(resolveYPath(a, ["children", 0, "children", 1])).toBe(strong);
+  });
+
+  test("a peer's edit inside an inline element survives a children commit that keeps it", () => {
+    const { treeA } = concurrently(
+      RICH_PARAGRAPH,
+      (a) => setKey(a, ["children", 0], "children", ["Hello ", STRONG, " end!"]),
+      (b) => setKey(b, ["children", 0, "children", 1], "textContent", "bolder"),
+    );
+    expect(firstChildren(treeA)).toEqual([
+      "Hello ",
+      { tagName: "strong", textContent: "bolder" },
+      " end!",
+    ]);
+  });
+
+  test("wrapping a word and a concurrent keystroke both survive", () => {
+    const wrapped: JxMutableNode = { tagName: "strong", textContent: "world" };
+    const { treeA, treeB } = concurrently(
+      { children: [{ children: ["Hello world"], tagName: "p" }], tagName: "div" },
+      (a) => setKey(a, ["children", 0], "children", ["Hello ", wrapped]),
+      (b) =>
+        applyDocOpsToY(
+          b,
+          [{ index: 0, node: "Hello world!", op: "set-child", parentPath: ["children", 0] }],
+          LOCAL_ORIGIN,
+        ),
+    );
+    expect(treeA).toEqual(treeB);
+    expect(firstChildren(treeA)).toEqual(["Hello !", wrapped]);
+  });
+
+  test("a moved element loses a concurrent edit inside it", () => {
+    const { treeA, treeB } = concurrently(
+      { children: [{ children: ["x", STRONG], tagName: "p" }], tagName: "div" },
+      (a) =>
+        applyDocOpsToY(
+          a,
+          [
+            {
+              fromIndex: 1,
+              fromParentPath: ["children", 0],
+              op: "move-child",
+              toIndex: 0,
+              toParentPath: ["children", 0],
+            },
+          ],
+          LOCAL_ORIGIN,
+        ),
+      (b) => setKey(b, ["children", 0, "children", 1], "textContent", "bolder"),
+    );
+    expect(treeA).toEqual(treeB);
+    expect(firstChildren(treeA)).toEqual([STRONG, "x"]);
+  });
+});
+
+const FUNCTION_STATE = {
+  alpha: { $prototype: "Function", body: "return 1;" },
+  beta: { default: 0 },
+  gamma: "plain",
+};
+const FUNCTIONS: JxMutableNode = {
+  onclick: { $prototype: "Function", body: "return 1;" },
+  state: FUNCTION_STATE,
+  tagName: "button",
+};
+
+describe("a function body merges per character", () => {
+  test("concurrent edits to one state function's body both survive", () => {
+    const edit = (body: string) => (doc: Y.Doc) =>
+      setKey(doc, [], "state", { ...FUNCTION_STATE, alpha: { $prototype: "Function", body } });
+    const { treeA, treeB } = concurrently(FUNCTIONS, edit("a;return 1;"), edit("return 1;b"));
+    expect(treeA).toEqual(treeB);
+    expect(memberOf(memberOf(treeA["state"], "alpha"), "body")).toBe("a;return 1;b");
+  });
+
+  test("concurrent edits to one handler's body both survive", () => {
+    const edit = (body: string) => (doc: Y.Doc) =>
+      setKey(doc, [], "onclick", { $prototype: "Function", body });
+    const { treeA, treeB } = concurrently(FUNCTIONS, edit("a;return 1;"), edit("return 1;b"));
+    expect(treeA).toEqual(treeB);
+    expect(memberOf(treeA["onclick"], "body")).toBe("a;return 1;b");
+  });
+
+  test("state entries read in ascending name order on both peers, whatever order was written", () => {
+    const { a, b, sync } = pair(FUNCTIONS);
+    const { alpha, beta, gamma } = FUNCTION_STATE;
+    setKey(a, [], "state", { gamma, beta, alpha });
+    sync();
+    expect(keysOf(yDocToJson(a)["state"])).toEqual(["alpha", "beta", "gamma"]);
+    expect(keysOf(yDocToJson(b)["state"])).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  test("style declarations read in canonical order, not the order they were written in", () => {
+    const { a, b, sync } = pair({ style: { color: "red", padding: "1px" }, tagName: "div" });
+    setKey(a, [], "style", { padding: "1px", color: "red" });
+    sync();
+    expect(keysOf(yDocToJson(b)["style"])).toEqual(["color", "padding"]);
+  });
+
+  test("a longhand written before its shorthand reads after it", () => {
+    const { a, b, sync } = pair({ style: { color: "red" }, tagName: "div" });
+    setKey(a, [], "style", { "border-bottom-color": "red", "border-color": "blue" });
+    sync();
+    expect(keysOf(yDocToJson(b)["style"])).toEqual(["border-color", "border-bottom-color"]);
+    expect(keysOf(yDocToJson(a)["style"])).toEqual(["border-color", "border-bottom-color"]);
+  });
+
+  test("peers writing the same style keys in different orders converge to identical canonical JSON", () => {
+    const { a, b, sync } = pair({ tagName: "div" });
+    setKey(a, [], "style", { padding: "1px", marginLeft: "0", margin: "1em", color: "red" });
+    setKey(b, [], "style", { color: "red", margin: "1em", marginLeft: "0", padding: "1px" });
+    sync();
+    const jsonA = JSON.stringify(yDocToJson(a));
+    expect(JSON.stringify(yDocToJson(b))).toBe(jsonA);
+    expect(keysOf(yDocToJson(a)["style"])).toEqual(["color", "margin", "marginLeft", "padding"]);
+  });
+
+  test("nested selector blocks follow the declarations, by key name", () => {
+    const { a } = pair({ tagName: "div" });
+    setKey(a, [], "style", { "&:hover": { color: "red" }, "& a": { color: "blue" }, width: "1px" });
+    expect(keysOf(yDocToJson(a)["style"])).toEqual(["width", "& a", "&:hover"]);
+  });
+
+  test("$media is a whole value, so its source order survives the round trip", () => {
+    const media = {
+      "--lg": "(min-width: 1024px)",
+      "--sm": "(min-width: 640px)",
+      "--md": "(min-width: 768px)",
+    };
+    const { a, b, sync } = pair({ tagName: "div" });
+    setKey(a, [], "$media", media);
+    sync();
+    expect(keysOf(yDocToJson(b)["$media"])).toEqual(["--lg", "--sm", "--md"]);
+    const seeded = new Y.Doc();
+    seedStructure(seeded, { $media: media, tagName: "div" });
+    expect(keysOf(yDocToJson(seeded)["$media"])).toEqual(["--lg", "--sm", "--md"]);
+  });
+
+  test("no reserved key appears in any read output", () => {
+    const { a } = pair({
+      onclick: { $prototype: "Function", body: "x()" },
+      state: FUNCTION_STATE,
+      style: { color: "red", ":hover": { color: "blue" } },
+      tagName: "div",
+    });
+    expect(JSON.stringify(yDocToJson(a))).not.toContain(String.raw`\u0000`);
+    for (const key of ["style", "state", "onclick"]) {
+      const value = resolveYPath(a, [key]);
+      expect(
+        value instanceof Y.Map ? [...value.keys()].every((k) => !k.includes("\0")) : false,
+      ).toBe(true);
+    }
+  });
+});
+
+describe("whole-document writes keep granularity", () => {
+  const DOC: JxMutableNode = {
+    children: [
+      { tagName: "h1", textContent: "Title" },
+      { tagName: "p", textContent: "Body" },
+    ],
+    style: { color: "red" },
+    tagName: "main",
+  };
+
+  test("replaceYStructure keeps every container whose type is unchanged", () => {
+    const { a } = pair(DOC);
+    const style = resolveYPath(a, ["style"]);
+    const children = resolveYPath(a, ["children"]);
+    const child = resolveYPath(a, ["children", 0]);
+    const text = resolveYPath(a, ["children", 0, "textContent"]);
+    replaceYStructure(
+      a,
+      {
+        children: [
+          { tagName: "h1", textContent: "Retitled" },
+          { tagName: "p", textContent: "Body" },
+        ],
+        style: { color: "blue" },
+        tagName: "main",
+      },
+      LOCAL_ORIGIN,
+    );
+    expect(resolveYPath(a, ["style"])).toBe(style);
+    expect(resolveYPath(a, ["children"])).toBe(children);
+    expect(resolveYPath(a, ["children", 0])).toBe(child);
+    expect(resolveYPath(a, ["children", 0, "textContent"])).toBe(text);
+  });
+
+  test("a peer's concurrent edit survives a whole-document write", () => {
+    const { treeA, treeB } = concurrently(
+      DOC,
+      (a) =>
+        replaceYStructure(
+          a,
+          {
+            children: [
+              { tagName: "h1", textContent: "Retitled" },
+              { tagName: "p", textContent: "Body" },
+            ],
+            style: { color: "red" },
+            tagName: "main",
+          },
+          LOCAL_ORIGIN,
+        ),
+      (b) => {
+        setKey(b, ["children", 1], "textContent", "Body!");
+        setKey(b, [], "style", { color: "red", padding: "4px" });
+      },
+    );
+    expect(treeA).toEqual(treeB);
+    expect(treeA["style"]).toEqual({ color: "red", padding: "4px" });
+    expect(childArray(treeA)).toEqual([
+      { tagName: "h1", textContent: "Retitled" },
+      { tagName: "p", textContent: "Body!" },
+    ]);
+  });
+
+  test("a type change still replaces the container", () => {
+    const { a } = pair({ tagName: "p", textContent: "x" });
+    replaceYStructure(a, { tagName: "p", textContent: { $ref: "#/state/title" } }, LOCAL_ORIGIN);
+    expect(structureMap(a).get("textContent") instanceof Y.Text).toBe(false);
+    expect(yDocToJson(a)["textContent"]).toEqual({ $ref: "#/state/title" });
   });
 });

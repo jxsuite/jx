@@ -23,6 +23,17 @@
  * reassembles whole values on the way out — so `JxDocOp`, the canvas patcher and the history ring
  * are unchanged, while concurrent edits actually merge.
  *
+ * One rule, three writers. {@link toYNodeValue} is the per-key conversion. The first client's seed
+ * ({@link seedStructure}) stores every key by it into fresh containers; every other write, the
+ * bridge's `set-key` ({@link writeNodeKey}) and the whole-document write (`replaceYStructure`,
+ * through {@link mergeYNode}), diffs onto the containers already there and falls back to
+ * {@link toYNodeValue} only when the stored type changes.
+ *
+ * Key order. A `Y.Map` has none, and nothing here stores one. A style block is read in the
+ * canonical order of {@link canonicalStyle}, a `state` block and a function entry in ascending key
+ * order, so peers holding the same keys read the same block whatever order each wrote them in.
+ * `$media` is a whole value and keeps its source order.
+ *
  * Seeding contract: providers seed only `source` (from file bytes). Clients derive `structure` on
  * first sync via {@link seedStructure}, which is convergence-safe under concurrent seeders because
  * it only performs whole-key Y.Map sets (per-key LWW picks one seeder's subtrees wholesale) — never
@@ -33,6 +44,8 @@ import * as Y from "yjs";
 import { cloneValue } from "@jxsuite/schema/doc-ops";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import { matchChildren } from "./diff-core.ts";
+import { canonicalStyle } from "./style-order.ts";
 
 export const META_KEY = "meta";
 export const FRONTMATTER_KEY = "frontmatter";
@@ -171,7 +184,26 @@ export function applyTextEdit(text: Y.Text, next: string): boolean {
   return true;
 }
 
-/** A plain object becomes a Y.Map, recursing into nested objects; other values stay plain JSON. */
+/** Node keys that hold a state block: a `Y.Map` of entries, read in ascending key order. */
+const STATE_KEY = "state";
+
+/** Whether a node key holds an event-handler function (`onclick`, `oninput`, ...). */
+function isHandlerKey(key: string): boolean {
+  return key.length > 2 && key.startsWith("on");
+}
+
+/** A function entry or handler: a plain object holding a string `body`. */
+function isFunctionEntry(value: JxDocumentValue | undefined): value is DocumentRecord {
+  return (
+    isDocumentRecord(value) &&
+    Object.entries(value).some(([key, entry]) => key === "body" && isString(entry))
+  );
+}
+
+/**
+ * A plain object becomes a Y.Map, recursing into nested objects; other values stay plain JSON. No
+ * key order is stored: a style block is read in {@link canonicalStyle} order.
+ */
 export function toYObject(value: DocumentRecord): Y.Map<YStructureValue> {
   const map = new Y.Map<YStructureValue>();
   for (const [key, entry] of Object.entries(value)) {
@@ -207,7 +239,82 @@ export function mergeYObject(map: Y.Map<YStructureValue>, value: DocumentRecord)
       } else {
         map.set(key, toYObject(entry));
       }
-    } else if (!deepEqualJson(existing, entry)) {
+    } else if (!map.has(key) || !deepEqualJson(existing, entry)) {
+      map.set(key, cloneValue(entry));
+    }
+  }
+}
+
+/**
+ * A function entry or handler becomes a Y.Map whose `body` is a `Y.Text`, so two authors typing in
+ * one function body merge per character. Its other keys stay plain.
+ */
+export function toYFunction(value: DocumentRecord): Y.Map<YStructureValue> {
+  const map = new Y.Map<YStructureValue>();
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) {
+      map.set(key, key === "body" && isString(entry) ? new Y.Text(entry) : cloneValue(entry));
+    }
+  }
+  return map;
+}
+
+/** Merge a function entry onto the Y.Map already holding it: the body as a minimal text edit. */
+export function mergeYFunction(map: Y.Map<YStructureValue>, value: DocumentRecord): void {
+  // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
+  for (const key of [...map.keys()]) {
+    if (value[key] === undefined) {
+      map.delete(key);
+    }
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined) {
+      continue;
+    }
+    const existing = map.get(key);
+    if (key === "body" && isString(entry)) {
+      if (existing instanceof Y.Text) {
+        applyTextEdit(existing, entry);
+      } else {
+        map.set(key, new Y.Text(entry));
+      }
+    } else if (!map.has(key) || !deepEqualJson(existing, entry)) {
+      map.set(key, cloneValue(entry));
+    }
+  }
+}
+
+/** A `state` block becomes a Y.Map; each function entry in it a {@link toYFunction}. */
+export function toYState(value: DocumentRecord): Y.Map<YStructureValue> {
+  const map = new Y.Map<YStructureValue>();
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) {
+      map.set(key, isFunctionEntry(entry) ? toYFunction(entry) : cloneValue(entry));
+    }
+  }
+  return map;
+}
+
+/** Merge a `state` block onto the Y.Map already holding it, entry by entry. */
+export function mergeYState(map: Y.Map<YStructureValue>, value: DocumentRecord): void {
+  // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
+  for (const key of [...map.keys()]) {
+    if (value[key] === undefined) {
+      map.delete(key);
+    }
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined) {
+      continue;
+    }
+    const existing = map.get(key);
+    if (isFunctionEntry(entry)) {
+      if (existing instanceof Y.Map) {
+        mergeYFunction(existing, entry);
+      } else {
+        map.set(key, toYFunction(entry));
+      }
+    } else if (!map.has(key) || !deepEqualJson(existing, entry)) {
       map.set(key, cloneValue(entry));
     }
   }
@@ -285,39 +392,233 @@ export function toYChildren(children: readonly JxDocumentValue[]): Y.Array<YStru
 }
 
 /**
- * A node object becomes a Y.Map. Nesting is no longer limited to `children`: text keys become
- * `Y.Text` and {@link GRANULAR_OBJECT_KEYS} become nested `Y.Map`s, so the CRDT merges at the
- * granularity edits actually happen at. Everything else stays a whole-JSON LWW value.
+ * The conversion rule for one node key, shared by every writer: a `children` array becomes a
+ * `Y.Array`, a {@link TEXT_KEYS} string a `Y.Text`, `style` and the other
+ * {@link GRANULAR_OBJECT_KEYS} nested `Y.Map`s, {@link TEXT_OBJECT_KEYS} a `Y.Map` of texts,
+ * `state` a `Y.Map` of entries, a function handler a `Y.Map` with a `Y.Text` body, and anything
+ * else a whole-JSON LWW value.
  */
+export function toYNodeValue(key: string, value: JxDocumentValue): YStructureValue {
+  if (key === "children" && Array.isArray(value)) {
+    return toYChildren(value);
+  }
+  if (TEXT_KEYS.has(key) && isString(value)) {
+    return new Y.Text(value);
+  }
+  if (GRANULAR_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
+    return toYObject(value);
+  }
+  if (TEXT_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
+    return toYTextObject(value);
+  }
+  if (key === STATE_KEY && isDocumentRecord(value)) {
+    return toYState(value);
+  }
+  if (isHandlerKey(key) && isFunctionEntry(value)) {
+    return toYFunction(value);
+  }
+  return cloneValue(value);
+}
+
+/** A node object becomes a Y.Map whose every key is stored by {@link toYNodeValue}. */
 export function toYNode(node: JxDocumentValue | undefined): Y.Map<YStructureValue> {
   if (!isDocumentRecord(node)) {
     throw new TypeError("collab-schema: a document node must be a plain object");
   }
   const map = new Y.Map<YStructureValue>();
   for (const [key, value] of Object.entries(node)) {
-    if (value === undefined) {
-      continue;
-    }
-    if (key === "children" && Array.isArray(value)) {
-      map.set(key, toYChildren(value));
-    } else if (TEXT_KEYS.has(key) && isString(value)) {
-      map.set(key, new Y.Text(value));
-    } else if (GRANULAR_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
-      map.set(key, toYObject(value));
-    } else if (TEXT_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
-      map.set(key, toYTextObject(value));
-    } else {
-      map.set(key, cloneValue(value));
+    if (value !== undefined) {
+      map.set(key, toYNodeValue(key, value));
     }
   }
   return map;
 }
 
-/** A node or granular-object Y.Map back to its plain object (deep, detached copy). */
+/**
+ * Write a node key, preserving CRDT identity wherever the schema stores it granularly.
+ *
+ * Studio's mutators record whole-value `set-key` ops, and a whole-document write carries whole
+ * values too. Writing those straight through with `Y.Map.set` mints a fresh Y type each time and
+ * throws away whatever a peer concurrently did to the old one. So a whole value is diffed down onto
+ * the existing container: text through {@link applyTextEdit}, objects through {@link mergeYObject},
+ * {@link mergeYState} and {@link mergeYFunction}, children through {@link mergeYChildren}. Only a TYPE
+ * change falls back to {@link toYNodeValue}, because then no shared structure is left to preserve. A
+ * plain value equal to the stored one is not rewritten, so a whole-document write never restores a
+ * key a peer changed at the same moment.
+ */
+export function writeNodeKey(
+  node: Y.Map<YStructureValue>,
+  key: string,
+  value: JxDocumentValue,
+): void {
+  const existing = node.get(key);
+  if (key === "children" && Array.isArray(value) && existing instanceof Y.Array) {
+    mergeYChildren(existing, value);
+    return;
+  }
+  if (TEXT_KEYS.has(key) && isString(value) && existing instanceof Y.Text) {
+    applyTextEdit(existing, value);
+    return;
+  }
+  if (existing instanceof Y.Map && isDocumentRecord(value)) {
+    if (GRANULAR_OBJECT_KEYS.has(key)) {
+      mergeYObject(existing, value);
+      return;
+    }
+    if (TEXT_OBJECT_KEYS.has(key)) {
+      mergeYTextObject(existing, value);
+      return;
+    }
+    if (key === STATE_KEY) {
+      mergeYState(existing, value);
+      return;
+    }
+    if (isHandlerKey(key) && isFunctionEntry(value)) {
+      mergeYFunction(existing, value);
+      return;
+    }
+  }
+  if (node.has(key) && deepEqualJson(existing, value)) {
+    return;
+  }
+  node.set(key, toYNodeValue(key, value));
+}
+
+/**
+ * Write a whole node value onto an existing node `Y.Map`: delete the keys it no longer has, then
+ * {@link writeNodeKey} each one it does.
+ */
+export function mergeYNode(node: Y.Map<YStructureValue>, value: DocumentRecord): void {
+  // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
+  for (const key of [...node.keys()]) {
+    if (value[key] === undefined) {
+      node.delete(key);
+    }
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) {
+      writeNodeKey(node, key, entry);
+    }
+  }
+}
+
+/**
+ * Write a children array onto the `Y.Array` already holding it, element by element. Children align
+ * as the structural differ aligns them ({@link matchChildren}), so an unchanged element is kept, an
+ * element with the same tag and id is merged in place, and a bare string is edited per character.
+ * Everything unpaired is removed and inserted, because `Y.Array` has no move.
+ */
+export function mergeYChildren(
+  array: Y.Array<YStructureValue>,
+  next: readonly JxDocumentValue[],
+): void {
+  const nextChildren = next.map((item) => (isString(item) ? item : toChildNode(item)));
+  const current = array.toArray().map((item) => yChildToJson(toChildItem(item)));
+  const matches = matchChildren(current, nextChildren);
+  const matchedA = new Set(matches.map((match) => match.aIndex));
+  const byB = new Map(matches.map((match) => [match.bIndex, match]));
+  for (let i = current.length - 1; i >= 0; i--) {
+    if (!matchedA.has(i)) {
+      array.delete(i, 1);
+    }
+  }
+  for (const [i, item] of next.entries()) {
+    const match = byB.get(i);
+    if (!match) {
+      array.insert(i, [toYChild(item)]);
+      continue;
+    }
+    if (match.identical) {
+      continue;
+    }
+    const existing = array.get(i);
+    if (existing instanceof Y.Text && isString(item)) {
+      applyTextEdit(existing, item);
+    } else if (existing instanceof Y.Map && isDocumentRecord(item)) {
+      mergeYNode(existing, item);
+    } else {
+      array.delete(i, 1);
+      array.insert(i, [toYChild(item)]);
+    }
+  }
+}
+
+function toChildNode(value: JxDocumentValue): JxMutableNode {
+  if (!isDocumentRecord(value)) {
+    throw new TypeError("collab-schema: a document node must be a plain object");
+  }
+  /* SAFETY: a document node is a plain object; JxMutableNode is its open-keyed shape. */
+  return value as JxMutableNode;
+}
+
+function toChildItem(item: YStructureValue): Y.Text | Y.Map<YStructureValue> | string {
+  if (item instanceof Y.Text || item instanceof Y.Map || isString(item)) {
+    return item;
+  }
+  throw new TypeError("collab-schema: a children array holds only nodes and text");
+}
+
+/**
+ * A node Y.Map back to its plain object (deep, detached copy), each key read by
+ * {@link yNodeKeyToJson}.
+ */
 function yMapToJson(map: Y.Map<YStructureValue>): DocumentRecord {
   return Object.fromEntries(
-    Array.from(map.entries(), ([key, entry]) => [key, yValueToJson(entry)]),
+    [...map.keys()].map((key) => [key, yNodeKeyToJson(key, map.get(key), map.doc)]),
   );
+}
+
+/** The key order of the document's `$media` map, which orders breakpoint blocks in a style. */
+function mediaOrder(doc: Y.Doc | null | undefined): string[] {
+  if (!doc) {
+    return [];
+  }
+  const media = yValueToJson(structureMap(doc).get("$media"));
+  return isDocumentRecord(media) ? Object.keys(media) : [];
+}
+
+/**
+ * A granular-object Y.Map back to a plain object, nested maps included, with its keys in Yjs's own
+ * order or, when `sorted`, ascending.
+ */
+function yObjectToJson(map: Y.Map<YStructureValue>, sorted: boolean): DocumentRecord {
+  const keys = sorted ? [...map.keys()].toSorted() : [...map.keys()];
+  return Object.fromEntries(
+    keys.map((key) => {
+      const entry = map.get(key);
+      return [key, entry instanceof Y.Map ? yObjectToJson(entry, sorted) : yValueToJson(entry)];
+    }),
+  );
+}
+
+/**
+ * The value held under a node key, back to JSON, with the key order specs/collab.md §3.1 gives it.
+ * `style` reads in {@link canonicalStyle} order, whether stored granularly or, by a client from
+ * before the schema went granular, as one value; `state` and a function handler read their keys
+ * ascending, since only `style` and `$media` give key order a meaning (`spec.md`, Jx Notation).
+ * `$media` is a whole value and arrives in the order it was written; the `@--` breakpoint blocks of
+ * a style follow its key order. `doc` is the document `$media` is read from; a `Y.Map` value brings
+ * its own.
+ */
+export function yNodeKeyToJson(
+  key: string,
+  value: YStructureValue | undefined,
+  doc?: Y.Doc | null,
+): JxDocumentValue | undefined {
+  if (key === "style") {
+    const media = () => mediaOrder(value instanceof Y.Map ? (value.doc ?? doc) : doc);
+    if (value instanceof Y.Map) {
+      return canonicalStyle(yObjectToJson(value, false), media());
+    }
+    if (value instanceof Y.Array || value instanceof Y.Text) {
+      return yValueToJson(value);
+    }
+    return isDocumentRecord(value) ? canonicalStyle(value, media()) : value;
+  }
+  if (value instanceof Y.Map) {
+    return yObjectToJson(value, key === STATE_KEY || isHandlerKey(key));
+  }
+  return yValueToJson(value);
 }
 
 /**
@@ -413,16 +714,8 @@ export function seedStructure(
   doc.transact(() => {
     const structure = structureMap(doc);
     for (const [key, value] of Object.entries(document)) {
-      if (value === undefined) {
-        continue;
-      }
-      if (key === "children" && Array.isArray(value)) {
-        structure.set(key, toYChildren(value));
-      } else if (TEXT_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
-        // A document's scripts exist only on the root, so this is the one place they are seeded.
-        structure.set(key, toYTextObject(value));
-      } else {
-        structure.set(key, cloneValue(value));
+      if (value !== undefined) {
+        structure.set(key, toYNodeValue(key, value));
       }
     }
     const frontmatter = frontmatterMap(doc);

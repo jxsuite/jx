@@ -4,8 +4,11 @@ description: "Co-edit Jx files live: presence chips, shared cursors on canvas an
 spec:
   - collab.md#1.2 # persistence: a flush answers once
   - collab.md#2.4 # awareness state
+  - collab.md#3.1
 code:
   - packages/collab/src/provider.ts
+  - packages/collab/src/schema.ts
+  - packages/collab/src/style-order.ts
   - packages/studio/src/collab/collab-session.ts
   - packages/studio/src/collab/collab-state.ts
   - packages/studio/src/tabs/project-config.ts
@@ -35,7 +38,8 @@ When two people open the same file through the same Studio backend, the tab beco
 
 ## How co-editing behaves
 
-- **Edits merge.** Everyone edits the same live document. Changes apply as they arrive, and simultaneous edits to different parts of a file both land. Two people working in the same [document script](/docs/framework/concepts/functions) both keep what they wrote. No locking, no taking turns.
+- **Edits merge.** Everyone edits the same live document, and changes apply as they arrive. Two people typing in the same paragraph both keep what they typed, around bold text and links too, and two people changing different style properties of one element both keep theirs. Two people working in the same [document script](/docs/framework/concepts/functions) or the same function body both keep what they wrote. When two people change the same thing at once, such as one element's tag or the same style property, only one of the two changes is kept, and moving or wrapping an element while someone types inside it keeps the move and loses their typing. No locking, no taking turns.
+- **Style declarations are kept in a fixed order.** A shared document does not remember the order you typed an element's style properties in. Everyone sees them with each shorthand (such as `margin`) before the properties it covers (such as `margin-left`), the rest by name, and nested rules such as `&:hover` after them. Breakpoint rules such as `@--sm` and `@--md` keep the order of the document's `$media` list, so a larger breakpoint still overrides a smaller one. This matters when a property was written before the shorthand that covers it: the shorthand used to win by coming later, and after sharing it comes first, so the specific property wins. Write the specific property after the shorthand if that is the result you want.
 - **Undo is yours alone.** :kbd[⌘Z] / :kbd[Ctrl+Z] steps back through _your_ edits only, so you can't undo what a teammate just did. The status pill's tooltip says so, because it is the kind of rule that is easier to be told than to discover.
 - **Forms sync too.** Page metadata and frontmatter fields co-edit the same way the canvas does.
 - **Code view takes precedence, including over the person in it.** While someone is editing the file as text, the text is the truth: structural editing pauses for everyone, the text editor included. Their Outline, their Inspector and their canvas refuse the same edits everyone else's do, and say the same thing when they try. A **Code view held** flag stands beside the status pill for as long as it lasts, so a refused edit has a visible cause rather than looking like a fault. When the last text editor leaves Code view, normal editing resumes.

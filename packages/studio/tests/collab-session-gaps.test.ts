@@ -1,6 +1,6 @@
 /**
  * Collab session gaps — batch flush shapes, publish fallbacks (diff-impossible / apply-throw →
- * structure replace), hard reconciles, reconciler election, source-lock read-only guards and the
+ * structure merge), hard reconciles, reconciler election, source-lock read-only guards and the
  * source parse mirror's failure branches, frontmatter delete flows, guest identity, attach-race
  * generation guards, and the mirror debounce timer. Failure injection rides a pass-through mock of
  * `@jxsuite/collab` whose diff/apply/convert functions delegate to swappable impls.
@@ -186,7 +186,7 @@ describe("batch publishing", () => {
     expect(serverJson(hub).tagName).toBe("main");
   });
 
-  test("a batch whose op replay fails falls back to the structure replace", async () => {
+  test("a batch whose op replay fails falls back to the structure merge", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
     await settleCollab();
@@ -209,7 +209,7 @@ describe("batch publishing", () => {
 // ─── Publish fallbacks (solo transactions) ───────────────────────────────────
 
 describe("publish fallbacks", () => {
-  test("an op-apply failure publishes by diff (and hard-replaces when that fails too)", async () => {
+  test("an op-apply failure publishes by diff (and merges when that fails too)", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
     await settleCollab();
@@ -224,7 +224,7 @@ describe("publish fallbacks", () => {
     expect(childNode(serverJson(hub), 0).textContent).toBe("Replaced");
   });
 
-  test("an un-diffable document is hard-replaced into the Y structure", async () => {
+  test("an un-diffable document merges into the Y structure", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
     await settleCollab();
@@ -237,6 +237,38 @@ describe("publish fallbacks", () => {
     await settleCollab();
 
     expect(serverJson(hub).tagName).toBe("article");
+  });
+
+  test("an un-diffable document merges and keeps a peer's concurrent edit", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    await settleCollab();
+    const server = hub.serverDoc(PATH);
+    const childrenBefore = actualCollab.resolveYPath(server, ["children"]);
+
+    // A peer forks the server doc without being connected and edits child 0.
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(server));
+    realApplyDocOpsToY(
+      peer,
+      [{ key: "textContent", op: "set-key", path: ["children", 0], value: "Peer title" }],
+      "peer",
+    );
+
+    diffDocsImpl = () => null;
+    transactDoc(tab, (t) => {
+      t.doc.document.tagName = "article";
+    });
+    diffDocsImpl = realDiffDocs;
+    await settleCollab();
+    Y.applyUpdate(server, Y.encodeStateAsUpdate(peer, Y.encodeStateVector(server)), "peer");
+    await settleCollab();
+
+    expect(serverJson(hub).tagName).toBe("article");
+    expect(childNode(serverJson(hub), 0).textContent).toBe("Peer title");
+    expect(tabJson(tab).tagName).toBe("article");
+    expect(childNode(tabJson(tab), 0).textContent).toBe("Peer title");
+    expect(actualCollab.resolveYPath(server, ["children"])).toBe(childrenBefore);
   });
 });
 
@@ -290,6 +322,51 @@ describe("inbound structure edge cases", () => {
     yEventsImpl = realYEventsToDocOps;
 
     expect(tabJson(tab).tagName).toBe("div");
+    peer.destroy();
+  });
+
+  test("a peer's rich commit reaches the tab as one children write", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub, {
+      children: [{ children: ["Hello world"], tagName: "p" }],
+      tagName: "div",
+    });
+    await settleCollab();
+    const recorded: ReturnType<typeof realYEventsToDocOps>[] = [];
+    yEventsImpl = (events) => {
+      const ops = realYEventsToDocOps(events);
+      recorded.push(ops);
+      return ops;
+    };
+    const server = hub.serverDoc(PATH);
+    const before = actualCollab.resolveYPath(server, ["children", 0, "children"]);
+
+    const peer = (await hub.capability(PATH))!;
+    realApplyDocOpsToY(
+      peer.doc,
+      [
+        {
+          key: "children",
+          op: "set-key",
+          path: ["children", 0],
+          value: ["Hello ", { tagName: "strong", textContent: "world" }],
+        },
+      ],
+      "peer",
+    );
+    await settleCollab();
+    yEventsImpl = realYEventsToDocOps;
+
+    expect(recorded.flat()).toEqual([
+      {
+        key: "children",
+        op: "set-key",
+        path: ["children", 0],
+        value: ["Hello ", { tagName: "strong", textContent: "world" }],
+      },
+    ]);
+    expect(tabJson(tab)).toEqual(serverJson(hub));
+    expect(actualCollab.resolveYPath(server, ["children", 0, "children"])).toBe(before);
     peer.destroy();
   });
 
@@ -542,7 +619,7 @@ describe("source lock guards", () => {
     peer.destroy();
   });
 
-  test("an un-diffable parse hard-replaces the structure (MIRROR origin)", async () => {
+  test("an un-diffable parse merges the structure (MIRROR origin)", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
     configureCollabSerializer(jsonSerializer);
@@ -564,7 +641,7 @@ describe("source lock guards", () => {
     expect(serverJson(hub)).toEqual(parsed);
   });
 
-  test("a parse whose op replay fails also hard-replaces the structure", async () => {
+  test("a parse whose op replay fails also merges the structure", async () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
     configureCollabSerializer(jsonSerializer);
