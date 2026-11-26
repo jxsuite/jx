@@ -484,6 +484,29 @@ describe("saving, comparing and reverting the room (project-state.md §6.1)", ()
     expect(await roomSource(tab)).toBe(JSON.stringify(HELLO_DOC));
   });
 
+  test("a save whose flush is refused and then fails reports the refusal, not the failure", async () => {
+    const hub = createMockCollabHub();
+    installMockPlatform({
+      collab: async (path) => {
+        const handle = await hub.capability(path);
+        if (handle) {
+          // The refusal reaches every participant first, then the requester's own flush rejects.
+          handle.flush = () => {
+            hub.conflict(path, { diskHash: null, docId: null });
+            return Promise.reject(new Error("the room's save was refused"));
+          };
+        }
+        return handle;
+      },
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
+    await settleCollab();
+    hub.setDirty(PATH, true);
+    expect(await saveRoom(tab)).toBe("refused");
+    expect(tabBufferStatus(tab)).toBe("conflicted");
+  });
+
   test("a provider that cannot revert discards nothing", async () => {
     const hub = createMockCollabHub();
     installMockPlatform({

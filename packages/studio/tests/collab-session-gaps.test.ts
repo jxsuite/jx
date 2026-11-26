@@ -12,7 +12,7 @@ import * as Y from "yjs";
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
-import { closeAllTabs, openTab } from "../src/workspace/workspace";
+import { closeAllTabs, closeTab, openTab } from "../src/workspace/workspace";
 import { collabState } from "../src/collab/collab-state";
 import { resetNotifications, toasts } from "../src/services/notify";
 import { mutateUpdateProperty, openBatchLane, transactDoc } from "../src/tabs/transact";
@@ -1044,6 +1044,16 @@ describe("flushAllCollab", () => {
     expect(hub.serverDoc(PATH).getText("source").toString()).toContain("Flushed");
   });
 
+  test("skips a session that has not finished its first sync", async () => {
+    const hub = createMockCollabHub({ neverSync: true });
+    const tab = openCollabTab(hub);
+    configureCollabSerializer(jsonSerializer);
+    await settleCollab();
+    expect(collabState(tab).status).not.toBe("synced");
+    await flushAllCollab();
+    expect(hub.flushes).toEqual([]);
+  });
+
   test("flushes every session and names every failure", async () => {
     const hub = createMockCollabHub({
       flushError: (path) => (path.startsWith("pages/bad") ? `no room for ${path}` : null),
@@ -1069,5 +1079,24 @@ describe("flushAllCollab", () => {
       "pages/bad-b.json",
       "pages/good.json",
     ]);
+  });
+});
+
+describe("leaving a room whose awareness state is already gone", () => {
+  test("closing the tab does not publish a state for the person who left", async () => {
+    const hub = createMockCollabHub({ sharedAwareness: true });
+    let awareness: Awareness | null = null;
+    installMockPlatform({
+      collab: async (path) => {
+        const handle = await hub.capability(path);
+        awareness = handle?.awareness ?? null;
+        return handle;
+      },
+    });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
+    await settleCollab();
+    awareness!.setLocalState(null);
+    closeTab(tab.id);
+    expect(awareness!.getLocalState()).toBeNull();
   });
 });
