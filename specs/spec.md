@@ -1250,22 +1250,24 @@ Web APIs are accessed via `$prototype` in a `state` entry:
 
 ### 11.2 Supported Prototypes
 
-> **Status: Partial.** The interpreter's `resolvePrototype` handles every Web API row but `ReadableStream`, whose case returns `null`; the `Array` row is the §10 children node, not a state prototype. The client target (`compile-client.ts`) lowers `LocalStorage`, `SessionStorage`, `Request` and `Cookie`; the element target (`compile-element.ts`), which compiles every site component, lowers only `Request` and turns a storage or cookie entry into a plain initial value (its `default`), with no read and no persistence. `URLSearchParams`, `FormData`, `IndexedDB`, `Set`, `Map` and `Blob` reach a built page as the literal definition object in both targets, and the compiled `Request` (`emitRequestFetch` in `packages/compiler/src/shared.ts`) has no debounce or abort. Each cell below that reads Partial names its compiled gap.
+> **Status: Partial.** The interpreter's `resolvePrototype` handles every Web API row but `ReadableStream`, whose case returns `null`; the `Array` row is the §10 children node, not a state prototype. The client target (`compile-client.ts`) lowers `LocalStorage`, `SessionStorage`, `Request` and `Cookie`; the element target (`compile-element.ts`), which compiles every site component, lowers only `Request` and turns a storage or cookie entry into a plain initial value (its `default`), with no read and no persistence. `URLSearchParams`, `FormData`, `IndexedDB`, `Set`, `Map` and `Blob` reach a built page as the literal definition object in both targets. Each cell below that reads Partial names its compiled gap.
 
-| `$prototype`      | Web API      | Status                                                                                              |
-| ----------------- | ------------ | --------------------------------------------------------------------------------------------------- |
-| `Request`         | Fetch API    | **Partial** — reactive URL, debounce, manual mode, abort controller; compiled: no debounce or abort |
-| `URLSearchParams` | URL API      | **Partial** — computed `.toString()`; compiled: not lowered                                         |
-| `FormData`        | FormData API | **Partial** — basic field population; compiled: not lowered                                         |
-| `LocalStorage`    | Storage API  | **Partial** — reactive read/write with persistence; element target: `default` only                  |
-| `SessionStorage`  | Storage API  | **Partial** — session-scoped reactive storage; element target: `default` only                       |
-| `Cookie`          | Cookie API   | **Partial** — maxAge, path, domain, secure, sameSite (see §11.2a); element target: `default` only   |
-| `IndexedDB`       | IDB API      | **Partial** — store creation, indexes, CRUD helper; compiled: not lowered                           |
-| `Array`           | —            | **Implemented** — dynamic mapped list (see §10)                                                     |
-| `Set`             | —            | **Partial** — `new Set(default)`; compiled: not lowered                                             |
-| `Map`             | —            | **Partial** — `new Map(Object.entries(default))`; compiled: not lowered                             |
-| `Blob`            | Blob API     | **Partial** — parts and type; compiled: not lowered                                                 |
-| `ReadableStream`  | Streams API  | **Pending** — stub returns `null`                                                                   |
+| `$prototype`      | Web API      | Status                                                                                            |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------- |
+| `Request`         | Fetch API    | **Implemented** — reactive URL, debounce, manual mode, abort controller                           |
+| `URLSearchParams` | URL API      | **Partial** — computed `.toString()`; compiled: not lowered                                       |
+| `FormData`        | FormData API | **Partial** — basic field population; compiled: not lowered                                       |
+| `LocalStorage`    | Storage API  | **Partial** — reactive read/write with persistence; element target: `default` only                |
+| `SessionStorage`  | Storage API  | **Partial** — session-scoped reactive storage; element target: `default` only                     |
+| `Cookie`          | Cookie API   | **Partial** — maxAge, path, domain, secure, sameSite (see §11.2a); element target: `default` only |
+| `IndexedDB`       | IDB API      | **Partial** — store creation, indexes, CRUD helper; compiled: not lowered                         |
+| `Array`           | —            | **Implemented** — dynamic mapped list (see §10)                                                   |
+| `Set`             | —            | **Partial** — `new Set(default)`; compiled: not lowered                                           |
+| `Map`             | —            | **Partial** — `new Map(Object.entries(default))`; compiled: not lowered                           |
+| `Blob`            | Blob API     | **Partial** — parts and type; compiled: not lowered                                               |
+| `ReadableStream`  | Streams API  | **Pending** — stub returns `null`                                                                 |
+
+A `Request` entry that is not `manual` fetches inside an effect, so a `${…}` template in its `url` re-fetches when the state it reads changes, and a `url` that still interpolates to `undefined` is not fetched. `debounce` (milliseconds, default `0`) delays every fetch, the first included, and a change inside the delay restarts it. A change also aborts the fetch the previous value started, whether it is still waiting out its delay or in flight; an aborted fetch leaves the entry as it was, and any other failure sets the entry to an object whose `error` is the failure's reason as a string.
 
 #### 11.2a The `Cookie` prototype's attribute rules
 

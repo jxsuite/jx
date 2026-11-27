@@ -217,6 +217,7 @@ export function compileClient(
   const handlers = new Map<string, HandlerDef>(); // Key → { body, args }
 
   // Classify state entries into reactive state, computed, bind, on, and init blocks
+  let autoFetch = false;
   const stateEntries: [string, JsonValue | undefined][] = []; // [key, initValue] → reactive({...})
   const computedEntries: [string, string][] = []; // [key, bodyExpr]   → state.key = computed(...)
   const bindEntries: [string, string][] = []; // [key, bodyExpr]   → bind = {...}
@@ -319,6 +320,9 @@ export function compileClient(
       if (def.$prototype === "Request") {
         stateEntries.push([key, null]);
         initBlocks.push(emitRequestFetch(key, def));
+        if (!def.manual) {
+          autoFetch = true;
+        }
         continue;
       }
 
@@ -381,6 +385,7 @@ export function compileClient(
     opts.rewriteSrc,
     clientClasses,
     mappedArrayFeatures(raw),
+    autoFetch,
   );
 
   // The page's import map: lit-html always, since compiled custom elements need it.
@@ -1125,6 +1130,7 @@ function emitClientModule(
   rewriteSrc: ((specifier: string) => string) | undefined,
   clientClasses: ClientClasses,
   lists: MappedArrayFeatures,
+  needsEffectCleanup: boolean,
 ) {
   const lines: string[] = [];
   const { needsLit, textParts } = counter;
@@ -1140,6 +1146,9 @@ function emitClientModule(
   // The keyed-list directive owns an effect it stops, and a snapshot the page's render reads.
   if (lists.keyed) {
     reactivityImports.push("stop", "shallowRef");
+  }
+  if (needsEffectCleanup) {
+    reactivityImports.push("onEffectCleanup");
   }
   lines.push(`import { ${reactivityImports.join(", ")} } from '@vue/reactivity';`);
 

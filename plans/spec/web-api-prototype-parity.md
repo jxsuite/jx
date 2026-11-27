@@ -5,7 +5,6 @@ claims:
   - spec.md#11.2
 requires:
   - spec/compiled-cookie-attributes
-  - spec/compiled-request-fetch
   - spec/web-api-prototype-parity-readable-stream
 workspaces:
   - packages/compiler
@@ -25,7 +24,7 @@ The table (lines 1196–1207): ten `**Partial**` cells naming a compiled gap, `R
 
 The stub held four pieces of work. Two now belong to enabling plans this plan requires, and each narrows the marker when it lands:
 
-- `plan:spec/compiled-request-fetch`: the marker's last clause and the `Request` cell (debounce and abort in `emitRequestFetch`).
+- spec.md §11.2 (the landed compiled Request fetch): the marker's last clause and the `Request` cell (debounce and abort in `emitRequestFetch`).
 - `plan:spec/web-api-prototype-parity-readable-stream`: the `ReadableStream` clause and row, split out because its disposition (recommended: remove) differs from this plan's and it touches no compiler code.
 
 This plan closes the rest: the element target's storage and cookie lowering, and compiled lowering for `URLSearchParams`, `FormData`, `IndexedDB`, `Set`, `Map` and `Blob` in both targets. The final flip of the section stays here.
@@ -86,7 +85,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 
 - **Decided:** one dispatcher, `lowerBuiltInPrototype`, lowers every built-in except `Request` in both targets. It lives in a new `packages/compiler/src/targets/builtin-prototypes.ts`.
   - Two targets with one list of cases cannot drift the way `compile-client.ts` and `extractInitialValue` did.
-  - `Request` keeps its own call sites, because `plan:spec/compiled-request-fetch` and `plan:spec/request-url-params` both edit them.
+  - `Request` keeps its own call sites, because spec.md §11.2 (the landed compiled Request fetch) and `plan:spec/request-url-params` both edit them.
 - **Decided:** the dispatcher lowers by `$prototype` name alone. It reads neither `$src`, the document's `imports` nor `timing`.
   - Whether `$src` or `imports` can replace a built-in name is §12.5's question, which `plan:spec/reconcile-built-in-prototypes` owns. Its recommendation (a built-in name is always the built-in) is what today's compiled `Request`, storage and `Cookie` lowerings and `isExternalClassDef` already assume, and its integration contract says the compiled targets lower what §11.2 says.
   - Declining such an entry here would ship it as its literal definition object, which is worse than either reading: the only compiled path that instantiates a class in the browser (`isClientExternalClass`, compiler.md §3) excludes every built-in name.
@@ -284,7 +283,7 @@ It renders each into a `p`. The file's `beforeAll` copies a fixed list of happy-
   > **Status: Implemented.** Every row but `Array`, which is the §10 children node rather than a state prototype, and `ReadableStream` (see its row) resolves in the interpreter, through `resolvePrototype` (`packages/runtime/src/runtime.ts`), and in both compiled targets: `Request` through `emitRequestFetch` (`packages/compiler/src/shared.ts`), the rest through `lowerBuiltInPrototype` (`packages/compiler/src/targets/builtin-prototypes.ts`). Agreement tests in `packages/compiler/tests` hold each lowering to the interpreter's result: `builtin-prototype-agreement.test.ts`, with `request-fetch-agreement.test.ts` for `Request` and `cookie-helper.test.ts` for `Cookie`.
 
 - Flip the cells to `**Implemented** — …`, dropping each `; compiled: …` or `; element target: …` tail: `URLSearchParams`, `FormData`, `LocalStorage`, `SessionStorage`, `Cookie`, `IndexedDB`, `Set`, `Map`, `Blob`. Re-pad the table with the formatter.
-- After the table (below the `Request` paragraph that `plan:spec/compiled-request-fetch` adds), add:
+- After the table (below the `Request` paragraph that spec.md §11.2 (the landed compiled Request fetch) adds), add:
 
   > A component reads its `LocalStorage`, `SessionStorage` and `Cookie` entries once per instance, before it takes its props, and persists every later change for as long as the instance exists, so a prop supplied for such an entry replaces the stored value and is stored. Storage the browser refuses to open (a sandboxed frame, blocked site data) leaves the entry at its `default`.
 

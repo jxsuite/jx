@@ -361,6 +361,34 @@ describe("compileClient — prototypes", () => {
     expect(js).toContain("const url = `");
   });
 
+  test("imports onEffectCleanup when a Request auto-fetches", () => {
+    const doc = {
+      children: [],
+      state: { d: { $prototype: "Request", url: "/api/d" } },
+      tagName: "div",
+    };
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).toContain("import { reactive, effect, onEffectCleanup } from '@vue/reactivity';");
+  });
+
+  test("a page without an auto-fetching Request keeps its import line", () => {
+    const none = compileClient({ children: [], state: { n: 0 }, tagName: "div" }, { title: "T" });
+    const manual = compileClient(
+      {
+        children: [],
+        state: { d: { $prototype: "Request", manual: true, url: "/api/d" } },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    for (const out of [none, manual]) {
+      expect(out.files[0]!.content).toContain(
+        "import { reactive, effect } from '@vue/reactivity';",
+      );
+      expect(out.files[0]!.content).not.toContain("onEffectCleanup");
+    }
+  });
+
   test("Cookie generates document.cookie read and parse", () => {
     const doc = {
       children: [],

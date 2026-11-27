@@ -226,6 +226,13 @@ type SrcExportOwner =
  * A template `url` is read inside the effect, so the fetch re-runs whenever the interpolated state
  * changes; an URL that still interpolates to `undefined` is skipped rather than fetched.
  *
+ * `debounce` (a finite number above 0) delays every fetch by that many milliseconds, the first
+ * included. Each run passes `fetch` an `AbortController` signal, and the effect's cleanup aborts it
+ * and clears a pending delay, so a change cancels the fetch it replaces and `stop()` cancels one
+ * still in flight. An `AbortError` is never written to the entry. A caller that emits a
+ * non-`manual` entry must import `onEffectCleanup` from `@vue/reactivity`; every tracked read has
+ * to happen synchronously before the timer.
+ *
  * @param {string} key - State key receiving the response
  * @param {JxPrototypeDef} def - The Request definition
  * @param {{ statePrefix?: string; indent?: string; collect?: string }} [opts] - `statePrefix` is
@@ -244,6 +251,8 @@ export function emitRequestFetch(
   const { url } = def;
   const isTemplateUrl = isTemplateString(url);
   const method = def.method ?? "GET";
+  const debounceMs =
+    isNumber(def.debounce) && Number.isFinite(def.debounce) && def.debounce > 0 ? def.debounce : 0;
 
   if (def.manual) {
     return `${indent}// ${key}: manual Request — fetch triggered by user action`;
@@ -263,6 +272,8 @@ export function emitRequestFetch(
     lines.push(`  const url = ${JSON.stringify(url)};`);
   }
 
+  lines.push("  const _ac = new AbortController();");
+
   const fetchOpts: string[] = [];
   if (method !== "GET") {
     fetchOpts.push(`method: ${JSON.stringify(method)}`);
@@ -276,15 +287,26 @@ export function emitRequestFetch(
       : JSON.stringify(def.body);
     fetchOpts.push(`body: ${bodyStr}`);
   }
+  fetchOpts.push("signal: _ac.signal");
 
-  const optsStr = fetchOpts.length > 0 ? `, { ${fetchOpts.join(", ")} }` : "";
-  lines.push(
-    `  fetch(url${optsStr})`,
-    "    .then(r => r.ok ? r.json() : Promise.reject(r.statusText))",
-    `    .then(d => { ${statePrefix}.${key} = d; })`,
-    `    .catch(e => { ${statePrefix}.${key} = { error: String(e) }; });`,
-    collect ? "}));" : "});",
-  );
+  const chain = [
+    `fetch(url, { ${fetchOpts.join(", ")} })`,
+    "  .then(r => r.ok ? r.json() : Promise.reject(r.statusText))",
+    `  .then(d => { ${statePrefix}.${key} = d; })`,
+    `  .catch(e => { if (e?.name !== "AbortError") ${statePrefix}.${key} = { error: String(e) }; });`,
+  ];
+
+  if (debounceMs > 0) {
+    lines.push(
+      "  const _t = setTimeout(() => {",
+      ...chain.map((line) => `    ${line}`),
+      `  }, ${debounceMs});`,
+      "  onEffectCleanup(() => { _ac.abort(); clearTimeout(_t); });",
+    );
+  } else {
+    lines.push("  onEffectCleanup(() => _ac.abort());", ...chain.map((line) => `  ${line}`));
+  }
+  lines.push(collect ? "}));" : "});");
 
   return lines.map((line) => `${indent}${line}`).join("\n");
 }

@@ -4,8 +4,7 @@ disposition: implement
 claims:
   - spec.md#4e
   - spec.md#11.1
-requires:
-  - spec/compiled-request-fetch
+requires: []
 workspaces:
   - packages/runtime
   - packages/compiler
@@ -42,7 +41,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
 
 - **Runtime.** The `Request` case of `resolvePrototype` (`packages/runtime/src/runtime.ts:2823`) builds `url` inside an `effect()`: `evaluateTemplate` for a template, the literal otherwise, then the guard `!url || url === "undefined" || url.includes("undefined")`. `debounce`, `manual`, `skipAutoRequests` and an `AbortController` cleared by `onEffectCleanup` all ship.
 - **The precedent for the values.** The `URLSearchParams` case beside it (line 2878) already resolves each key as a `$ref` (`resolveRef`), a template (`evaluateTemplate`) or a literal inside a `computed`, and returns `new URLSearchParams(p).toString()`.
-- **Compiler.** `emitRequestFetch` (`packages/compiler/src/shared.ts:155`), shared by the client target (`compile-client.ts:219`) and the element target (`compile-element.ts:745`, `statePrefix: "this.state"`). `plan:spec/compiled-request-fetch` (drafted, required here) adds `debounce` and abort, and its integration contract fixes where a re-triggering read goes: between `const url` and `const _ac`, never inside the timer.
+- **Compiler.** `emitRequestFetch` (`packages/compiler/src/shared.ts:155`), shared by the client target (`compile-client.ts:219`) and the element target (`compile-element.ts:745`, `statePrefix: "this.state"`). spec.md §11.2 (the landed compiled Request fetch) (drafted, required here) adds `debounce` and abort, and its integration contract fixes where a re-triggering read goes: between `const url` and `const _ac`, never inside the timer.
 - **Schema.** `externalClassDefSchema` (`packages/schema/defs/external-class-def.schema.ts`) is open and declares no `urlParams`, so the field validates without a shape. `JxPrototypeDef` (`packages/schema/types.ts`) types `url` as `string` and has no `urlParams`.
 - **Where the field is promised:** §11.1's example, §5.3 4e's example, §12.1's `Request` row ("HTTP fetch with reactive URL params"), `docs/framework/concepts/data-prototypes.md` (the opening example, the `Request` bullet, and "a `Request` whose `urlParams` reference state re-fetches"), and `specs/schema.md` §3.1's Built-in Prototypes list (`Request` — …, urlParams, timing).
 
@@ -56,7 +55,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
 
 **Related**
 
-- §11.2: the compiled `Request`'s debounce and abort (`plan:spec/compiled-request-fetch`); the `URLSearchParams` row and its compiled lowering (`plan:spec/web-api-prototype-parity`).
+- §11.2: the compiled `Request`'s debounce and abort (spec.md §11.2 (the landed compiled Request fetch)); the `URLSearchParams` row and its compiled lowering (`plan:spec/web-api-prototype-parity`).
 - §12.1: this plan owns the `Request` row's phrase, and `plan:spec/reconcile-built-in-prototypes` owns the section. That plan requires this one and leaves the row's wording as this plan leaves it.
 - `schema.md` §3.1: `plan:schema/generator-inventory` requires this plan and takes the `Request` line as this plan leaves it (`urlParams` kept under the implement, struck under the fallback). `plan:schema/prototype-property-declarations` narrows the same marker for other names; the two plans have no edge, and the marker edit below is written for either landing order.
 
@@ -65,9 +64,9 @@ Re-verified against `d4cecc34` on 2026-09-27.
 - **spec.md §5.3 4e → Implemented.** The example uses the map form.
 - **spec.md §11.1 → Implemented.** The section defines `urlParams` (both forms, the value rules, the serialization, re-fetching) and says `url` may be a `$ref`. Both tiers build the URL through one rule, `requestUrl`, which the runtime calls and compiled modules inline, held equal by a test.
 - **spec.md §12.1.** The marker no longer says "except `Request`'s URL params (§11.1)", and the `Request` row keeps "HTTP fetch with reactive URL params". The section stays Partial and stays `plan:spec/reconcile-built-in-prototypes`'s to close.
-- **spec.md §11.2.** The debounce-and-abort paragraph that `plan:spec/compiled-request-fetch` adds names `urlParams` among the reads that re-fetch.
+- **spec.md §11.2.** The debounce-and-abort paragraph that spec.md §11.2 (the landed compiled Request fetch) adds names `urlParams` among the reads that re-fetch.
 - **schema.md §3.1.** `ExternalClassDef` declares `urlParams` for `$prototype: "Request"` alone, and the marker stops naming it. The marker stays Partial.
-- **In a built site and in the interpreter:** a `Request` with `urlParams` fetches `url?…` and re-fetches, debounced and aborting the fetch it replaces, whenever a value it reads changes. A `Request` without `urlParams` and without a `$ref` `url` compiles to the text it compiles to once `plan:spec/compiled-request-fetch` has landed.
+- **In a built site and in the interpreter:** a `Request` with `urlParams` fetches `url?…` and re-fetches, debounced and aborting the fetch it replaces, whenever a value it reads changes. A `Request` without `urlParams` and without a `$ref` `url` compiles to the text it compiles to once spec.md §11.2 (the landed compiled Request fetch) has landed.
 - **Studio's Data panel** shows a `$ref` `url` as its pointer instead of throwing, and edits neither it nor `urlParams`.
 
 ## Decisions
@@ -106,7 +105,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
 - **Decided:** the schema declares `urlParams` in an `allOf` entry, `if` `$prototype` is `"Request"` `then` the property. Only `Request` reads it, and a flat declaration would constrain an extension class's parameter of the same name, which is the `filter`/`sort` trap schema.md §3.1 records. `plan:schema/prototype-property-declarations` introduces the same `allOf` for `FormData` and `Blob`. Whichever lands second appends to the other's array, and neither requires the other.
 - **Decided:** Studio's Data panel gains no `urlParams` field. It edits URL, method and timing and none of a `Request`'s other options, and `docs/studio/logic/data-sources.md` documents exactly those three. A map is edited in Code view. A `$ref` `url` is shown as its pointer and is not offered as a text field, because this plan specifies that form and the panel must neither throw on it nor overwrite it.
 - **Decided:** a compiled `$ref` read is optional past its first member (`state.user?.id`), so it yields `undefined` where `readPath` does. `compileOperandSource` (`@jxsuite/runtime/expression`) is not reused for these reads: it emits plain member access, and its bare-ref branch lacks `resolveRef`'s `?? null`.
-- **Decided:** the only prerequisite is `plan:spec/compiled-request-fetch`.
+- **Decided:** the only prerequisite is spec.md §11.2 (the landed compiled Request fetch).
   - That plan fixes the effect this one extends. Without it a compiled `urlParams` change would start one racing fetch per keystroke, and its §11.2 paragraph is the one this plan amends.
   - No edge to `plan:spec/web-api-prototype-parity`. A whole-`$ref` to a `URLSearchParams` entry reads the literal definition object in compiled output until that plan lowers the prototype, but §11.2's marker already discloses that gap, and nothing in this plan's text or code waits on it.
   - No edge to `plan:spec/timing-values-in-built-sites`. Its `buildRequest` reads a `Request` at build time, and that plan's integration contract says this plan appends `urlParams` there. Neither needs the other: Implementation step 9 does it if that plan landed first, and the integration contract below binds it otherwise.
@@ -163,7 +162,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
      - `refReadExpr(ref, statePrefix)` picks base and path as `resolveRef` does: `#/state/` and `parent#/` read from `statePrefix`, `window#/` and `document#/` from `window` and `document`, and any other ref from `statePrefix` wrapped as `` `(… ?? null)` ``, which matches `resolveRef`'s `?? null` fallback. The first member is `.k` or `["k"]` (`objectKey` decides, as in `refAccessor`); every later one is `?.k` or `?.["k"]`. So `#/state/user/id` is `state.user?.id`, and `b` is `(state.b ?? null)`.
      - `requestValueExpr(v, statePrefix)`: a `$ref` goes through `refReadExpr`. A single-expression template becomes `` `(${withStatePrefix(v, statePrefix).slice(2, -1)})` ``. Any other template becomes a template literal through `withStatePrefix`, as `url` does today. A literal becomes `JSON.stringify(v)`.
      - `requestParamsExpr(p, statePrefix)`: `null` when absent, `refReadExpr` for a whole `$ref`, `{ ${objectKey(k)}: ${requestValueExpr(v)}, … }` in key order for a plain object, and `JSON.stringify(p)` for anything else, as the runtime's `requestParams` passes it through.
-   - `emitRequestFetch`: when `requestNeedsUrlHelper(def)`, replace the `const url` line(s) with the two lines below. `<base>` is the template literal, `refReadExpr(url.$ref)` or `JSON.stringify(url)`. The lines after them are exactly those `plan:spec/compiled-request-fetch` emits, so every read stays before `const _ac`.
+   - `emitRequestFetch`: when `requestNeedsUrlHelper(def)`, replace the `const url` line(s) with the two lines below. `<base>` is the template literal, `refReadExpr(url.$ref)` or `JSON.stringify(url)`. The lines after them are exactly those spec.md §11.2 (the landed compiled Request fetch) emits, so every read stays before `const _ac`.
 
      ```js
      const url = __jxRequestUrl(<base>, <requestParamsExpr>);
@@ -171,7 +170,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
      ```
 
      The comment line reads `(dynamic URL)` whenever the helper is used, and the JSDoc gains one sentence: a caller emitting such an entry must emit `requestUrlHelperSource()` once. Any other definition takes the existing path, byte for byte.
-6. **`packages/compiler/src/targets/compile-client.ts`**: in the `Request` branch of `compileClient`, set `needsRequestUrl` when `requestNeedsUrlHelper(def)`. `emitClientModule` pushes `requestUrlHelperSource()` directly after `attrHelperSource()` when it is set. The flag joins the trailing options object that `plan:spec/compiled-request-fetch` step 2 and `plan:spec/compiled-cookie-attributes` introduce; if it is still one positional flag, fold it into that object as step 2 says.
+6. **`packages/compiler/src/targets/compile-client.ts`**: in the `Request` branch of `compileClient`, set `needsRequestUrl` when `requestNeedsUrlHelper(def)`. `emitClientModule` pushes `requestUrlHelperSource()` directly after `attrHelperSource()` when it is set. The flag joins the trailing options object that spec.md §11.2 (the landed compiled Request fetch) step 2 and `plan:spec/compiled-cookie-attributes` introduce; if it is still one positional flag, fold it into that object as step 2 says.
 7. **`packages/compiler/src/targets/compile-element.ts`**: push `requestUrlHelperSource()` after `attrHelperSource()` in the preamble (line 410–416) when `requestEntries.some(([, d]) => requestNeedsUrlHelper(d as JxPrototypeDef))`. Extend the `requestEntries` comment: the helper, like the import, is emitted only when a `Request` needs it.
 8. **`packages/studio/src/panels/signals-panel.ts`**:
    - `SignalDef.url` becomes `string | { $ref: string }`.
@@ -189,7 +188,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
 
 - **The rule.** `@jxsuite/runtime` exports `requestUrl(url, params)`, the one definition of a `Request`'s URL. It returns `undefined` for "do not fetch" and takes `null` params as "none".
 - **The compiler exports.** `packages/compiler/src/shared.ts` exports `REQUEST_URL_HELPER`, `requestUrlHelperSource()` and `requestNeedsUrlHelper(def)`. A target that emits a `Request` block for which the predicate holds must emit the helper once in its preamble; the drift test then covers it with no new case.
-- **The emitter.** `emitRequestFetch`'s signature is unchanged, and so is the order `plan:spec/compiled-request-fetch` fixed. Every read, `urlParams` included, is on the `const url` line.
+- **The emitter.** `emitRequestFetch`'s signature is unchanged, and so is the order spec.md §11.2 (the landed compiled Request fetch) fixed. Every read, `urlParams` included, is on the `const url` line.
 - **For `plan:spec/timing-values-in-built-sites`.** If this lands first, that plan's `buildRequest` builds its URL as step 9 describes (`requestUrl` over `resolveStaticValue`d values), so a `urlParams` entry fetches the same URL at either timing, and its §11.3 paragraph names `urlParams` beside `url`, `method`, `headers` and `body`.
 - **Reads that may be pending.** Every compiled `$ref` read on the `const url` line is optional past its first member, as `readPath` is.
 - **Studio.** The Data panel shows a `$ref` `url` as its pointer, and edits neither it nor `urlParams`.
@@ -240,7 +239,7 @@ The helper is ``new Function(`${requestUrlHelperSource()}\nreturn ${REQUEST_URL_
 - "a whole reference urlParams and a reference url lower to accessors": `__jxRequestUrl(state.endpoint, null)` and `__jxRequestUrl("/api", state.filters)`.
 - "requestNeedsUrlHelper": true for `urlParams` or a `$ref` `url`, and false for `manual`, a plain `url` or a template `url`. The existing cases pass unchanged, which proves the no-helper path is byte-identical.
 
-**`packages/compiler/tests/request-fetch-agreement.test.ts`** (created by `plan:spec/compiled-request-fetch`)
+**`packages/compiler/tests/request-fetch-agreement.test.ts`** (created by spec.md §11.2 (the landed compiled Request fetch))
 
 The compiled tier prepends `requestUrlHelperSource()` to the `new Function` body. New cases assert that `compiled` deep-equals `runtime`:
 
@@ -255,7 +254,7 @@ The compiled tier prepends `requestUrlHelperSource()` to the `new Function` body
 
 - `compile-client.test.ts`: "a Request with urlParams carries the url helper once", and "a page whose Requests need no helper carries none".
 - `compile-element.test.ts`: the same two cases for the element module.
-- `compile-element-render.test.ts`, in the "compiled element: Request fetch" block `plan:spec/compiled-request-fetch` adds:
+- `compile-element-render.test.ts`, in the "compiled element: Request fetch" block spec.md §11.2 (the landed compiled Request fetch) adds:
   - "a urlParams change re-fetches through the inlined helper": `ls-req-params` with `urlParams: { q: "${state.q}", tag: ["x", "y"] }`.
   - This is the case that executes the helper inside a real emitted module.
 - `no-eval.test.ts`: add a `Request` with `urlParams` to the fixture, so the helper sits under the §21.1 lock.
@@ -305,7 +304,7 @@ If that file does not exist yet, create it with the same module-scope `Ajv2020` 
     > - **A single `$ref`**, to an object read as a map, or to a query string. A `URLSearchParams` entry (§11.2) is such a string.
     >
     > Parameters are serialized in key order with `URLSearchParams` encoding. An array sends its parameter once per item, `null` leaves the parameter out, and any other value is sent as its text. An `undefined` value, or a whole `$ref` that resolves to `undefined`, holds the fetch, as a `url` that interpolates `undefined` does. The query joins one `url` already carries with `&`, or starts one with `?`, and precedes any `#` fragment; a name `url` already carries is repeated rather than replaced, and an empty query leaves `url` as it is. Every value is read inside the fetch's effect, so a change re-fetches, with the `debounce` and abort §11.2 defines. A `manual` entry never fetches, so it reads neither.
-- **§11.2**, in the paragraph `plan:spec/compiled-request-fetch` adds. Its first sentence becomes: "A `Request` entry that is not `manual` fetches inside an effect, so a `${…}` template or a `$ref` in its `url`, or any value its `urlParams` reads (§11.1), re-fetches when the state it reads changes; nothing is fetched while `url` interpolates `undefined` or a `urlParams` value is `undefined`." The rest of the paragraph is unchanged.
+- **§11.2**, in the paragraph spec.md §11.2 (the landed compiled Request fetch) adds. Its first sentence becomes: "A `Request` entry that is not `manual` fetches inside an effect, so a `${…}` template or a `$ref` in its `url`, or any value its `urlParams` reads (§11.1), re-fetches when the state it reads changes; nothing is fetched while `url` interpolates `undefined` or a `urlParams` value is `undefined`." The rest of the paragraph is unchanged.
 - **§12.1 marker.** Delete ", except `Request`'s URL params (§11.1)". The sentence then reads "…resolve in the interpreter; their compiled lowering is §11.2's." The marker stays Partial, and the `Request` row is untouched.
 - **§11.3, only with step 9.** The `"compiler"` `Request` paragraph `plan:spec/timing-values-in-built-sites` added lists `urlParams` beside `url`, `method`, `headers` and `body`.
 - **Fragment:** `bun run spec:change spec.md minor -m "A Request's urlParams, a map of literals, references and templates or one reference to an object or query string, is appended to its url as a query string in both tiers and re-fetches when a value it reads changes, and url itself may be a reference."`
