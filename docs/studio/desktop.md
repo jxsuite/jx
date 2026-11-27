@@ -12,6 +12,8 @@ spec:
   - desktop.md#9.5
   - desktop.md#9.7
 code:
+  - packages/desktop/src/backend/settings-store.ts
+  - packages/desktop/src/backend/user-store.ts
   - packages/desktop/src/backend/trust-store.ts
   - packages/schema/src/project-file.ts
   - packages/desktop/src/webview/boot.ts
