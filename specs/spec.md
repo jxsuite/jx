@@ -106,7 +106,7 @@ Jx borrows the **shape** of these standards. Where the semantics diverge — `$r
 
 ### 3.1 Root Structure
 
-> **Status: Partial.** Every field matches the code except `tagName`, which the table marks Required at the root. Neither the generated root schema (`packages/schema/schema.json`) nor any per-project `document.schema.json` requires it, the runtime's `resolveTagName` renders a missing tag as `div`, and page documents omit it (`sites/test-blank/pages/contact.json`); only an element node requires `tagName` (`packages/schema/defs/element-def.schema.ts`).
+> **Status: Implemented.** The root schema requires no field (`generateSchema` in `packages/schema/src/schema.ts`), and `ElementDef` requires `tagName`. A missing root tag renders as `div` in the interpreter (`resolveTagName` in `packages/runtime/src/runtime.ts`) and in the static and client targets (`resolveStaticTagName` in `packages/compiler/src/shared.ts`, `compile-client.ts`). `defineElement` and `compileElement` refuse a definition whose `tagName` has no hyphen. The build, the live preview and the Studio canvas all compose a wrapped page without reading its root `tagName` (`resolveLayout` in `packages/site/src/layout.ts`, `distributePageIntoLayout` in `packages/studio/src/site-context.ts`).
 
 Every Jx document is a JSON object with the following top-level fields:
 
@@ -128,8 +128,10 @@ Every Jx document is a JSON object with the following top-level fields:
 | `$defs`    | Optional    | Pure JSON Schema type definitions — tooling only, no runtime artifacts                                                                                                                                          |
 | `state`    | Optional    | Reactive state: signals, computed values, functions, and data sources                                                                                                                                           |
 | `$script`  | Optional    | The document's own client and server modules, as TypeScript text (§23.2)                                                                                                                                        |
-| `tagName`  | Required    | HTML tag name for the root element                                                                                                                                                                              |
+| `tagName`  | Optional    | Tag name of the root element, a literal name (§19.6); `div` when absent. See below.                                                                                                                             |
 | `children` | Optional    | Array of child element definitions, text nodes (strings/numbers), and/or Array namespaces (repeaters) mixed freely. A bare Array namespace (the whole children slot is one repeater) is also accepted. See §10. |
+
+**The root `tagName` is optional.** A document without one renders its root as a `div`, in the interpreter and in every compiled target. A root `tagName` containing a hyphen makes the document a custom element definition (§16.1), registered under that name. A document whose root `tagName` has no hyphen is not a definition: an `$elements` entry naming it registers nothing, and `defineElement` and `compileElement` refuse it. A page wrapped by a layout (site-architecture.md §5.2) has no root element of its own. Its `children` fill the layout's slots, its `state`, `$media`, `style` and `attributes` extend the layout root's, and a `tagName` at its top is not used, which is why page documents leave it out. Below the root, the schema's `ElementDef` still requires `tagName` on every element definition.
 
 ### 3.2 Schema-Backed Documents
 

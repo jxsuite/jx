@@ -51,7 +51,7 @@ The section was unmarked before the census. Its last prose sentence (line 77) sa
 - **Decided:** a source whose frontmatter (or body) fails to transpile returns `false` rather than throwing, because a predicate should not throw, and such a file cannot open in Studio as either kind.
 - **Decided:** the pattern stays `.+-.+`, not HTML's valid-custom-element-name production, because the rule only chooses an editing mode and mirrors `spec.md` §16.1's hyphenated root; validating the name belongs to registration.
 - **Decided:** the rule is joined to `Markdown.class.json` by a drift test, not by importing the class JSON into `transpile.ts`, because the transpiler is browser-safe code with no reason to load Studio hints, and the `$studio.elements` guard already sets this pattern.
-- **Decided:** no dependency on `plan:spec/root-tagname-optional`. The new §3.1 text never says how a tagName-less root renders, only how it is detected and edited, so it is right whichever lands first.
+- **Decided:** no dependency on the root `tagName` reconciliation of spec.md §3.1. The new §3.1 text never says how a tagName-less root renders, only how it is detected and edited, so it is right whichever lands first.
 
 ## Implementation
 
