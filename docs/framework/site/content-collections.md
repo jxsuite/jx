@@ -6,11 +6,13 @@ spec:
   - site-architecture.md#9.3
   - parser.md#3.2
   - parser.md#9.2
+  - parser.md#9.3
   - parser.md#9.4
   - parser.md#9.5
   - parser.md#9.6
 code:
   - extensions/parser/src/content-loader.ts
+  - extensions/parser/src/dates.ts
   - extensions/parser/src/content.ts
   - extensions/parser/src/content-rules.ts
   - packages/schema/src/content-query.ts
@@ -342,7 +344,7 @@ Every entry is validated against its content type's `schema` when collections lo
 
 ## Dates
 
-Declare a date field with `format`, and the loader normalizes it so sorting and filtering work:
+Declare a date field with `format`, and the loader normalizes it, whichever format or source the entry came from, so sorting and filtering work:
 
 ```json
 {
@@ -371,6 +373,8 @@ different days depending on who reads it, so it is left as authored rather than 
 :::doc-note
 Without a `format`, a date is just a string. `MarkdownCollection`'s default sort compares text, which works for `YYYY-MM-DD` and not for timestamps with offsets. Declare the field in a content type and the loader handles it.
 :::
+
+Every entry loaded from a file also carries `_meta.mtime`, the file's last modification time (`2025-03-04T16:00:00Z`). Each row of a CSV file, or item of a JSON array, shares its file's time. Feeds use it when an entry has no date, and the sitemap dates a page generated from the entry by it. An entry from a remote `https://` source has no file, so it has no `_meta.mtime`.
 
 ## Relationships
 
