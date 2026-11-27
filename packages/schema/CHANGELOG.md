@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.3.0](https://github.com/jxsuite/jx/compare/schema-v8.2.1...schema-v8.3.0) (2026-11-27)
+
+
+### Features
+
+* **schema:** one predicate decides a pure type definition in both tiers ([#792](https://github.com/jxsuite/jx/issues/792)) ([e18d32d](https://github.com/jxsuite/jx/commit/e18d32d2f40fa978fed1809b2c2c4454c4d38ea0))
+
+
+### Bug Fixes
+
+* **compiler:** content a computed-children template splices in stays literal ([#790](https://github.com/jxsuite/jx/issues/790)) ([62ee31b](https://github.com/jxsuite/jx/commit/62ee31b3870718cbe8bba0f8f554af9af21ceeba))
+* **schema:** refuse padded language tags and key the redirect policy by REDIRECT_STATUSES ([#760](https://github.com/jxsuite/jx/issues/760)) ([b5d93d9](https://github.com/jxsuite/jx/commit/b5d93d99cf7e5bcc73f40c8f5b3a3c6323a6bccf))
+
 ## [8.2.1](https://github.com/jxsuite/jx/compare/schema-v8.2.0...schema-v8.2.1) (2026-11-23)
 
 

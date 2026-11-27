@@ -1,5 +1,42 @@
 # Changelog
 
+## [11.2.0](https://github.com/jxsuite/jx/compare/compiler-v11.1.2...compiler-v11.2.0) (2026-11-27)
+
+
+### Features
+
+* **compiler:** a page-level component instance receives the props it binds ([#791](https://github.com/jxsuite/jx/issues/791)) ([1da29d6](https://github.com/jxsuite/jx/commit/1da29d6bdac28f25cb74f824865fad01f556e44e))
+* **compiler:** compiled pages read and write a Cookie entry by the runtime's rule ([#761](https://github.com/jxsuite/jx/issues/761)) ([9ed693f](https://github.com/jxsuite/jx/commit/9ed693f03d97c2e6734406831537cb38565f7288))
+* **compiler:** compiled Request fetch debounces and aborts like the interpreter ([#776](https://github.com/jxsuite/jx/issues/776)) ([7801eee](https://github.com/jxsuite/jx/commit/7801eee8d86b1561341d62fa1ec9849aaafe9122))
+* **compiler:** jx db push runs section owners' deploySchema after the connector plan ([#772](https://github.com/jxsuite/jx/issues/772)) ([86ae47e](https://github.com/jxsuite/jx/commit/86ae47edded62bccb3800163c8bc744bbcaea5f5))
+* **compiler:** lower a parameterised structured body to a positional callable in every tier ([#780](https://github.com/jxsuite/jx/issues/780)) ([b696e3d](https://github.com/jxsuite/jx/commit/b696e3dbc09a471ded8a1f023816761a9699d92c))
+* **compiler:** render a $switch in lit regions and run an external case's hooks ([#781](https://github.com/jxsuite/jx/issues/781)) ([9639cbb](https://github.com/jxsuite/jx/commit/9639cbb291e7c0fb1fdfd171d741daca182e8f20))
+* **parser:** coerce entry dates and stamp mtime on every loading branch ([#759](https://github.com/jxsuite/jx/issues/759)) ([5f2b43f](https://github.com/jxsuite/jx/commit/5f2b43fac06236ec5db42e802510590e833011ab))
+* **schema:** one predicate decides a pure type definition in both tiers ([#792](https://github.com/jxsuite/jx/issues/792)) ([e18d32d](https://github.com/jxsuite/jx/commit/e18d32d2f40fa978fed1809b2c2c4454c4d38ea0))
+* **site:** rank routes segment by segment and build a URL two pages generate once ([#788](https://github.com/jxsuite/jx/issues/788)) ([7875d07](https://github.com/jxsuite/jx/commit/7875d0773f8b5ab5bf5631f2b2cc8d6f3fd5d242))
+* **site:** refuse page file names that derive a route URLPattern misreads ([#779](https://github.com/jxsuite/jx/issues/779)) ([6a4c774](https://github.com/jxsuite/jx/commit/6a4c774cece9b9bc5d4cd58d8a077776c0612797))
+
+
+### Bug Fixes
+
+* **compiler:** content a computed-children template splices in stays literal ([#790](https://github.com/jxsuite/jx/issues/790)) ([62ee31b](https://github.com/jxsuite/jx/commit/62ee31b3870718cbe8bba0f8f554af9af21ceeba))
+* **schema:** refuse padded language tags and key the redirect policy by REDIRECT_STATUSES ([#760](https://github.com/jxsuite/jx/issues/760)) ([b5d93d9](https://github.com/jxsuite/jx/commit/b5d93d99cf7e5bcc73f40c8f5b3a3c6323a6bccf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.8.9
+    * @jxsuite/erase bumped to 0.3.8
+    * @jxsuite/runtime bumped to 9.1.0
+    * @jxsuite/schema bumped to 8.3.0
+    * @jxsuite/site bumped to 4.2.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.9.0
+    * @jxsuite/connector bumped to 0.9.0
+    * @jxsuite/parser bumped to 5.3.0
+
 ## [11.1.2](https://github.com/jxsuite/jx/compare/compiler-v11.1.1...compiler-v11.1.2) (2026-11-23)
 
 

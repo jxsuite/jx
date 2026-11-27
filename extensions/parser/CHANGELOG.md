@@ -1,5 +1,29 @@
 # Changelog
 
+## [5.3.0](https://github.com/jxsuite/jx/compare/parser-v5.2.3...parser-v5.3.0) (2026-11-27)
+
+
+### Features
+
+* **parser:** align isJxMarkdown with the documentMode hint and settle spec 3.1 ([#758](https://github.com/jxsuite/jx/issues/758)) ([ebf8719](https://github.com/jxsuite/jx/commit/ebf8719d125494adf7ed0f5aeec7dd3a62279f6b))
+* **parser:** coerce entry dates and stamp mtime on every loading branch ([#759](https://github.com/jxsuite/jx/issues/759)) ([5f2b43f](https://github.com/jxsuite/jx/commit/5f2b43fac06236ec5db42e802510590e833011ab))
+* **parser:** route directive attributes by one rule on every element ([#768](https://github.com/jxsuite/jx/issues/768)) ([989bef5](https://github.com/jxsuite/jx/commit/989bef581004d1a9529d30b1f04a95592dec94a1))
+
+
+### Bug Fixes
+
+* **parser:** keep combining marks in heading anchors ([#756](https://github.com/jxsuite/jx/issues/756)) ([4d85dcf](https://github.com/jxsuite/jx/commit/4d85dcf92dbf5a518345a3919dfe3d394cfa30b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.17
+    * @jxsuite/schema bumped to 8.3.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 9.1.0
+
 ## [5.2.3](https://github.com/jxsuite/jx/compare/parser-v5.2.2...parser-v5.2.3) (2026-11-23)
 
 

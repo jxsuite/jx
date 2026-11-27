@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/jxsuite/jx/compare/connector-v0.8.16...connector-v0.9.0) (2026-11-27)
+
+
+### Features
+
+* **connector:** type a to-one table reference like its target's id and key it ([#773](https://github.com/jxsuite/jx/issues/773)) ([bb34fa3](https://github.com/jxsuite/jx/commit/bb34fa3972b57a6f9c9f1ad0a0fce75e3cceb4dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.3.0
+
 ## [0.8.16](https://github.com/jxsuite/jx/compare/connector-v0.8.15...connector-v0.8.16) (2026-11-23)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.14.0](https://github.com/jxsuite/jx/compare/collab-v0.13.1...collab-v0.14.0) (2026-11-27)
+
+
+### Features
+
+* **collab:** a save answers once, and presence names the rooms a client holds ([#751](https://github.com/jxsuite/jx/issues/751)) ([b1e1073](https://github.com/jxsuite/jx/commit/b1e10730a105f835e2ec35cb7635ee5fa30d2827))
+* **collab:** keep the section 3.1 merge granularity on every write to the shared document ([#749](https://github.com/jxsuite/jx/issues/749)) ([2d11e7b](https://github.com/jxsuite/jx/commit/2d11e7b4a825303c63c2536127f5c05e94286019))
+* **studio:** show an attach that could not open as Not connected with its reason ([#750](https://github.com/jxsuite/jx/issues/750)) ([d46ef7f](https://github.com/jxsuite/jx/commit/d46ef7fc3a56e68e324f0e7af318e7bbcdf7a7a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.3.0
+
 ## [0.13.1](https://github.com/jxsuite/jx/compare/collab-v0.13.0...collab-v0.13.1) (2026-11-23)
 
 

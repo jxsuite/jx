@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.2.0](https://github.com/jxsuite/jx/compare/site-v4.1.2...site-v4.2.0) (2026-11-27)
+
+
+### Features
+
+* **site:** rank routes segment by segment and build a URL two pages generate once ([#788](https://github.com/jxsuite/jx/issues/788)) ([7875d07](https://github.com/jxsuite/jx/commit/7875d0773f8b5ab5bf5631f2b2cc8d6f3fd5d242))
+* **site:** refuse page file names that derive a route URLPattern misreads ([#779](https://github.com/jxsuite/jx/issues/779)) ([6a4c774](https://github.com/jxsuite/jx/commit/6a4c774cece9b9bc5d4cd58d8a077776c0612797))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 9.1.0
+    * @jxsuite/schema bumped to 8.3.0
+
 ## [4.1.2](https://github.com/jxsuite/jx/compare/site-v4.1.1...site-v4.1.2) (2026-11-23)
 
 

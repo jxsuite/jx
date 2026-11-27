@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.0](https://github.com/jxsuite/jx/compare/auth-v0.8.16...auth-v0.9.0) (2026-11-27)
+
+
+### Features
+
+* **compiler:** jx db push runs section owners' deploySchema after the connector plan ([#772](https://github.com/jxsuite/jx/issues/772)) ([86ae47e](https://github.com/jxsuite/jx/commit/86ae47edded62bccb3800163c8bc744bbcaea5f5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/connector bumped to 0.9.0
+    * @jxsuite/schema bumped to 8.3.0
+
 ## [0.8.16](https://github.com/jxsuite/jx/compare/auth-v0.8.15...auth-v0.8.16) (2026-11-23)
 
 
