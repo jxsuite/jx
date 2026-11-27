@@ -185,6 +185,16 @@ describe("compile — output structure", () => {
 // ─── compile — static nodes ───────────────────────────────────────────────────
 
 describe("compile — static nodes", () => {
+  test("a root with no tagName renders as a div, static and dynamic", async () => {
+    const stat = await compile({ children: [{ tagName: "p", textContent: "static" }] });
+    expect(stat.html).toContain("<div><p>static</p></div>");
+    const dyn = await compile({
+      children: [{ tagName: "p", textContent: "${state.n}" }],
+      state: { n: 1 },
+    });
+    expect(dyn.html).toMatch(/<div><p data-bind[^>]*>1<\/p><\/div>/);
+  });
+
   test("static node emits plain HTML element", async () => {
     const { html } = await compile({ tagName: "p", textContent: "hello" });
     expect(html).toContain("<p>hello</p>");
