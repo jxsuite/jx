@@ -59,6 +59,7 @@ import {
   compileOperandSource,
   compileStatements,
   emitFormulaFn,
+  emitStatementsFn,
   collectFunctionImports,
   emitSrcImports,
   refuseBodyWithSrc,
@@ -690,18 +691,25 @@ export function emitElementModule(
       );
     } else if (hasStructuredBody(def)) {
       // Structured body (spec §20) — statements compiled against this.state; dispatch target is
-      // The component instance itself (WHATWG dispatchEvent on the custom element).
+      // The component instance itself (WHATWG dispatchEvent on the custom element). A non-empty
+      // `parameters` list lowers to a positional callable (spec.md §20.3), else a handler.
       const compiled = compileStatements(def.body, {
         dispatchTarget: "this",
         eventParam: "e",
         indent: "      ",
         statePrefix: "this.state",
       });
-      lines.push(
-        `    ${refAccessor("this.state", escapeToken(key))} = (s, e) => {`,
-        compiled,
-        "    };",
-      );
+      if (Array.isArray(def.parameters) && def.parameters.length > 0) {
+        lines.push(
+          `    ${refAccessor("this.state", escapeToken(key))} = ${emitStatementsFn(def, compiled)};`,
+        );
+      } else {
+        lines.push(
+          `    ${refAccessor("this.state", escapeToken(key))} = (s, e) => {`,
+          compiled,
+          "    };",
+        );
+      }
     } else {
       /* One calling convention (spec.md §4.3, §5.3 4d): every event site and lifecycle call invokes
          `s.fn(s, e)`, so a string body is built with `state` first and its other declared names after
