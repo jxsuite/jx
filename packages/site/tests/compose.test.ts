@@ -49,13 +49,19 @@ describe("routeTable", () => {
     expect(routeTable(["pages/_draft.json"])).toEqual([]);
   });
 
-  test("the table is in match order: static, then dynamic, then catch-all", () => {
+  test("the table is in match order", () => {
     const routes = routeTable([
       "pages/blog/[...rest].json",
       "pages/blog/[slug].json",
       "pages/blog/index.json",
     ]);
     expect(routes.map((r) => r.urlPattern)).toEqual(["/blog", "/blog/:slug", "/blog/*"]);
+  });
+
+  test("two files for one route keep the same order whatever the tree lists first", () => {
+    const forward = routeTable(["pages/about/index.json", "pages/about.json"]);
+    const backward = routeTable(["pages/about.json", "pages/about/index.json"]);
+    expect(forward[0]?.sourcePath).toBe(backward[0]?.sourcePath);
   });
 
   test("each entry remembers the file it came from", () => {

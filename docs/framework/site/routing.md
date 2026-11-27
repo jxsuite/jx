@@ -6,6 +6,7 @@ spec:
 code:
   - packages/compiler/src/site/pages-discovery.ts
   - packages/site/src/pagination.ts
+  - packages/site/src/routes.ts
 ---
 
 # Routing
@@ -24,7 +25,7 @@ The file path determines the URL path:
 | `pages/blog/index.json`      | `/blog`            |
 | `pages/blog/first-post.json` | `/blog/first-post` |
 
-`index` files map to their parent directory, so `pages/about.json` and `pages/about/index.json` produce the same URL. Use whichever keeps the folder tidy, but not both.
+`index` files map to their parent directory, so `pages/about.json` and `pages/about/index.json` produce the same URL. Use whichever keeps the folder tidy, but not both: the build fails when both exist.
 
 Files and directories whose names start with `_` are excluded from routing entirely. That's the convention for co-locating components next to the pages that use them: `pages/blog/_blog-card.json` is available for `$ref` but never becomes `/blog/_blog-card`.
 
@@ -213,11 +214,19 @@ Studio's **resolving with** popover does not list page numbers yet, and its canv
 
 ## Route priority
 
-When several routes could match the same URL, the more specific one wins:
+When several routes could match the same URL, the more specific one wins. Routes are compared one path segment at a time from the left, and the first segment where they differ decides:
 
 1. Static routes beat dynamic routes: `/about` beats `/[slug]`.
 2. Named parameters beat catch-alls: `/blog/[slug]` beats `/blog/[...path]`.
-3. More specific paths beat less specific ones: `/blog/[slug]` beats `/[...path]`.
+3. More specific paths beat less specific ones: `/blog/[slug]` beats both `/[...path]` and `/[category]/[id]`, because its first segment is a literal.
+
+A folder name therefore owns everything under it: with `pages/[slug].json` and `pages/docs/[...path].json`, the URL `/docs` goes to the catch-all, and a `pages/docs/index.json` would take `/docs` from both.
+
+### Two pages, one URL
+
+A build expands every dynamic route before it writes a page, so it knows when two pages generate the same URL. The page with route priority builds that URL and the build warns, naming the URL and both page files. This is how you replace one generated page with a hand-written one: the static page wins, and the warning confirms it.
+
+When neither page has priority, such as `blog/[slug].json` beside `blog/[id].json` yielding the same value, the build fails and names both files. A `$paths` that yields the same URL twice builds it once, with a warning.
 
 ## Params at runtime
 

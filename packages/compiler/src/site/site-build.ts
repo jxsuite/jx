@@ -69,6 +69,7 @@ import {
   expandDynamicRoutes,
   readPageDocument,
   readTranslationKeys,
+  resolveRouteCollisions,
 } from "./pages-discovery.ts";
 import {
   buildHeaderRules,
@@ -602,15 +603,19 @@ export async function buildSite(
   // ── 4. Expand dynamic routes ────────────────────────────────────────────
   const extensionHead = await collectExtensionHead(registry, projectConfig, projectRoot);
 
-  const expandedRoutes = await expandDynamicRoutes(
-    staticRoutes,
-    projectRoot,
-    sections,
-    registry,
-    projectConfig,
-    i18n,
-    { errors },
+  const { collisions, routes: expandedRoutes } = resolveRouteCollisions(
+    await expandDynamicRoutes(staticRoutes, projectRoot, sections, registry, projectConfig, i18n, {
+      errors,
+    }),
   );
+  for (const collision of collisions) {
+    if (collision.kind === "tie") {
+      errors.push(collision.message);
+      console.error(collision.message);
+    } else {
+      console.warn(collision.message);
+    }
+  }
   /*
    * Every route carries the locale it serves, resolved once here rather than re-derived by each
    * reader. It is what scopes a `ContentEntry` lookup on a localized collection: two translations
