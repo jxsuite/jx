@@ -376,4 +376,35 @@ describe("foreign keys", () => {
     );
     expect(result.warnings).toEqual([]);
   });
+
+  test("postgres adds a key column to an existing table inline or deferred by target readiness", async () => {
+    const db = makeDb();
+    await sql`create table a (id text primary key, created_at text, updated_at text)`.execute(db);
+    const a = {
+      connection: "main",
+      schema: { properties: { b: { $ref: "#/data/b" } }, type: "object" },
+    } satisfies TableDef;
+    const b = {
+      connection: "main",
+      schema: { properties: { a: { $ref: "#/data/a" } }, type: "object" },
+    } satisfies TableDef;
+    const result = await syncTables(db, { a, b }, { dialect: "postgres", dryRun: true });
+    expect(result.statements[0]).toBe('alter table "a" add column "b_id" text');
+    expect(result.statements.at(-1)).toBe(
+      'alter table "a" add constraint "a_b_id_fkey" foreign key ("b_id") references "b" ("id") on delete set null',
+    );
+  });
+
+  test("a catalog integer spelled int is not drift", async () => {
+    const db = makeDb();
+    await sql`create table things (id text primary key, created_at text, updated_at text, n int)`.execute(
+      db,
+    );
+    const things = {
+      connection: "main",
+      schema: { properties: { n: { type: "integer" } }, type: "object" },
+    } satisfies TableDef;
+    const result = await syncTables(db, { things }, { dialect: "sqlite", dryRun: true });
+    expect(result.warnings).toEqual([]);
+  });
 });
