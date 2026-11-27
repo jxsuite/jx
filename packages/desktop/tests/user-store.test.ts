@@ -280,6 +280,18 @@ describe("the cross-process lock", () => {
     expect(readdirSync(DIR).filter((n) => n.endsWith(".lock") || n.endsWith(".stale"))).toEqual([]);
   });
 
+  test("release never throws over a lock it cannot read, restore or remove", async () => {
+    const store = storeFile();
+    const value = await withFileLock(store, async () => {
+      // A directory has taken the lock's place.
+      // Release cannot read, restore or remove it, and must still return the work's result.
+      rmSync(`${store}.lock`);
+      mkdirSync(`${store}.lock`);
+      return 9;
+    });
+    expect(value).toBe(9);
+  });
+
   test("a lockfile error other than contention rejects at once", async () => {
     const store = join(DIR, `${"x".repeat(251)}`);
     let code = "";
