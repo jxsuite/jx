@@ -39,7 +39,7 @@ import {
 } from "@jxsuite/schema/guards";
 import { cemManifest, cemManifestText } from "@jxsuite/schema/cem-manifest";
 import type { CemDefinition } from "@jxsuite/schema/cem-manifest";
-import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
+import { DEFAULT_CHARSET, REDIRECT_STATUSES } from "@jxsuite/schema/defs";
 import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
 import { errorMessage } from "@jxsuite/schema/parse";
 import {
@@ -63,6 +63,7 @@ import {
 } from "./bundler.ts";
 import type { BundleRequest } from "./bundler.ts";
 import { negotiatesRoot } from "./locale-negotiation.ts";
+import { pageRelativePath, routePatternProblem } from "@jxsuite/site/routes";
 import { loadProjectConfig } from "./site-loader.ts";
 import type { ResolvedProjectConfig } from "./site-loader.ts";
 import {
@@ -571,6 +572,17 @@ export async function buildSite(
   log("Discovering pages...");
   const staticRoutes = await discoverPages(pagesDir, formatRegistry);
   log(`  Found ${staticRoutes.length} page(s)`);
+
+  /* A page file whose name would derive a pattern outside the forms routes use is an error naming
+     the file (site-architecture.md §4.2). The route stays in the table so the rest builds. */
+  for (const route of staticRoutes) {
+    const problem = routePatternProblem(route.relativePath);
+    if (problem) {
+      const message = `pages/${pageRelativePath(route.relativePath)}: ${problem}. Rename the file.`;
+      errors.push(message);
+      console.error(message);
+    }
+  }
 
   // ── 3b. Load extension-contributed project sections ────────────────────
   log("Loading project sections...");
@@ -3340,53 +3352,48 @@ function routeToOutputPath(urlPattern: string, outDir: string, trailingSlash: st
 }
 
 /**
- * Generate redirect files (HTML meta refresh and _redirects).
- *
- * @param {Record<string, string | { destination: string; status?: number }>} redirects
- * @param {string} outDir
- * @param {Set<string>} [compiledUrls] - URL patterns of compiled routes, for conflict warnings
- * @returns {number} Number of files written
- */
-/**
  * Which statuses get an HTML fallback, and why each other one does not.
  *
  * An HTML meta-refresh is a _client-side_ redirect: the browser fetches the source, then navigates.
  * That is a reasonable stand-in for a 301 or a 303 on a host that ignores `_redirects`, and it is
  * actively wrong for everything else.
  *
- * Keyed by the status's decimal string so an authored `"status": "301"` (schema-invalid, but
- * project.json is not validated at build time) still matches the way an object-key lookup would.
+ * Keyed by the schema's `REDIRECT_STATUSES` (schema.md §7, RFC 9110 row), so a status added there
+ * fails typecheck here until it has a policy. Looked up through the status's number, so an authored
+ * `"status": "301"` (schema-invalid, but project.json is not validated at build time) still
+ * matches.
  */
-const REDIRECT_HTML_POLICY = new Map<string, RedirectHtmlPolicy>([
+const REDIRECT_HTML_POLICY = {
   // The permanent case: a canonical link is exactly the right signal.
-  ["301", { canonical: true, html: true, why: "" }],
+  301: { canonical: true, html: true, why: "" },
   // Temporary — a canonical link would assert the permanence the status denies.
-  ["302", { canonical: false, html: true, why: "" }],
+  302: { canonical: false, html: true, why: "" },
   // "See other, with GET" is what a meta-refresh already does.
-  ["303", { canonical: false, html: true, why: "" }],
-  [
-    "307",
-    {
-      canonical: false,
-      html: false,
-      why: "307 preserves the request method and body; a meta-refresh silently converts POST to GET",
-    },
-  ],
-  [
-    "308",
-    {
-      canonical: false,
-      html: false,
-      why: "308 preserves the request method and body; a meta-refresh silently converts POST to GET",
-    },
-  ],
-]);
+  303: { canonical: false, html: true, why: "" },
+  307: {
+    canonical: false,
+    html: false,
+    why: "307 preserves the request method and body; a meta-refresh silently converts POST to GET",
+  },
+  308: {
+    canonical: false,
+    html: false,
+    why: "308 preserves the request method and body; a meta-refresh silently converts POST to GET",
+  },
+} satisfies Record<RedirectStatus, RedirectHtmlPolicy>;
 
 /** One redirection status's HTML-fallback rule, in {@link REDIRECT_HTML_POLICY}. */
 interface RedirectHtmlPolicy {
   html: boolean;
   canonical: boolean;
   why: string;
+}
+
+type RedirectStatus = (typeof REDIRECT_STATUSES)[number];
+
+function isRedirectStatus(status: number): status is RedirectStatus {
+  // SAFETY: widening the tuple to `readonly number[]` only lets `includes` take any number.
+  return (REDIRECT_STATUSES as readonly number[]).includes(status);
 }
 
 /**
@@ -3424,10 +3431,17 @@ function generateRedirects(
         ? (target.status ?? 301)
         : 301;
 
-    if (!isRewrite && !REDIRECT_HTML_POLICY.has(String(status))) {
+    const code = Number(status);
+    const policy = isRewrite
+      ? null
+      : isRedirectStatus(code)
+        ? REDIRECT_HTML_POLICY[code]
+        : undefined;
+
+    if (policy === undefined) {
       errors.push(
         `Redirect "${source}" has status ${status}, which is not an RFC 9110 §15.4 redirection ` +
-          `status. Use one of ${[...REDIRECT_HTML_POLICY.keys()].join(", ")}, or ` +
+          `status. Use one of ${REDIRECT_STATUSES.join(", ")}, or ` +
           `{ destination, rewrite: true } for a proxy.`,
       );
       continue;
@@ -3457,11 +3471,7 @@ function generateRedirects(
      * shadows the rewrite on hosts that honour `_redirects`, and turns it into a redirect on the
      * hosts that do not — so it is wrong in both directions. This was the bug.
      */
-    if (isRewrite) {
-      continue;
-    }
-    const policy = REDIRECT_HTML_POLICY.get(String(status))!;
-    if (!policy.html) {
+    if (policy === null || !policy.html) {
       continue;
     }
 

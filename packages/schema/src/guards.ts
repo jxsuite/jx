@@ -149,50 +149,81 @@ export function isExpandedSignal(value: unknown): value is JxStateObject & { def
 }
 
 /**
- * Schema-only keywords used to detect pure type definitions (Shape 2b). An object with ONLY these
- * keys and no `default` is a type def, not a signal.
+ * The JSON Schema keywords a state entry can be written in: the 2020-12 validation and applicator
+ * vocabulary Jx meets, plus the annotations. It is the vocabulary spec.md §5.7's pure-type step
+ * reads.
  */
 export const SCHEMA_KEYWORDS: ReadonlySet<string> = new Set([
-  "type",
+  "$comment",
+  "$ref",
+  "additionalProperties",
+  "allOf",
+  "anyOf",
+  "const",
+  "deprecated",
+  "description",
   "enum",
-  "minimum",
-  "maximum",
-  "minLength",
-  "maxLength",
-  "pattern",
+  "examples",
+  "exclusiveMaximum",
+  "exclusiveMinimum",
   "format",
   "items",
+  "maxItems",
+  "maxLength",
+  "maximum",
+  "minItems",
+  "minLength",
+  "minimum",
+  "multipleOf",
+  "not",
+  "oneOf",
+  "pattern",
+  "prefixItems",
   "properties",
+  "readOnly",
   "required",
-  "description",
   "title",
-  "$comment",
+  "type",
+  "uniqueItems",
+  "writeOnly",
 ]);
 
-/** Shape 2b: a pure type definition — every key is a JSON Schema keyword. */
-export function isSchemaOnlyDef(value: unknown): value is JxStateObject {
+/** The keywords of {@link SCHEMA_KEYWORDS} that only describe a schema and assert nothing. */
+export const SCHEMA_ANNOTATIONS: ReadonlySet<string> = new Set([
+  "$comment",
+  "deprecated",
+  "description",
+  "examples",
+  "format",
+  "readOnly",
+  "title",
+  "writeOnly",
+]);
+
+/**
+ * Shape 2b (spec.md §5.7): a pure type definition. A state object with no `default`, `$prototype`
+ * or `$expression` whose every key is a JSON Schema keyword, at least one of them not an
+ * annotation, declares the entry and holds no value. `{ "type": "string" }` is one; `{}`, `{
+ * "description": "x" }` and `{ "type": "admin", "name": "x" }` are values.
+ */
+export function isPureTypeDef(value: unknown): value is JxStateObject {
   if (!isJsonObject(value)) {
     return false;
   }
-  for (const k of Object.keys(value)) {
+  const keys = Object.keys(value);
+  if (keys.length === 0 || "default" in value || "$prototype" in value || "$expression" in value) {
+    return false;
+  }
+  let assertion = false;
+  for (const k of keys) {
     if (!SCHEMA_KEYWORDS.has(k)) {
       return false;
     }
-  }
-  return true;
-}
-
-/** True when an object carries at least one JSON Schema keyword. */
-export function hasSchemaKeywords(value: unknown): value is JxStateObject {
-  if (!isJsonObject(value)) {
-    return false;
-  }
-  for (const k of Object.keys(value)) {
-    if (SCHEMA_KEYWORDS.has(k)) {
-      return true;
+    if (!SCHEMA_ANNOTATIONS.has(k)) {
+      assertion = true;
     }
   }
-  return false;
+  return assertion;
 }
 
 // ─── Document structure guards ──────────────────────────────────────────────────

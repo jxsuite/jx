@@ -14,6 +14,8 @@
  * Values (API keys included) are stored in plaintext — the same trust level as the localStorage
  * store this replaces — so the file is written owner-only (0600) on POSIX. See `user-store.ts` for
  * why that needs a fresh inode rather than `writeFile`'s `mode`.
+ *
+ * @docs studio/desktop
  */
 
 import { watch } from "node:fs";
@@ -35,9 +37,10 @@ export async function readSettings(): Promise<Record<string, string>> {
 /**
  * Apply `patch` to the stored settings and return the result.
  *
- * The read and the write happen under one lock, so two concurrent patches compose instead of one
- * overwriting the other. The resulting map is returned so a caller can broadcast it without a
- * second read that might see a third writer's work.
+ * The read and the write happen under one lock that spans processes (a lockfile beside the store),
+ * so two concurrent patches compose instead of one overwriting the other. The resulting map is
+ * returned so a caller can broadcast it without a second read that might see a third writer's
+ * work.
  */
 export async function patchSettings(patch: KeyValuePatch): Promise<Record<string, string>> {
   const file = await migrateLegacyStore(STORE_NAME);

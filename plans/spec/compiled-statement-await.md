@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - spec.md#20.2
-requires:
-  - spec/compiled-element-parameterised-bodies
+requires: []
 workspaces:
   - packages/runtime
   - packages/compiler
@@ -37,7 +36,7 @@ None of these is `async`, and `compileStatements` emits `expr;` for every expres
 
 **The corpus** (every tracked `*.json`, schemas excluded) has 734 structured bodies with 725 expression statements: 676 `call`, 48 `=`, 1 `+=`. No assignment captures a `call`. No `dispatchEvent` follows a `call`. Of 95 `stopPropagation`/`preventDefault` statements, 7 follow a `call` in the same list: Studio's `block-action-bar.json`, `commandbar.json` and `rail.json` keydown bodies. All 7 call synchronous host actions (`leaveBar`, `applyLink`, `closeLink`, `openStudioMenu`, `openSettings`), inside a `$switch` case, so they run synchronously today. No body calls a structured entry of its own document.
 
-**Requires `plan:spec/compiled-element-parameterised-bodies` (§20.3).** That plan adds `emitStatementsFn` to `shared.ts`, the one emitter of a structured callable for both compiled targets, declaring `_args` and `const e = null;` (which closes Context 4), and its integration contract says "a plan making compiled bodies `async` changes it and nothing else". This plan does exactly that, rather than adding a second callable emitter beside it. The prerequisite's own text anticipates this order: its compiled callable "stays synchronous", and "aligning the two is `async`, which is §20.2's work".
+**Builds on the landed §20.3 callable lowering.** That work added `emitStatementsFn` to `shared.ts`, the one emitter of a structured callable for both compiled targets, declaring `_args` and `const e = null;` (which closes Context 4), and its integration contract says "a plan making compiled bodies `async` changes it and nothing else". This plan does exactly that, rather than adding a second callable emitter beside it. The prerequisite's own text anticipates this order: its compiled callable "stays synchronous", and "aligning the two is `async`, which is §20.2's work".
 
 **Related, no edge.**
 

@@ -20,15 +20,28 @@
  * So: write to a sibling temp file, `chmod` the fresh inode, `rename` into place (atomic within a
  * directory), and serialize everything touching one path behind a per-path promise chain.
  *
- * The mutex is per PROCESS, which is the honest limit: it makes concurrent writes from one backend
- * safe, and the atomic rename is what keeps a write from a second process from producing a torn
- * file rather than merely a lost update.
+ * Two layers keep writers apart. A promise chain orders this process's own writers (first in, first
+ * out, never contending with themselves), and an exclusive lockfile `<store>.lock` beside the store
+ * excludes every other process (a development checkout running beside an installed application,
+ * against one configuration directory) for the length of the read and the write. The atomic rename
+ * still keeps a reader from seeing a torn file.
+ *
+ * A lock whose holder's process is gone, or which is older than any write takes, is broken rather
+ * than waited on; a writer that still cannot take the lock within the wait bound rejects with
+ * {@link StoreLockTimeoutError} and never writes unlocked. Breaking and releasing share one
+ * compare-and-remove (rename aside, compare, link back if it was someone else's). What remains is a
+ * third writer creating the lock inside that restore window, which needs a dead or stalled holder
+ * and two contenders within microseconds, and a holder that stalls past the stale bound and then
+ * finishes its write.
+ *
+ * @docs studio/desktop
  */
 
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { chmod, link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
+import { isProcessAlive } from "../process-liveness";
 import type { RecentProjectEntry } from "../shared/rpc-schema";
 
 /**
@@ -43,15 +56,146 @@ let writeSeq = 0;
 /** One promise chain per path, so two writers to one file never interleave. */
 const chains = new Map<string, Promise<unknown>>();
 
+/** How long a lock may stand before it is broken, and how long a waiter waits before giving up. */
+export interface LockTiming {
+  staleMs: number;
+  waitMs: number;
+}
+
+const LOCK_TIMING: LockTiming = { staleMs: 10_000, waitMs: 15_000 };
+
+/** A write could not take the store's lockfile within the wait bound, so it did not happen. */
+export class StoreLockTimeoutError extends Error {
+  readonly file: string;
+  readonly holder: number | null;
+
+  constructor(file: string, holder: number | null) {
+    super(
+      `${basename(file)} is held by another Jx Studio window${
+        holder === null ? "" : ` (pid ${holder})`
+      }; the change was not saved.`,
+    );
+    this.name = "StoreLockTimeoutError";
+    this.file = file;
+    this.holder = holder;
+  }
+}
+
+interface Holder {
+  raw: string;
+  pid: number | null;
+  ageMs: number;
+}
+
+/** Read a lockfile's content and age; `null` when it cannot be read. */
+async function readHolder(lock: string): Promise<Holder | null> {
+  try {
+    const [raw, info] = await Promise.all([readFile(lock, "utf8"), stat(lock)]);
+    const parsed = Math.trunc(Number(raw.split(" ")[0]));
+    return {
+      ageMs: Date.now() - info.mtimeMs,
+      pid: Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null,
+      raw,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Run `work` with exclusive access to `file`, relative to every other caller in this process.
+ * Remove `lock` only when it still holds `expected`: rename it aside (the one atomic take a
+ * filesystem offers), compare, and link it back when it is someone else's. Never throws.
+ *
+ * @returns `true` when the path is free afterwards.
+ */
+async function removeLockIfHeldBy(lock: string, expected: string): Promise<boolean> {
+  writeSeq += 1;
+  const aside = `${lock}.${process.pid}.${writeSeq}.stale`;
+  try {
+    await rename(lock, aside);
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "ENOENT";
+  }
+  let mine = false;
+  try {
+    mine = (await readFile(aside, "utf8")) === expected;
+  } catch {
+    // Unreadable: treat as someone else's and restore it.
+  }
+  if (!mine) {
+    try {
+      await link(aside, lock);
+    } catch {
+      // EEXIST: a third writer took the lock inside the restore window (see the header).
+    }
+  }
+  try {
+    await rm(aside, { force: true });
+  } catch {
+    // A leftover aside name is harmless.
+  }
+  return mine;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Run `work` holding the exclusive lockfile `<file>.lock`, across processes.
+ *
+ * @throws {StoreLockTimeoutError} When the lock stays held past `timing.waitMs`.
+ */
+export async function withFileLock<T>(
+  file: string,
+  work: () => Promise<T>,
+  timing: LockTiming = LOCK_TIMING,
+): Promise<T> {
+  await mkdir(dirname(file), { recursive: true });
+  const lock = `${file}.lock`;
+  const token = `${process.pid} ${crypto.randomUUID()}`;
+  const deadline = Date.now() + timing.waitMs;
+  for (;;) {
+    try {
+      await writeFile(lock, token, { flag: "wx", mode: 0o600 });
+      break;
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) {
+        throw error;
+      }
+    }
+    const holder = await readHolder(lock);
+    const abandoned =
+      holder !== null &&
+      (holder.ageMs > timing.staleMs || (holder.pid !== null && !isProcessAlive(holder.pid)));
+    if (abandoned && (await removeLockIfHeldBy(lock, holder.raw))) {
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      throw new StoreLockTimeoutError(file, holder?.pid ?? null);
+    }
+    await sleep(5 + Math.random() * 20);
+  }
+  try {
+    return await work();
+  } finally {
+    await removeLockIfHeldBy(lock, token);
+  }
+}
+
+/**
+ * Run `work` with exclusive access to `file`: first in this process's chain, then across processes
+ * by lockfile.
  *
  * Failures do not poison the chain: the link is always resolved by the time the next one starts, so
  * one rejected write cannot strand every write behind it.
  */
 function withStoreLock<T>(file: string, work: () => Promise<T>): Promise<T> {
+  const locked = () => withFileLock(file, work);
   const previous = chains.get(file) ?? Promise.resolve();
-  const next = previous.then(work, work);
+  const next = previous.then(locked, locked);
   chains.set(
     file,
     next.catch(() => {}),
@@ -112,7 +256,6 @@ export async function readJsonStore<T>(
  * lock across both halves.
  */
 async function writeAtomically(file: string, value: StoreDocument): Promise<void> {
-  await mkdir(dirname(file), { recursive: true });
   writeSeq += 1;
   const temp = `${file}.${process.pid}.${writeSeq}.tmp`;
   await writeFile(temp, JSON.stringify(value, null, 2), { encoding: "utf8", mode: 0o600 });
