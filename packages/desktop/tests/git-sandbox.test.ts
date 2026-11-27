@@ -75,6 +75,16 @@ describe("git in the sandboxed build keeps HTTPS remotes only", () => {
     await expect(ops.gitFetch()).rejects.not.toThrow(/HTTPS only/);
   });
 
+  test("a branch whose remote does not exist is left for git to answer", async () => {
+    const branch = Bun.spawnSync(["git", "branch", "--show-current"], { cwd: root })
+      .stdout.toString()
+      .trim();
+    run("config", `branch.${branch}.remote`, "missing");
+    const ops = createGitOps(session(), { httpsOnly: true });
+    await expect(ops.gitFetch()).rejects.not.toThrow(/HTTPS only/);
+    run("config", `branch.${branch}.remote`, "web");
+  });
+
   test("the ordinary build adds an SSH remote", async () => {
     const ops = createGitOps(session(), { httpsOnly: false });
     await ops.gitAddRemote({ name: "ssh2", url: "git@github.com:a/c.git" });
