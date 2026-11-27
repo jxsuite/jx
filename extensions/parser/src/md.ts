@@ -23,7 +23,7 @@ import { DEFAULT_FORMAT_LOCALE } from "@jxsuite/schema/intl";
 import { basename, extname, relative, resolve } from "node:path";
 import { globSync } from "glob";
 import { normalizeAlerts, transformAlerts } from "./alerts.ts";
-import { assignHeadingIds, mdastNodeToJx } from "./transpile.ts";
+import { assignHeadingIds, mdastRootToJx } from "./transpile.ts";
 import { highlightCodeBlocks } from "./highlight.ts";
 import { makeTemplatesInert } from "./inert.ts";
 import type {
@@ -34,7 +34,7 @@ import type {
   UnifiedProcessor,
 } from "./types.ts";
 import { isFunction } from "@jxsuite/schema/guards";
-import type { ContentFieldValue, JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
+import type { ContentFieldValue, JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 // ─── Tree utilities (inline to avoid Bun ESM resolution issues with unist-util-*) ──
 
@@ -304,20 +304,7 @@ export function processMarkdown(
   const excerpt = extractExcerpt(tree);
   const slug = deriveSlug(filePath, config.sourceRoot);
 
-  const bodyNodes = (tree.children ?? []).filter(
-    (n: MdastNode) => n.type !== "yaml" && n.type !== "toml",
-  );
-  /*
-   * SAFETY: `filter(Boolean)` drops the nulls (and empty text), and what remains is an element, a
-   * string, or the node array a raw HTML block converts to, kept nested as one element. `$children`
-   * is declared flat, and every walk over it handles that nested array: highlightCodeBlocks and
-   * assignHeadingIds skip it (it has no `tagName` or `children`), while makeTemplatesInert and the
-   * content loader's link and asset passes descend into it as `ContentNodes`.
-   */
-  const $children = bodyNodes.map((n: MdastNode) => mdastNodeToJx(n)).filter(Boolean) as (
-    | JxElement
-    | string
-  )[];
+  const $children = mdastRootToJx(tree);
 
   // Build-time syntax highlighting: fence text becomes dual-theme token spans in place.
   highlightCodeBlocks($children);
@@ -481,6 +468,7 @@ export {
   isJxMarkdown,
   transpileJxMarkdown,
   mdastNodeToJx,
+  mdastRootToJx,
   convertChildren,
   jxKey,
   mdKey,

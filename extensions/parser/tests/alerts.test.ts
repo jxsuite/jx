@@ -124,7 +124,8 @@ describe("nesting", () => {
   it("finds an alert inside a list item", () => {
     const [ul] = render("- item\n  > [!WARNING]\n  > careful\n");
     const li = kids(ul!)[0]!;
-    const alert = kids(li)[1]!;
+    // A tight item holds its text directly, so the alert follows the string.
+    const alert = elements(Array.isArray(li.children) ? li.children.slice(1) : [])[0]!;
     expect(alert.className).toBe("jx-alert jx-alert-warning");
   });
 

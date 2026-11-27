@@ -196,10 +196,10 @@ describe("attributes that carry prose", () => {
 });
 
 describe("a raw HTML block", () => {
-  it("is a nested list of nodes, and its text is made inert too", () => {
+  it("is a flat list of nodes, and its text is made inert too", () => {
     const out = render('<div class="a">\n<b>${y}</b>\n</div>\n');
     expect(hasTemplate(out)).toBe(false);
-    expect(out.some((node) => Array.isArray(node))).toBe(true);
+    expect(out.some((node) => Array.isArray(node))).toBe(false);
     expect(visible(out)).toContain("${y}");
   });
 

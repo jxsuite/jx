@@ -85,6 +85,10 @@ export interface MdastNode {
   lang?: string | null;
   meta?: string | null;
   align?: (string | null)[] | null;
+  identifier?: string;
+  label?: string | null;
+  referenceType?: string;
+  checked?: boolean | null;
 }
 
 /**

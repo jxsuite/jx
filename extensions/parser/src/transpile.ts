@@ -454,6 +454,19 @@ export function mdastNodeToJx(node: MdastNode | null | undefined) {
     return null;
   }
 
+  // A reference `resolveReferences` has not rewritten (a hand-built tree, or a single-node call)
+  // Keeps its text rather than vanishing with it.
+  if (node.type === "linkReference") {
+    return convertChildren(node.children ?? []);
+  }
+  if (node.type === "imageReference") {
+    return node.alt ?? "";
+  }
+
+  if (node.type === "footnoteReference") {
+    return footnoteReferenceToJx(node);
+  }
+
   const tagFn = JX_TAG_MAP.get(node.type);
   if (!tagFn) {
     return null;
@@ -469,11 +482,14 @@ export function mdastNodeToJx(node: MdastNode | null | undefined) {
     case "strong":
     case "delete":
     case "blockquote":
-    case "listItem":
     case "tableRow":
     case "tableCell": {
       setContent(el, convertChildren(node.children ?? []));
       break;
+    }
+
+    case "listItem": {
+      return listItemToJx(node, listItemLoose(node));
     }
 
     case "inlineCode": {
@@ -500,7 +516,15 @@ export function mdastNodeToJx(node: MdastNode | null | undefined) {
 
     case "list": {
       if (node.children && node.children.length > 0) {
-        el.children = convertChildren(node.children);
+        const loose = listLoose(node);
+        el.children = node.children.flatMap<JxElement | string>((item) => {
+          const converted =
+            item.type === "listItem" ? listItemToJx(item, loose) : mdastNodeToJx(item);
+          return converted ?? [];
+        });
+        if (node.children.some((item) => isBoolean(item.checked))) {
+          el.className = "contains-task-list";
+        }
       }
       if (node.start != null && node.start !== 1) {
         el.attributes = { start: String(node.start) };
@@ -524,6 +548,7 @@ export function mdastNodeToJx(node: MdastNode | null | undefined) {
 
     case "table": {
       const rows = convertChildren(node.children ?? []);
+      alignCells(rows, node.align);
       // GFM's first table row is the header row, but mdast does not mark its cells — retag them
       // To <th> so the <thead> carries real column headers (assistive tech relies on this).
       const [headerRow] = rows;
@@ -691,35 +716,8 @@ function directiveToJx(node: MdastNode) {
   }
 
   if (node.children && node.children.length > 0) {
-    const jxChildren: (JxElement | string)[] = [];
-    const isPhrasingParent = PHRASING_ELEMENTS.has(name);
-
-    for (const child of node.children) {
-      if (isPhrasingParent && child.type === "paragraph") {
-        // Unwrap: promote paragraph's inline children directly
-        for (const inline of child.children ?? []) {
-          const converted = mdastNodeToJx(inline);
-          if (converted == null) {
-            continue;
-          }
-          if (Array.isArray(converted)) {
-            jxChildren.push(...converted);
-          } else {
-            jxChildren.push(converted);
-          }
-        }
-      } else {
-        const converted = mdastNodeToJx(child);
-        if (converted == null) {
-          continue;
-        }
-        if (Array.isArray(converted)) {
-          jxChildren.push(...converted);
-        } else {
-          jxChildren.push(converted);
-        }
-      }
-    }
+    const kids = PHRASING_ELEMENTS.has(name) ? unwrapParagraphs(node.children) : node.children;
+    const jxChildren = convertChildren(kids);
 
     // Don't overwrite children if already set as an object by dot-path attributes
     // (e.g. children.prototype="Array" children.items.ref="..."): a descriptor object stays.
@@ -763,7 +761,21 @@ function prototypeDirectiveToJx(node: MdastNode, name: string) {
 }
 
 /**
+ * Splice each paragraph among `nodes` into its inline children, as a phrasing element or a tight
+ * list item holds its text.
+ *
+ * @param {MdastNode[]} nodes
+ * @returns {MdastNode[]}
+ */
+function unwrapParagraphs(nodes: MdastNode[]): MdastNode[] {
+  return nodes.flatMap((child) => (child.type === "paragraph" ? (child.children ?? []) : [child]));
+}
+
+/**
  * Convert an array of mdast children to Jx elements/strings.
+ *
+ * A run holding raw HTML converts as one document (see {@link convertHtmlRun}), so a start tag and
+ * its end tag, which micromark emits as separate `html` nodes, wrap what lies between them.
  *
  * @param {MdastNode[]} [children] - Absent converts to no children
  * @returns {(JxElement | string)[]}
@@ -772,7 +784,350 @@ export function convertChildren(children?: MdastNode[]): (JxElement | string)[] 
   if (!children) {
     return [];
   }
+  if (children.some((n) => n.type === "html" && n.value)) {
+    return convertHtmlRun(children);
+  }
+  return convertEach(children);
+}
+
+/** Convert each node alone, flattening the arrays raw HTML yields and dropping the nulls. */
+function convertEach(children: MdastNode[]): (JxElement | string)[] {
   return children.flatMap<JxElement | string>((n) => mdastNodeToJx(n) ?? []);
+}
+
+const SLOT_TAG = "jx-md-slot";
+
+/**
+ * Convert a sibling run that holds raw HTML. The run is joined into one HTML string, each `html`
+ * value verbatim and every other node as a placeholder element, and parsed once, so the HTML parser
+ * decides nesting and implicit closing. Each placeholder is then replaced by its node's own
+ * conversion. A placeholder the parser did not keep as an element (raw text inside a `textarea`, an
+ * unfinished tag) sends the run back to converting each node alone, so no Markdown is lost.
+ *
+ * @param {MdastNode[]} children
+ * @returns {(JxElement | string)[]}
+ */
+function convertHtmlRun(children: MdastNode[]): (JxElement | string)[] {
+  const slots = new Map<number, (JxElement | string)[]>();
+  let source = "";
+  for (const [index, node] of children.entries()) {
+    if (node.type === "html") {
+      source += node.value ?? "";
+      continue;
+    }
+    const converted = mdastNodeToJx(node);
+    if (converted == null) {
+      continue;
+    }
+    slots.set(index, Array.isArray(converted) ? converted : [converted]);
+    source += `<${SLOT_TAG} data-i="${index}"></${SLOT_TAG}>`;
+  }
+  const found = new Set<number>();
+  const filled = fillSlots(htmlToJx(source), slots, found);
+  return found.size === slots.size ? filled : convertEach(children);
+}
+
+/**
+ * Replace the placeholders among `nodes` with the content they stand for, depth first.
+ *
+ * @param {(JxElement | string)[]} nodes
+ * @param {Map<number, (JxElement | string)[]>} slots
+ * @param {Set<number>} found - Receives the index of every placeholder met
+ * @returns {(JxElement | string)[]}
+ */
+function fillSlots(
+  nodes: (JxElement | string)[],
+  slots: Map<number, (JxElement | string)[]>,
+  found: Set<number>,
+): (JxElement | string)[] {
+  const out: (JxElement | string)[] = [];
+  for (const node of nodes) {
+    if (isString(node)) {
+      out.push(node);
+    } else if (node.tagName === SLOT_TAG) {
+      const index = Number(node.attributes?.["data-i"]);
+      found.add(index);
+      out.push(...(slots.get(index) ?? []));
+    } else {
+      if (Array.isArray(node.children)) {
+        const kids = fillSlots(node.children, slots, found);
+        delete node.children;
+        setContent(node, kids);
+      }
+      out.push(node);
+    }
+  }
+  return out;
+}
+
+// ─── References, footnotes, lists ───────────────────────────────────────────
+
+/** What `resolveReferences` records on a footnote reference it numbered. */
+interface FootnoteMark {
+  id: string;
+  ordinal: number;
+  refId: string;
+}
+
+/** A footnote definition and the reference ids that cite it, in document order. */
+interface FootnoteNote {
+  id: string;
+  definition: MdastNode;
+  refIds: string[];
+}
+
+/** The numbered mark of a footnote reference, or `undefined` when it was never resolved. */
+function footnoteMark(node: MdastNode): FootnoteMark | undefined {
+  const { data } = node;
+  if (isNonNullObject(data) && "jxFootnote" in data) {
+    // SAFETY: `resolveReferences` is the only writer of `jxFootnote`, and it stores a FootnoteMark.
+    return data.jxFootnote as FootnoteMark;
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the tree's references in place, before conversion (CommonMark's link reference
+ * definitions, GFM footnotes).
+ *
+ * `definition` nodes are collected by `identifier`, which mdast has already case-folded and
+ * whitespace-normalized, and the first one wins. Each `linkReference` or `imageReference` is
+ * rewritten to the `link` or `image` it denotes. Each `footnoteReference` that has a definition is
+ * numbered in document order and marked.
+ *
+ * @param {MdastNode} tree - Mutated in place
+ * @returns {FootnoteNote[]} The notes to render: referenced ones by ordinal, then the unreferenced
+ *   ones in source order
+ */
+export function resolveReferences(tree: MdastNode): FootnoteNote[] {
+  const definitions = new Map<string, MdastNode>();
+  const notes = new Map<string, FootnoteNote>();
+
+  const collect = (node: MdastNode) => {
+    const id = node.identifier ?? "";
+    if (node.type === "definition" && !definitions.has(id)) {
+      definitions.set(id, node);
+    } else if (node.type === "footnoteDefinition" && !notes.has(id)) {
+      notes.set(id, { definition: node, id: encodeURIComponent(id), refIds: [] });
+    }
+    for (const child of node.children ?? []) {
+      collect(child);
+    }
+  };
+  collect(tree);
+
+  const ordinals: FootnoteNote[] = [];
+  const rewrite = (node: MdastNode) => {
+    const id = node.identifier ?? "";
+    const target = definitions.get(id);
+    if (node.type === "linkReference" && target) {
+      node.type = "link";
+      node.url = target.url ?? "";
+      node.title = target.title ?? null;
+    } else if (node.type === "imageReference" && target) {
+      node.type = "image";
+      node.url = target.url ?? "";
+      node.title = target.title ?? null;
+    } else if (node.type === "footnoteReference") {
+      const note = notes.get(id);
+      if (note) {
+        if (note.refIds.length === 0) {
+          ordinals.push(note);
+        }
+        const repeat = note.refIds.length;
+        const refId = repeat === 0 ? `fnref-${note.id}` : `fnref-${note.id}-${repeat + 1}`;
+        note.refIds.push(refId);
+        const mark: FootnoteMark = { id: note.id, ordinal: ordinals.indexOf(note) + 1, refId };
+        const data = isNonNullObject(node.data) ? { ...node.data } : {};
+        node.data = { ...data, jxFootnote: mark };
+      }
+    }
+    for (const child of node.children ?? []) {
+      rewrite(child);
+    }
+  };
+  rewrite(tree);
+
+  return [...ordinals, ...[...notes.values()].filter((note) => note.refIds.length === 0)];
+}
+
+/**
+ * A footnote reference as `sup > a`, or its literal `[^label]` text when no definition numbered it.
+ *
+ * @param {MdastNode} node
+ * @returns {JxElement | string}
+ */
+function footnoteReferenceToJx(node: MdastNode): JxElement | string {
+  const mark = footnoteMark(node);
+  if (!mark) {
+    return `[^${node.label ?? node.identifier ?? ""}]`;
+  }
+  return {
+    children: [
+      {
+        attributes: {
+          "data-footnote-ref": "",
+          href: `#fn-${mark.id}`,
+          role: "doc-noteref",
+        },
+        id: mark.refId,
+        tagName: "a",
+        textContent: String(mark.ordinal),
+      },
+    ],
+    tagName: "sup",
+  };
+}
+
+/** Put `nodes` at the end of a paragraph's content, after one space. */
+function appendToParagraph(p: JxElement, nodes: (JxElement | string)[]) {
+  const kids: (JxElement | string)[] = isString(p.textContent)
+    ? [p.textContent]
+    : Array.isArray(p.children)
+      ? [...p.children]
+      : [];
+  const last = kids.at(-1);
+  if (isString(last)) {
+    kids[kids.length - 1] = `${last} `;
+  } else {
+    kids.push(" ");
+  }
+  delete p.textContent;
+  p.children = [...kids, ...nodes];
+}
+
+/**
+ * The trailing `section.footnotes` for the notes `resolveReferences` returned.
+ *
+ * @param {FootnoteNote[]} notes
+ * @returns {JxElement}
+ */
+function footnoteSection(notes: FootnoteNote[]): JxElement {
+  const items = notes.map((note): JxElement => {
+    const content = convertChildren(note.definition.children ?? []);
+    const backlinks: (JxElement | string)[] = [];
+    for (const refId of note.refIds) {
+      if (backlinks.length > 0) {
+        backlinks.push(" ");
+      }
+      backlinks.push({
+        attributes: {
+          "data-footnote-backref": "",
+          href: `#${refId}`,
+          role: "doc-backlink",
+        },
+        tagName: "a",
+        textContent: "↩",
+      });
+    }
+    if (backlinks.length > 0) {
+      const last = content.at(-1);
+      if (isNonNullObject(last) && last.tagName === "p") {
+        appendToParagraph(last, backlinks);
+      } else {
+        content.push(...backlinks);
+      }
+    }
+    const li: JxElement = { id: `fn-${note.id}`, tagName: "li" };
+    setContent(li, content);
+    return li;
+  });
+  return {
+    attributes: { "data-footnotes": "", role: "doc-endnotes" },
+    children: [{ children: items, tagName: "ol" }],
+    className: "footnotes",
+    tagName: "section",
+  };
+}
+
+/** `listItem.spread`, or whether the item holds more than one block when the parser left it unset. */
+function listItemLoose(item: MdastNode): boolean {
+  return item.spread ?? (item.children ?? []).length > 1;
+}
+
+/** Whether a list renders loose: the list or any of its items is spread (`mdast-util-to-hast`). */
+function listLoose(list: MdastNode): boolean {
+  return list.spread === true || (list.children ?? []).some((item) => listItemLoose(item));
+}
+
+/**
+ * A list item as `li`. A tight item holds its text directly; a loose one keeps each paragraph. A
+ * task item gets its class and a leading disabled checkbox.
+ *
+ * @param {MdastNode} node
+ * @param {boolean} loose
+ * @returns {JxElement}
+ */
+function listItemToJx(node: MdastNode, loose: boolean): JxElement {
+  const el: JxElement = { tagName: "li" };
+  const kids = node.children ?? [];
+  const content = convertChildren(loose ? kids : unwrapParagraphs(kids));
+  if (isBoolean(node.checked)) {
+    el.className = "task-list-item";
+    const checkbox: JxElement = {
+      attributes: node.checked
+        ? { checked: "", disabled: "", type: "checkbox" }
+        : { disabled: "", type: "checkbox" },
+      tagName: "input",
+    };
+    const [first] = content;
+    if (loose && isNonNullObject(first) && first.tagName === "p") {
+      const inner: (JxElement | string)[] = isString(first.textContent)
+        ? [first.textContent]
+        : Array.isArray(first.children)
+          ? first.children
+          : [];
+      delete first.textContent;
+      first.children = [checkbox, ...inner];
+    } else {
+      content.unshift(checkbox);
+    }
+  }
+  setContent(el, content);
+  return el;
+}
+
+/**
+ * Set `style.textAlign` on every cell of an aligned column.
+ *
+ * @param {(JxElement | string)[]} rows - Converted table rows
+ * @param {(string | null)[] | null | undefined} align - `table.align`
+ */
+function alignCells(rows: (JxElement | string)[], align: (string | null)[] | null | undefined) {
+  if (!align) {
+    return;
+  }
+  for (const row of rows) {
+    if (!isNonNullObject(row) || !Array.isArray(row.children)) {
+      continue;
+    }
+    for (const [column, cell] of row.children.entries()) {
+      const value = align[column];
+      if (isNonNullObject(cell) && value) {
+        const style = isNonNullObject(cell.style) ? { ...cell.style } : {};
+        style.textAlign = value;
+        cell.style = style;
+      }
+    }
+  }
+}
+
+/**
+ * Convert a parsed tree's body: the one conversion `transpileJxMarkdown` and `processMarkdown`
+ * share. Frontmatter is dropped, references and footnotes are resolved, and the footnote
+ * definitions become one trailing `section`.
+ *
+ * @param {MdastNode} tree - The root; rewritten in place, so give it a fresh parse
+ * @returns {(JxElement | string)[]}
+ */
+export function mdastRootToJx(tree: MdastNode): (JxElement | string)[] {
+  const notes = resolveReferences(tree);
+  const body = (tree.children ?? []).filter((n) => n.type !== "yaml" && n.type !== "toml");
+  const children = convertChildren(body);
+  if (notes.length > 0) {
+    children.push(footnoteSection(notes));
+  }
+  return children;
 }
 
 /**
@@ -813,21 +1168,7 @@ export function transpileJxMarkdown(source: string) {
     }
   }
 
-  const bodyNodes = tree.children!.filter((n) => n.type !== "yaml" && n.type !== "toml");
-
-  const children: (JxElement | string)[] = [];
-
-  for (const node of bodyNodes) {
-    const converted = mdastNodeToJx(node);
-    if (converted == null) {
-      continue;
-    }
-    if (Array.isArray(converted)) {
-      children.push(...converted);
-    } else {
-      children.push(converted);
-    }
-  }
+  const children = mdastRootToJx(tree);
 
   if (children.length > 0) {
     doc.children = children;
