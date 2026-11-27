@@ -30,6 +30,8 @@ import {
   isClassJsonSrc,
   isComponentFullyStatic,
   isDynamic,
+  isLiteralNode,
+  markLiteral,
   isRefObject,
   isPureTypeDef,
   isTemplateString,
@@ -2468,6 +2470,50 @@ describe("external class predicates and config", () => {
       { binding: "_JxClass1", config: {}, key: "c", name: "Session" },
     ]);
     expect(collectClientClasses({ n: 1 })).toEqual({ entries: [], imports: [] });
+  });
+});
+
+describe("markLiteral (spec.md §8.4)", () => {
+  test("an element is marked and a copy is returned", () => {
+    const source: JxElement = { children: [{ tagName: "b", textContent: "x" }], tagName: "p" };
+    const marked = markLiteral([source]);
+    expect(isLiteralNode(marked[0])).toBe(true);
+    expect(JSON.stringify(marked)).toBe(
+      '[{"children":[{"tagName":"b","textContent":"x","$literal":true}],"tagName":"p","$literal":true}]',
+    );
+    expect(marked[0]).not.toBe(source);
+    expect(isLiteralNode(source)).toBe(false);
+    expect(isLiteralNode("p")).toBe(false);
+  });
+
+  test("a string with a template is split so no part holds one", () => {
+    const parts = markLiteral(["a ${b} ${c}"]);
+    expect(parts).toEqual(["a $", "{b} $", "{c}"]);
+    expect(parts.join("")).toBe("a ${b} ${c}");
+    expect(parts.some((p) => isTemplateString(p))).toBe(false);
+  });
+
+  test("a string without one is unchanged", () => {
+    expect(markLiteral(["plain", "$ {"])).toEqual(["plain", "$ {"]);
+  });
+
+  test("a literal node is never dynamic", () => {
+    expect(isDynamic({ $literal: true, textContent: "${state.x}" })).toBe(false);
+  });
+
+  test("renderStaticNode renders a literal node's template text as written", () => {
+    const node: JxElement = {
+      $literal: true,
+      attributes: { title: "${state.x}" },
+      style: { color: "${state.x}" },
+      tagName: "p",
+      textContent: "a ${state.x}",
+    };
+    expect(renderStaticNode(node, { x: "v" })).toBe(
+      '<p style="color: ${state.x}" title="${state.x}">a ${state.x}</p>',
+    );
+    const inner: JxElement = { $literal: true, innerHTML: "<i>${state.x}</i>", tagName: "p" };
+    expect(renderStaticNode(inner, { x: "v" })).toBe("<p><i>${state.x}</i></p>");
   });
 });
 
