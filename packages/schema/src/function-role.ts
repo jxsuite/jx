@@ -51,6 +51,9 @@ function collectCallableKeys(doc: JxElement): Set<string> {
   const visit = (node: JsonValue | undefined): void => {
     if (isString(node)) {
       // `${state.formatDate(d)}` in a template, or `state.helper(x)` in another function's body.
+      if (!node.includes("state.")) {
+        return;
+      }
       for (const call of node.matchAll(/\bstate\.([A-Za-z_$][\w$]*)\s*\(/gu)) {
         /* SAFETY: the pattern's one capture group is not optional, so every match fills index 1
            with the called member's name. */
@@ -83,10 +86,11 @@ function collectCallableKeys(doc: JxElement): Set<string> {
         }
       }
     }
-    for (const [key, value] of Object.entries(node)) {
+    for (const key in node) {
       if (key === "$defs") {
         continue;
       }
+      const value = node[key];
       if (key.startsWith("on") && isRef(value)) {
         addStateRef(value.$ref);
       }
