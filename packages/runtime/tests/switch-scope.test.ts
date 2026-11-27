@@ -333,4 +333,40 @@ describe("$switch — an external case is a component boundary", () => {
     expect(counts()).toEqual({ mount: 0, unmount: 0 });
     expect(host.querySelector("section")!.textContent).toBe("L");
   });
+
+  test("a case whose key moves on while its $elements register renders and mounts nothing", async () => {
+    const tag = "sw-case-slow-register";
+    let release: (doc: JxDocument) => void = () => null;
+    const widget = new Promise<JxDocument>((resolve) => {
+      release = resolve;
+    });
+    const state = reactive({ view: "remote" });
+    await mount(
+      switchDoc({ remote: { $ref: "./remote.json" }, local: { tagName: "p", textContent: "L" } }),
+      host,
+      {
+        scope: state,
+        base: BASE,
+        resolver: (url) => {
+          if (url === `${BASE}remote.json`) {
+            return hookDoc({
+              $elements: [{ $ref: "./widget.json" }],
+              children: [{ tagName: tag }],
+            });
+          }
+          return url === `${BASE}widget.json` ? widget : undefined;
+        },
+      },
+    );
+    await tick();
+    // The case document has loaded and is waiting on its element; the key moves on now.
+    state.view = "local";
+    await tick();
+    release({ tagName: tag, textContent: "WIDGET-CONTENT" });
+    await tick();
+    await tick();
+    await tick();
+    expect(host.querySelector("section")!.textContent).toBe("L");
+    expect(counts()).toEqual({ mount: 0, unmount: 0 });
+  });
 });
