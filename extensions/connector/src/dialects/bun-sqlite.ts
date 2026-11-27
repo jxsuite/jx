@@ -138,6 +138,9 @@ function createDriver(config: BunSqliteDialectConfig): Driver {
     },
     init: async () => {
       ({ db, owned } = await openDatabase(config));
+      /* Bun:sqlite opens with foreign keys off; D1 and Postgres enforce them, and this database
+         stands in for D1, so a dangling reference must be refused here as it is there. */
+      db.prepare("pragma foreign_keys = on").run();
     },
     releaseConnection: async () => {
       // Single-connection driver — nothing to release.
