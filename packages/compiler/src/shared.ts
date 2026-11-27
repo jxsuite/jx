@@ -758,6 +758,14 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
     }
   }
 
+  if (isNonNullObject(def.$props)) {
+    for (const [key, val] of Object.entries(def.$props)) {
+      if (!key.startsWith("#") && (isRef(val) || isTemplateString(val))) {
+        return true;
+      }
+    }
+  }
+
   if (isNonNullObject(def.style)) {
     for (const val of Object.values(def.style)) {
       if (isTemplateString(val)) {
@@ -1500,29 +1508,68 @@ function readsRuntimeOnlyState(str: string, scope: JxScope | null) {
   if (!scope) {
     return false;
   }
-  const runtimeOnly = runtimeOnlyKeysOf(scope);
   for (const match of str.matchAll(/\bstate\.([A-Za-z_$][\w$]*)\s*(\()?/g)) {
     if (match[2]) {
       continue;
     }
     // SAFETY: capture group 1 is outside any optional part of the pattern, so a match has it.
     const key = match[1] as string;
-    if (runtimeOnly?.has(key)) {
-      return true;
-    }
-    // Reading the key can run a computed's getter, which is free to throw on partial build-time
-    // Data. A throw says nothing about whether the entry is runtime-only, so it is not a mark.
-    let value: JxScope[string];
-    try {
-      value = scope[key];
-    } catch {
-      continue;
-    }
-    if (isFunction(value)) {
+    if (isRuntimeOnlyKey(scope, key)) {
       return true;
     }
   }
   return false;
+}
+
+/**
+ * Whether one state key holds no build-time value: it carries a runtime-only mark, or reading it
+ * yields a function (a placeholder for a bodyless `$src`, or a handler).
+ *
+ * @param {JxScope} scope
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isRuntimeOnlyKey(scope: JxScope, key: string): boolean {
+  if (runtimeOnlyKeysOf(scope)?.has(key)) {
+    return true;
+  }
+  // Reading the key can run a computed's getter, which is free to throw on partial build-time
+  // Data. A throw says nothing about whether the entry is runtime-only, so it is not a mark.
+  let value: JxScope[string];
+  try {
+    value = scope[key];
+  } catch {
+    return false;
+  }
+  return isFunction(value);
+}
+
+/**
+ * Whether a `$ref` reads state the build cannot settle (compiler.md §8.1): `window#/` and
+ * `document#/` have no build-time value, a `$map/` pointer is a row value, and a state pointer
+ * (`#/state/`, `parent#/` or a bare path) is judged by its head entry.
+ *
+ * @param {string} ref
+ * @param {JxScope | null} scope
+ * @returns {boolean}
+ */
+export function refReadsRuntimeOnlyState(ref: string, scope: JxScope | null): boolean {
+  if (ref.startsWith("window#/") || ref.startsWith("document#/")) {
+    return true;
+  }
+  if (ref.startsWith("$map/") || !scope) {
+    return false;
+  }
+  let path = ref;
+  if (ref.startsWith("#/state/")) {
+    path = ref.slice("#/state/".length);
+  } else if (ref.startsWith("parent#/")) {
+    path = ref.slice("parent#/".length);
+  } else if (ref.includes("#/")) {
+    return false;
+  }
+  const [head] = refSegments(path);
+  return head !== undefined && head !== "" && isRuntimeOnlyKey(scope, head);
 }
 
 /**
