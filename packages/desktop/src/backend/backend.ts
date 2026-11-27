@@ -10,6 +10,7 @@
  */
 import { isAbsolute, resolve } from "node:path";
 import type { ImportApiOptions } from "@jxsuite/server/import-api";
+import { bootProbeFromEnv } from "../boot-probe";
 import { appInfo } from "./app-info";
 import { findChromium } from "./import-browser";
 import type { BackendMessage, ShellMessage } from "../shared/protocol";
@@ -63,7 +64,8 @@ export function startBackend(io: BackendIo): WindowHub {
   /* The site import's headless browser: puppeteer cannot open a page in Electron, which answers
      `Target.createTarget` with "Not supported", so an installed Chromium or Chrome does it. */
   const importApi = importOptions((io.findBrowser ?? findChromium)(io.env));
-  const options: WindowHubOptions = { appInfo, importApi, send: io.send, studioDir };
+  const bootProbe = bootProbeFromEnv(io.env, "electron", () => io.send({ type: "quit" }));
+  const options: WindowHubOptions = { appInfo, bootProbe, importApi, send: io.send, studioDir };
   if (io.trust) {
     options.trust = io.trust;
   }

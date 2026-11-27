@@ -122,7 +122,7 @@ The wire shapes the interface exchanges (`DirEntry`, `ComponentMeta`, `GitStatus
 
 ### 3.3 Registration
 
-> **Status: Partial.** Registration and all three rules below ship: `registerPlatform` in `packages/studio/src/platform.ts`, the launcher signal in `packages/desktop/src/webview/boot.ts`, the build's refusal in `packages/desktop/scripts/pre-build-rpc.ts`, and `resolveDefaultPlatform` with `PlatformUnavailableError` in `packages/studio/src/platforms/default-platform.ts`. The packaged BACKEND is started and exercised in CI (`bun run smoke`, §7.2), but nothing boots a packaged WINDOW on any OS to observe the desktop adapter register.
+> **Status: Partial.** Registration and all three rules below ship: `registerPlatform` in `packages/studio/src/platform.ts`, the launcher signal in `packages/desktop/src/webview/boot.ts`, the build's refusal in `packages/desktop/scripts/pre-build-rpc.ts`, and `resolveDefaultPlatform` with `PlatformUnavailableError` in `packages/studio/src/platforms/default-platform.ts`. The packaged BACKEND is started and exercised in CI (`bun run smoke`, §7.2), and a launcher started with `JX_STUDIO_BOOT_PROBE` set to a path reports the requests its window's adapter sends (`packages/desktop/src/boot-probe.ts`, run by `bun run --cwd packages/desktop boot-probe electron`), but no CI job boots a packaged WINDOW on any OS yet to observe the desktop adapter register.
 
 Registration lives in `packages/studio/src/platform.ts` and stores the adapter on `globalThis.__jxPlatform` — a global rather than a module-level variable, so a separate init bundle (e.g. the desktop `init.js`) can register the platform **before** the studio bundle loads, without needing to share module instances with it:
 
