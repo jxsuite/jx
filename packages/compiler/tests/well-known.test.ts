@@ -176,6 +176,16 @@ describe("buildSecurityTxt", () => {
     );
     expect(errors[0]).toContain("en_US");
   });
+
+  test("a padded preferred language is a build error that names the whitespace", () => {
+    const { errors, files } = buildSecurityTxt(
+      project({ securityTxt: { ...valid, preferredLanguages: ["en "] } }),
+      NOW,
+    );
+    expect(files).toEqual([]);
+    expect(errors[0]).toContain("securityTxt.preferredLanguages");
+    expect(errors[0]).toContain("whitespace");
+  });
 });
 
 describe("writeWellKnown", () => {

@@ -3,8 +3,7 @@ status: drafted
 disposition: reconcile
 claims:
   - schema.md#3.2
-requires:
-  - schema/build-schema-agreement
+requires: []
 workspaces:
   - packages/schema
   - scripts
@@ -21,7 +20,7 @@ size: S
 
 > **Status: Partial.** The top-level keys of `projectConfigSchema` (`packages/schema/defs/project-config.schema.ts`) are described and the three language-tag keys carry `LANGUAGE_TAG_PATTERN`, but the list below names a `collections` key the core schema does not declare (content collections are the parser extension's `content` section, `extensions/parser/schemas/project.fragment.schema.json`) and omits the declared `$defs`, `$schema`, `extensions`, `manifest`, `serviceWorker`, `securityTxt`, `images` and `copy`. The pattern does not accept every tag the build accepts: `canonicalizeLocale` (`packages/schema/src/locale.ts`) trims a tag before `Intl.Locale` parses it, so a padded `"en "` builds as `en` and fails `jx validate`. The compiler checks redirect statuses against its own `REDIRECT_HTML_POLICY` (`packages/compiler/src/site/site-build.ts`) rather than importing `REDIRECT_STATUSES`, as §7's RFC 9110 row says it does.
 
-Before the census it read `> **Status: Implemented.** Every declared key is described, and the language-tag keys carry a pattern…`. That held for the pattern, not for the key list below it. The marker's last two sentences are code and close in `plan:schema/build-schema-agreement` (drafted), whose pull request deletes them from the marker; this plan requires it, so by the time it executes the marker is its first sentence alone. Verified at the working tree on 2026-09-27:
+Before the census it read `> **Status: Implemented.** Every declared key is described, and the language-tag keys carry a pattern…`. That held for the pattern, not for the key list below it. The marker's last two sentences were code (a trimming `canonicalizeLocale` and a separate redirect policy table) and are already gone from the marker (schema.md §3.2 and §7), so the marker is its first sentence alone. Verified at the working tree on 2026-09-27:
 
 - **Declared.** `projectConfigSchema.properties` has twenty keys: `$defs`, `$elements`, `$head`, `$media`, `$schema`, `build`, `copy`, `defaults`, `extensions`, `i18n`, `images`, `imports`, `manifest`, `name`, `redirects`, `securityTxt`, `serviceWorker`, `state`, `style`, `url`. `generateProjectSchema` (`project-schema.json`, `$id` `…/project/v1`) and `generateProjectCoreSchema` (`schemas/project.core.schema.json`, extensions.md §5.1) both use that object verbatim (`packages/schema/src/schema.ts`), and neither sets `additionalProperties` at the top level.
 - **Listed.** §3.2 names thirteen: twelve of those plus `collections`. Its sub-lists lag too: `defaults` names `layout`, `lang`, `charset` of five (`dir`, `shadow` missing); `build` names `outDir`, `format`, `trailingSlash`, `adapter` of seven (`sitemap`, `headers`, `deploy` missing) and does not say `format` is reserved and unused, which the schema's own description and site-architecture.md §14.1.1 both do. `i18n`'s three are complete.
