@@ -384,25 +384,30 @@ The `children.*` attributes expand to a `children` descriptor object (not an arr
 
 ## 9. Standard Markdown Mapping
 
-> **Status: Partial.** The table and build-time highlighting ship (`JX_TAG_MAP` and `mdastNodeToJx` in `extensions/parser/src/transpile.ts`, `extensions/parser/src/highlight.ts`), but a reference-style link or image (`[text][label]`, `![alt][label]` with a `[label]: url` definition) is dropped together with its text, and a GFM footnote with its definition. Two constructs the table does not list are mapped rather than dropped: raw HTML goes through `htmlToJx` and a hard line break becomes `br`. §13's CommonMark note says §10 names the unmapped constructs and that each is dropped; §10 names none of them.
-
 Standard markdown nodes map to Jx elements:
 
-| Markdown       | Jx tagName                                   |
-| -------------- | -------------------------------------------- |
-| `# Heading`    | `h1`–`h6`                                    |
-| Paragraph      | `p`                                          |
-| `*emphasis*`   | `em`                                         |
-| `**strong**`   | `strong`                                     |
-| `~~delete~~`   | `del`                                        |
-| `` `code` ``   | `code`                                       |
-| `[link](url)`  | `a`                                          |
-| `![alt](url)`  | `img`                                        |
-| `> blockquote` | `blockquote`                                 |
-| `- list`       | `ul` / `ol` + `li`                           |
-| Fenced code    | `pre` > `code`                               |
-| `---`          | `hr`                                         |
-| Table          | `table` > `thead`/`tbody` > `tr` > `th`/`td` |
+| Markdown                                      | Jx tagName                                                                                                                                                                                                              |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `# Heading`                                   | `h1`–`h6`                                                                                                                                                                                                               |
+| Paragraph                                     | `p`                                                                                                                                                                                                                     |
+| `*emphasis*`                                  | `em`                                                                                                                                                                                                                    |
+| `**strong**`                                  | `strong`                                                                                                                                                                                                                |
+| `~~delete~~`                                  | `del`                                                                                                                                                                                                                   |
+| `` `code` ``                                  | `code`                                                                                                                                                                                                                  |
+| `[link](url)`, `<https://…>`, `[text][label]` | `a`                                                                                                                                                                                                                     |
+| `![alt](url)`, `![alt][label]`                | `img`                                                                                                                                                                                                                   |
+| `[label]: url` definition                     | nothing; its references resolve to it                                                                                                                                                                                   |
+| Hard line break                               | `br`                                                                                                                                                                                                                    |
+| Raw HTML                                      | the elements the HTML parser builds (`htmlToJx`), with the Markdown between a start tag and its end tag nested inside; a start tag with no end tag wraps what follows it in its paragraph or container, as in a browser |
+| `> blockquote`                                | `blockquote`                                                                                                                                                                                                            |
+| `- list`                                      | `ul` / `ol` + `li`; in a tight list an item's paragraph is unwrapped into the `li`                                                                                                                                      |
+| `- [x] task`                                  | `li.task-list-item` starting with a disabled checkbox `input`, in a `contains-task-list` list                                                                                                                           |
+| `[^id]` footnote                              | `sup` > `a` numbered by first reference; the definitions form one trailing `section.footnotes` > `ol` > `li`, each with a backlink per reference                                                                        |
+| Fenced code                                   | `pre` > `code`                                                                                                                                                                                                          |
+| `---`                                         | `hr`                                                                                                                                                                                                                    |
+| Table                                         | `table` > `thead`/`tbody` > `tr` > `th`/`td`; column alignment → `style.textAlign`                                                                                                                                      |
+
+A reference resolves when the document is parsed, so a roundtrip save (§12.8) writes the link inline and the definition is not kept. A footnote label is recovered lowercased on save, because the parser normalizes it. Looseness belongs to the whole list. A list is written loose when any of its items holds a `p`, so a list whose items mix both shapes re-parses with every item's text in a `p`. Apart from frontmatter (§3) and directives (§4), every node the parser produces is in this table; §10 names what has no Jx node.
 
 Fenced code with a known language tag is syntax-highlighted at compile time in the node-side markdown path (`processMarkdown`): the `code` element's text is replaced by token `span` children, each carrying its light and dark colors as `--shiki-light` / `--shiki-dark` CSS custom properties, and the `code` element gains a `shiki` class alongside `language-<lang>`. The page stylesheet chooses which variable paints (typically via the color-scheme contract, spec.md §9.5). Grammars: json, typescript, javascript, markdown, html, shellscript, css, yaml (plus their registered aliases — `ts`, `js`, `bash`, `sh`, `md`, `yml`, …). Unknown languages and bare fences keep plain `textContent`. The browser-safe transpile module (`@jxsuite/parser/transpile`) never highlights — Studio and other browser callers see plain fences.
 
@@ -413,6 +418,7 @@ Fenced code with a known language tag is syntax-highlighted at compile time in t
 3. **Complex state logic** — components with intricate `$prototype: Function` bodies or deeply nested state may be clearer in JSON
 4. **No inline JavaScript** — event handler bodies and computed expressions live in YAML frontmatter `state` definitions, not in the directive body
 5. **Form-control state** — a directive's `value`, `checked` and `selected` are the control's default (§6.6); a field that must keep following a binding after the user edits it belongs in a JSON component (§11)
+6. **HTML comments and declarations are dropped** — a comment, `<!DOCTYPE>`, CDATA section or processing instruction in raw HTML has no Jx node, so it does not survive a parse or a save
 
 ## 11. When to Use JSON vs Markdown
 
@@ -468,9 +474,9 @@ This is the single Jx→markdown serializer — the studio and the compiler both
 
 External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). `remark-directive` is a library rather than a standard; the directive syntax it implements is a CommonMark _proposal_ that was never accepted, which is why §4 is described rather than cited. The frontmatter media type is tracked against `parser.md` §3, where the format class that reads it lives.
 
-| Standard                                           | Class      | Binds | Evidence                                                                      | Note                                                                                                                                                                                    |
-| -------------------------------------------------- | ---------- | ----- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [CommonMark](https://spec.commonmark.org/current/) | **Subset** | §9    | extensions/parser/src/transpile.ts, extensions/parser/tests/transpile.test.ts | The block and inline constructs §9 tabulates map to Jx nodes. §10 names what does not: a construct outside that table has no Jx representation and is dropped rather than approximated. |
+| Standard                                           | Class      | Binds | Evidence                                                                              | Note                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------- | ---------- | ----- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [CommonMark](https://spec.commonmark.org/current/) | **Subset** | §9    | extensions/parser/src/transpile.ts, extensions/parser/tests/standard-markdown.test.ts | Every construct CommonMark defines maps to a Jx node (§9), a tight list's items unwrapped as CommonMark renders them. What is absent is raw HTML's non-element content (comments, declarations, CDATA sections, processing instructions), which has no Jx node and is dropped (§10). |
 
 ## Changelog
 

@@ -221,9 +221,17 @@ const INLINE_CONTENT_TAGS = new Set([
 ]);
 
 function isInlineType(type: string) {
-  return ["text", "emphasis", "strong", "delete", "inlineCode", "link", "image", "break"].includes(
-    type,
-  );
+  return [
+    "text",
+    "emphasis",
+    "strong",
+    "delete",
+    "inlineCode",
+    "link",
+    "image",
+    "break",
+    "footnoteReference",
+  ].includes(type);
 }
 
 /** Read a fenced-code child's language. Canonical: `className`; legacy: `attributes.class`. */
@@ -525,7 +533,14 @@ export function jxToMdast(
   opts: Pick<SerializeOptions, "allowlist"> = {},
 ): MdastRoot {
   const allowlist = normalizeAllowlist(opts.allowlist);
-  return { children: convertJxChildren(childList(jx), true, allowlist), type: "root" };
+  const children = childList(jx).flatMap((child) => {
+    const section = asElement(child);
+    if (section && isFootnoteSection(section)) {
+      return footnoteDefinitions(section, (kids) => convertJxChildren(kids, true, allowlist));
+    }
+    return convertJxChildren([child], true, allowlist);
+  });
+  return { children, type: "root" };
 }
 
 /** Convert Jx children to mdast, dropping the ones with no mdast form. */
@@ -687,6 +702,246 @@ function gfmTableRows(el: JxElement): { head: JxElement[]; body: JxElement[][] }
   return body.length > 0 ? { body, head } : null;
 }
 
+// ─── GFM decoration: footnotes, task items, column alignment, looseness ─────
+
+/** An element child slot as an element, or `undefined` for a string or number. */
+function asElement(slot: JxDocumentValue | undefined): JxElement | undefined {
+  return isNodeObject(slot) ? slot : undefined;
+}
+
+/** Whether `el` is `a` carrying the attribute `name`. */
+function isAnchorWith(el: JxElement | undefined, name: string): el is JxElement {
+  return el !== undefined && el.tagName === "a" && el.attributes?.[name] !== undefined;
+}
+
+/**
+ * The decoded footnote identifier when `el` is the `sup > a[data-footnote-ref]` the transpiler
+ * writes for a footnote reference, else `null`.
+ */
+function footnoteRefId(el: JxElement): string | null {
+  if (el.tagName !== "sup") {
+    return null;
+  }
+  const kids = childList(el);
+  const anchor = kids.length === 1 ? asElement(kids[0]) : undefined;
+  const href = attributeText(anchor?.attributes?.href);
+  if (!isAnchorWith(anchor, "data-footnote-ref") || !href.startsWith("#fn-")) {
+    return null;
+  }
+  return decodeURIComponent(href.slice(4));
+}
+
+/** Whether `el` is the trailing `section[data-footnotes]` the transpiler appends. */
+function isFootnoteSection(el: JxElement): boolean {
+  return el.tagName === "section" && el.attributes?.["data-footnotes"] !== undefined;
+}
+
+/** `kids` with the backlinks, the spaces between them and the one space before them removed. */
+function withoutBacklinks(kids: readonly (JxElement | string)[]): (JxElement | string)[] {
+  const first = kids.findIndex((kid) => isAnchorWith(asElement(kid), "data-footnote-backref"));
+  if (first === -1) {
+    return [...kids];
+  }
+  const kept = kids.slice(0, first);
+  const last = kept.at(-1);
+  if (isString(last)) {
+    if (last === " ") {
+      kept.pop();
+    } else if (last.endsWith(" ")) {
+      kept[kept.length - 1] = last.slice(0, -1);
+    }
+  }
+  return kept;
+}
+
+/** An element copy holding `kids`, as a single string collapses to `textContent`. */
+function withContent(el: JxElement, kids: (JxElement | string)[]): JxElement {
+  const copy: JxElement = { ...el };
+  delete copy.children;
+  delete copy.textContent;
+  const [only] = kids;
+  if (kids.length === 1 && isString(only)) {
+    copy.textContent = only;
+  } else if (kids.length > 0) {
+    copy.children = kids;
+  }
+  return copy;
+}
+
+/**
+ * A `footnoteDefinition` for each `li#fn-…` of the footnote section, with the backlinks the
+ * transpiler added taken back out. The identifier is the decoded id, so a label comes back
+ * lowercased, as the parser normalizes it.
+ */
+function footnoteDefinitions(
+  section: JxElement,
+  convert: (kids: (JxElement | string)[]) => MdastNode[],
+): MdastNode[] {
+  const items = childList(section)
+    .flatMap((slot) => {
+      const ol = asElement(slot);
+      return ol?.tagName === "ol" ? childList(ol) : [];
+    })
+    .filter((slot): slot is JxElement => asElement(slot)?.tagName === "li");
+  return items.map((li) => {
+    const id = decodeURIComponent(attributeText(li.id).replace(/^fn-/, ""));
+    const kids = withoutBacklinks(childList(li));
+    const lastIndex = kids.length - 1;
+    const last = asElement(kids[lastIndex]);
+    if (last?.tagName === "p") {
+      kids[lastIndex] = withContent(last, withoutBacklinks(childList(last)));
+    }
+    return { children: convert(kids), identifier: id, label: id, type: "footnoteDefinition" };
+  });
+}
+
+/** Whether `slot` is the disabled checkbox a task item starts with. */
+function isCheckbox(slot: JxDocumentValue | undefined): slot is JxElement {
+  const el = asElement(slot);
+  return el !== undefined && el.tagName === "input" && el.attributes?.type === "checkbox";
+}
+
+/** An element's first child that is not whitespace. */
+function leadingChild(el: JxElement) {
+  return partChildren(el)[0];
+}
+
+/** `true`, `false` or `null`: a list item's checkbox state, `null` when it has no checkbox. */
+function taskState(li: JxElement): boolean | null {
+  if (li.tagName !== "li" || li.className !== "task-list-item") {
+    return null;
+  }
+  const first = leadingChild(li);
+  const paragraph = asElement(first);
+  const lead = paragraph?.tagName === "p" ? leadingChild(paragraph) : first;
+  return isCheckbox(lead) ? lead.attributes?.checked !== undefined : null;
+}
+
+/** `li` without its leading checkbox and task class. */
+function withoutCheckbox(li: JxElement): JxElement {
+  const [first, ...rest] = childList(li);
+  const p = asElement(first);
+  const copy =
+    isCheckbox(first) || !p
+      ? withContent(li, rest)
+      : withContent(li, [withContent(p, childList(p).slice(1)), ...rest]);
+  delete copy.className;
+  return copy;
+}
+
+/** `left`, `center` or `right` from a cell's `style.textAlign`, else `null`. */
+function cellAlign(cell: JxElement): "left" | "center" | "right" | null {
+  const value = isNonNullObject(cell.style) ? cell.style.textAlign : undefined;
+  return value === "left" || value === "center" || value === "right" ? value : null;
+}
+
+/** The row elements of a table's parts, whitespace between tags skipped. */
+function tableRowsOf(table: JxElement): JxElement[] {
+  return partChildren(table).flatMap((part) =>
+    isString(part) ? [] : partChildren(part).filter((row): row is JxElement => !isString(row)),
+  );
+}
+
+/** A table's column alignments from its header cells, or `null` when none is aligned. */
+function tableAlign(table: JxElement): ("left" | "center" | "right" | null)[] | null {
+  const [header] = tableRowsOf(table);
+  const cells = header ? partChildren(header).filter((c): c is JxElement => !isString(c)) : [];
+  const align = cells.map((cell) => cellAlign(cell));
+  return align.some((a) => a !== null) ? align : null;
+}
+
+/** `table` with `text-align` removed from every cell that merely states its column's alignment. */
+function withoutAlign(table: JxElement, align: (string | null)[]): JxElement {
+  const mapKids = (el: JxElement, fn: (kid: JxElement, index: number) => JxElement) => {
+    const kids: (JxElement | string)[] = [];
+    let index = 0;
+    for (const kid of childList(el)) {
+      if (isString(kid)) {
+        kids.push(kid);
+      } else {
+        kids.push(fn(kid, index));
+        index += 1;
+      }
+    }
+    return withContent(el, kids);
+  };
+  return mapKids(table, (part) =>
+    mapKids(part, (row) =>
+      mapKids(row, (cell, column) => {
+        if (!isNonNullObject(cell.style) || cell.style.textAlign !== align[column]) {
+          return cell;
+        }
+        const copy: JxElement = { ...cell };
+        const { textAlign: _dropped, ...rest } = cell.style;
+        if (Object.keys(rest).length > 0) {
+          copy.style = rest;
+        } else {
+          delete copy.style;
+        }
+        return copy;
+      }),
+    ),
+  );
+}
+
+/**
+ * `el` without the decoration the transpiler adds to a GFM list, task item or table, so the result
+ * meets the native-element tests as the plain construct. The caller's element is never touched: a
+ * changed element is a shallow copy. A class or style that is not exactly the transpiler's stays
+ * and is written as a directive attribute.
+ */
+function plainGfm(el: JxElement): JxElement {
+  if ((el.tagName === "ul" || el.tagName === "ol") && el.className === "contains-task-list") {
+    const copy: JxElement = { ...el };
+    delete copy.className;
+    return copy;
+  }
+  if (taskState(el) !== null) {
+    return withoutCheckbox(el);
+  }
+  if (el.tagName === "table") {
+    const align = tableAlign(el);
+    return align ? withoutAlign(el, align) : el;
+  }
+  return el;
+}
+
+/** Whether any item of a list holds a `p`, which is how a loose list reads back (`§9`). */
+function listIsLoose(list: JxElement): boolean {
+  return childList(list).some(
+    (li) =>
+      !isString(li) &&
+      Array.isArray(li.children) &&
+      li.children.some((kid) => !isString(kid) && kid.tagName === "p"),
+  );
+}
+
+/** Whether `slot` is phrasing content: text, or an inline element holding only phrasing content. */
+function isPhrasing(slot: JxDocumentValue | undefined): boolean {
+  if (isString(slot) || isNumber(slot)) {
+    return true;
+  }
+  if (!isNodeObject(slot)) {
+    return false;
+  }
+  const { children, tagName } = slot;
+  if (!isString(tagName) || MD_BLOCK.has(tagName)) {
+    return false;
+  }
+  if (children === undefined) {
+    return true;
+  }
+  if (!Array.isArray(children)) {
+    return false;
+  }
+  for (const child of children) {
+    if (!isPhrasing(child)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function convertJxNode(
   slot: JxDocumentValue | undefined,
   isBlock: boolean,
@@ -702,7 +957,13 @@ function convertJxNode(
      object a hand-edited document left there (an array, a binding) is read below only through
      JxElement's optional members and Object.entries, which every object answers, so it converts
      the way it always has. */
-  const el = slot as JxElement;
+  const original = slot as JxElement;
+
+  const footnoteRef = footnoteRefId(original);
+  if (footnoteRef !== null) {
+    return { identifier: footnoteRef, label: footnoteRef, type: "footnoteReference" };
+  }
+  const el = plainGfm(original);
 
   const tag = serializableTag(el.tagName) || "div";
 
@@ -743,6 +1004,31 @@ function convertJxNode(
       ];
     }
     return convertJxChildren(childList(e), true, allowlist);
+  };
+  // A list item's text may be written straight into it: each run of phrasing content is one
+  // Paragraph, and everything else converts as a block.
+  const itemBlocks = (e: JxElement): MdastNode[] => {
+    if (e.textContent != null) {
+      return block(e);
+    }
+    const out: MdastNode[] = [];
+    let run: ChildSlot[] = [];
+    const flush = () => {
+      if (run.length > 0) {
+        out.push({ children: convertJxChildren(run, false, allowlist), type: "paragraph" });
+        run = [];
+      }
+    };
+    for (const child of childList(e)) {
+      if (isPhrasing(child)) {
+        run.push(child);
+      } else {
+        flush();
+        out.push(...convertJxChildren([child], true, allowlist));
+      }
+    }
+    flush();
+    return out;
   };
 
   switch (mdastType) {
@@ -798,14 +1084,20 @@ function convertJxNode(
       return {
         children: convertJxChildren(childList(el), true, allowlist),
         ordered: tag === "ol",
-        spread: false,
+        spread: listIsLoose(el),
         start: tag === "ol" ? Math.trunc(Number(el.attributes?.start)) || 1 : null,
         type: "list",
       };
     }
 
     case "listItem": {
-      return { children: block(el), spread: false, type: "listItem" };
+      const checked = taskState(original);
+      return {
+        children: itemBlocks(el),
+        ...(checked !== null && { checked }),
+        spread: false,
+        type: "listItem",
+      };
     }
 
     case "code": {
@@ -837,7 +1129,9 @@ function convertJxNode(
         })),
         type: "tableRow",
       });
+      const align = tableAlign(original);
       return {
+        ...(align && { align }),
         children: [row(head, true), ...body.map((cells) => row(cells, false))],
         type: "table",
       };
@@ -1117,6 +1411,14 @@ function nodeToMdast<ScopeValue>(
     return expandArray(node, ctx, scope);
   }
 
+  const footnoteRef = footnoteRefId(node);
+  if (footnoteRef !== null) {
+    return [{ identifier: footnoteRef, label: footnoteRef, type: "footnoteReference" }];
+  }
+  if (isFootnoteSection(node)) {
+    return footnoteDefinitions(node, (kids) => kids.flatMap((kid) => nodeToMdast(kid, ctx, scope)));
+  }
+
   const tag = serializableTag(node.tagName) || "div";
   const text = resolveText(node.textContent, ctx, scope);
 
@@ -1208,15 +1510,19 @@ function nodeToMdast<ScopeValue>(
       if (items.length === 0) {
         return [];
       }
-      return [{ children: items, ordered, spread: false, type: "list" }];
+      return [{ children: items, ordered, spread: listIsLoose(node), type: "list" }];
     }
 
     case "listItem": {
-      let children = exportChildren(node, ctx, scope);
-      if (children.length > 0 && children.every((c) => c.type === "text" || isInlineType(c.type))) {
-        children = [{ children, type: "paragraph" }];
-      }
-      return [{ children, spread: false, type: "listItem" }];
+      const checked = taskState(node);
+      return [
+        {
+          children: groupInline(exportChildren(node, ctx, scope)),
+          ...(checked !== null && { checked }),
+          spread: false,
+          type: "listItem",
+        },
+      ];
     }
 
     case "code": {
@@ -1246,7 +1552,8 @@ function nodeToMdast<ScopeValue>(
       if (rows.length === 0) {
         return [];
       }
-      return [{ children: rows, type: "table" }];
+      const align = tableAlign(node);
+      return [{ ...(align && { align }), children: rows, type: "table" }];
     }
 
     case "thead":
@@ -1276,6 +1583,28 @@ function nodeToMdast<ScopeValue>(
   }
 
   return [];
+}
+
+/** Each maximal run of inline mdast nodes as one paragraph; every other node as it is. */
+function groupInline(nodes: MdastNode[]): MdastNode[] {
+  const out: MdastNode[] = [];
+  let run: MdastNode[] = [];
+  const flush = () => {
+    if (run.length > 0) {
+      out.push({ children: run, type: "paragraph" });
+      run = [];
+    }
+  };
+  for (const node of nodes) {
+    if (isInlineType(node.type)) {
+      run.push(node);
+    } else {
+      flush();
+      out.push(node);
+    }
+  }
+  flush();
+  return out;
 }
 
 function exportChildren<ScopeValue>(

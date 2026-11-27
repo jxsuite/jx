@@ -269,8 +269,26 @@ describe("mdastNodeToJx edge cases", () => {
   });
 
   test("returns null for unknown node types", () => {
+    expect(mdastNodeToJx({ type: "made-up" })).toBeNull();
+  });
+
+  test("definition nodes render nothing", () => {
     expect(mdastNodeToJx({ type: "definition" })).toBeNull();
     expect(mdastNodeToJx({ type: "footnoteDefinition" })).toBeNull();
+  });
+
+  test("unresolved reference nodes keep their text", () => {
+    expect(
+      mdastNodeToJx({ children: [{ type: "text", value: "label" }], type: "linkReference" }),
+    ).toEqual(["label"]);
+    expect(mdastNodeToJx({ alt: "pic", type: "imageReference" })).toBe("pic");
+    expect(mdastNodeToJx({ type: "imageReference" })).toBe("");
+  });
+
+  test("an unannotated footnote reference renders its label as text", () => {
+    expect(mdastNodeToJx({ identifier: "a", label: "A", type: "footnoteReference" })).toBe("[^A]");
+    expect(mdastNodeToJx({ identifier: "a", type: "footnoteReference" })).toBe("[^a]");
+    expect(mdastNodeToJx({ type: "footnoteReference" })).toBe("[^]");
   });
 
   test("returns null for a node type named like an Object.prototype member", () => {
@@ -476,8 +494,50 @@ describe("mdastNodeToJx standard nodes", () => {
       }),
     );
     expect(el.tagName).toBe("ul");
+    expect(el.children).toEqual([{ tagName: "li", textContent: "one" }]);
+  });
+
+  test("a task item with no content holds only its checkbox", () => {
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ checked: false, type: "listItem" }],
+        type: "list",
+      }),
+    );
+    expect(el.className).toBe("contains-task-list");
     expect(el.children).toEqual([
-      { children: [{ tagName: "p", textContent: "one" }], tagName: "li" },
+      {
+        children: [{ attributes: { disabled: "", type: "checkbox" }, tagName: "input" }],
+        className: "task-list-item",
+        tagName: "li",
+      },
+    ]);
+  });
+
+  test("a hand-built item with two children is loose", () => {
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          {
+            children: [
+              { children: [{ type: "text", value: "one" }], type: "paragraph" },
+              { children: [{ type: "text", value: "two" }], type: "paragraph" },
+            ],
+            type: "listItem",
+          },
+        ],
+        ordered: false,
+        type: "list",
+      }),
+    );
+    expect(el.children).toEqual([
+      {
+        children: [
+          { tagName: "p", textContent: "one" },
+          { tagName: "p", textContent: "two" },
+        ],
+        tagName: "li",
+      },
     ]);
   });
 
