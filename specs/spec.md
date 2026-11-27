@@ -1852,16 +1852,21 @@ What the client render then does is **replace**, not hydrate: lit renders its ow
 
 > **Status: Implemented.** Light DOM is the default in the interpreter and in a site build. `$shadow` and `defaults.shadow` render into a shadow root in both: the build emits and adopts a declarative root, and the runtime renders the same modes into the same trees. `compile()`'s single-document routes (compiler.md §2) write no component stylesheet in either mode and are not what this section describes.
 
-### 16.7 Development vs. Production
+### 16.7 Interpreted vs. Compiled
 
-> **Status: Partial.** Both renderers exist as tabled. The Development column describes Studio's live preview and canvas (`packages/server/src/live-preview.ts`) and roots without a `project.json`, not `jx dev` on a site project, which builds with `buildSite` and serves the compiled pages (`startDev` in `packages/server/src/dev.ts`); and the "~10 kB deps" figure has no committed measurement.
+> **Status: Implemented.** The interpreter is `@jxsuite/runtime` (`packages/runtime/src/runtime.ts`), which Studio's canvas imports and the live preview serves beside the source tree (`packages/server/src/live-preview.ts`, `packages/server/tests/live-preview.test.ts`). `jx dev` on a site project serves `buildSite` output (`startDev` in `packages/server/src/dev.ts`, `packages/server/tests/dev.test.ts`), and a built page loads `@vue/reactivity` and `lit-html` from the site (`packages/compiler/src/site/client-runtime.ts`, `packages/compiler/tests/client-runtime.test.ts`).
 
-|          | Development           | Production                       |
-| -------- | --------------------- | -------------------------------- |
-| Renderer | `@jxsuite/runtime`    | `lit-html`                       |
-| State    | `@vue/reactivity`     | `@vue/reactivity`                |
-| Source   | JSON interpreted live | JSON compiled away               |
-| Bundle   | `.json` + runtime     | `.js` classes only (~10 kB deps) |
+A document reaches the reader through one of two renderers, and the **host** decides which, not whether the project is in development. An **interpreting host** loads `@jxsuite/runtime`, which reads the JSON in the browser and builds the DOM from it. **Compiled output** is what the site build emits, and the JSON is gone from it.
+
+|          | Interpreting host                                                                                                                                                                                                                     | Compiled output                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hosts    | Studio's canvas and live preview (server.md §3.4); any page that loads `@jxsuite/runtime` itself, through `mount()` (embedding.md §2) or `defineElement`, including a page `jx dev` serves as-is from a root without a `project.json` | `jx build`; `jx dev` on a site project, which runs the same build before every reload (server.md §2)                                                                          |
+| Renderer | `@jxsuite/runtime`                                                                                                                                                                                                                    | `lit-html`, on pages and components that render in the browser                                                                                                                |
+| State    | `@vue/reactivity`                                                                                                                                                                                                                     | `@vue/reactivity`                                                                                                                                                             |
+| Source   | JSON interpreted live                                                                                                                                                                                                                 | JSON compiled away                                                                                                                                                            |
+| Ships    | `.json` documents + the runtime bundle                                                                                                                                                                                                | HTML and CSS, plus ES modules for dynamic pages and components; the two dependencies are served from the site's `/assets/` (compiler.md §12), sized in compiler.md Appendix A |
+
+`jx dev` compiles a site project rather than interpreting it on purpose: the page it serves is the page `jx build` ships, so a difference between the two renderers shows up while the author is working, not after a deploy. Studio's canvas and live preview interpret because they show the document being edited, including bytes not yet saved (server.md §3.4). Elsewhere in this specification, "an interpreting host" and "the interpreter" mean the left column, and "compiled output", "a built site" and "in production" mean the right one, `jx dev` on a site project included. What each column may evaluate is §21.
 
 ### 16.8 CEM-Compatible Annotations
 
@@ -2588,7 +2593,7 @@ During a build the compiler evaluates project code (resolving `timing: "compiler
 
 ### 21.3 Interpreting Runtime — Requires `'unsafe-eval'`
 
-The interpreting runtime — the dev server, the Studio canvas, and `@jxsuite/runtime` used directly as a library — compiles `${}` templates and inline `body` functions with `new Function` on the fly (§6.6). Any page hosting the interpreter must allow `'unsafe-eval'` in its CSP. This is why the compiled path exists: ship compiled output to production and the eval requirement disappears. A future restricted evaluator (§6.6) would remove this requirement from the interpreter as well.
+The interpreting runtime, in every interpreting host §16.7 names (Studio's canvas and live preview, and any page that loads `@jxsuite/runtime` as a library), compiles `${}` templates and inline `body` functions with `new Function` on the fly (§6.6). Any page hosting the interpreter must allow `'unsafe-eval'` in its CSP; `jx dev` on a site project serves compiled output (§16.7) and needs none. This is why the compiled path exists: ship compiled output to production and the eval requirement disappears. A future restricted evaluator (§6.6) would remove this requirement from the interpreter as well.
 
 Jx Studio's own shell is such a page: its chrome mounts documents through the interpreter ([embedding.md](./embedding.md) §8), so the shell requires `'unsafe-eval'` for as long as it does. That is a property of the shell, stated, rather than a defect of the canvas it hosts.
 

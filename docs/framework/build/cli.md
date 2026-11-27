@@ -235,6 +235,6 @@ The CLI talks to each connection exactly as declared: a `d1` connection reaches 
 ## Related
 
 - [How compilation works](/docs/framework/build): what `jx build` produces and why
-- [The dev server](/docs/framework/build/dev-server): local development without a build
+- [The dev server](/docs/framework/build/dev-server): what `jx dev` runs underneath, and the proxies Studio's preview uses
 - [Site architecture](/docs/framework/site): the project layout these commands operate on
 - [Data tables](/docs/studio/data/tables): the tables and push plan behind `jx db push`
