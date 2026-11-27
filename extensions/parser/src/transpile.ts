@@ -645,7 +645,9 @@ function alertToJx(node: AlertNode): JxElement {
 }
 
 /**
- * Convert a directive mdast node to a Jx element.
+ * Convert a directive mdast node to a Jx element. A text or leaf directive's bracketed label is its
+ * inline content (jx-markdown.md §4.2): one text run becomes `textContent`, anything else
+ * `children`. A container directive's body is its block content.
  *
  * @param {MdastNode} node
  * @returns {JxElement}
@@ -671,14 +673,10 @@ function directiveToJx(node: MdastNode) {
     }
   }
 
-  if (node.type === "textDirective") {
+  if (node.type === "textDirective" || node.type === "leafDirective") {
     if (node.children && node.children.length > 0) {
       setContent(el, convertChildren(node.children));
     }
-    return el;
-  }
-
-  if (node.type === "leafDirective") {
     return el;
   }
 

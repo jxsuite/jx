@@ -98,10 +98,12 @@ Get started today.
 
 ### 4.2 Leaf Directives
 
-Leaf directives are self-closing (no children).
+Leaf directives take no block content. An optional label in square brackets is the element's inline content: a single run of text becomes `textContent`, anything else `children`.
 
 ```markdown
 ::hr
+
+::li[Buy _fresh_ milk]
 
 ::input{type="text" placeholder="Enter name"}
 
@@ -209,15 +211,15 @@ This expands to:
 
 ### 6.5 Prototype Directives (`:::Array`)
 
-> **Status: Partial.** The directive ships: `prototypeDirectiveToJx` (`extensions/parser/src/transpile.ts`) restores `$prototype`, expands the attributes and takes the first element child as `map`, `prototypeToDirective` (`extensions/parser/src/serialize.ts`) writes it back, and the older dot-path form still parses. The worked example does not produce the JSON shown: the `:li{…}` line parses as a `p` wrapping the `li`, and `children.0` expands to an object keyed `"0"`. The round trip is not lossless for a template markdown can only write inside a parent: an `li` map serializes as a bare `- …` list item and re-parses as `ul > li > p`. A repeater among a list's items, the shape Studio's Convert to Repeater leaves when it converts a list item, fares worse: it is written between the `- …` items and re-parses outside the list, as its sibling.
+> **Status: Implemented.** extensions/parser/src/transpile.ts (prototypeDirectiveToJx, directiveToJx), extensions/parser/src/serialize.ts (prototypeToDirective, partToDirective, holdsNatively), extensions/parser/tests/repeater-roundtrip.test.ts.
 
-An array pseudo-element (repeater) has no `tagName`, so it serializes as a directive **named after its `$prototype`** — e.g. `:::Array`. The directive's attributes carry `items`/`filter`/`sort` (dot-path encoded), and its nested block content is the `map` template. On parse, the synthetic tagName is dropped and `$prototype` is restored. Because it is an ordinary block directive, a repeater can sit among sibling blocks:
+An array pseudo-element (repeater) has no `tagName`, so it serializes as a directive **named after its `$prototype`** — e.g. `:::Array`. The directive's attributes carry `items`, `filter`, `sort` and `key` (dot-path encoded), and its first element child is the `map` template; anything after it is ignored. On parse, the synthetic tagName is dropped and `$prototype` is restored. Because it is an ordinary block directive, a repeater can sit among sibling blocks:
 
 ```markdown
 # Recent posts
 
 :::Array{items.ref="#/state/posts"}
-:li{children.0="${$map/item/title}"}
+::li[${$map/item/title}]
 :::
 ```
 
@@ -227,11 +229,23 @@ Expands to:
 {
   "$prototype": "Array",
   "items": { "$ref": "#/state/posts" },
-  "map": { "tagName": "li", "children": ["${$map/item/title}"] }
+  "map": { "tagName": "li", "textContent": "${$map/item/title}" }
 }
 ```
 
-This is the canonical, round-trippable encoding. The older dot-path form (`children.prototype="Array" …` on the parent directive) is still accepted on parse for backward compatibility.
+A template markdown can write only inside a parent (`li`, and the table parts `thead`, `tbody`, `tr`, `th` and `td`) is written as a directive: a leaf directive whose label (§4.2) holds its inline content, or a container directive when it holds blocks. A bound `textContent` is written as a dot-path attribute. A list or table that holds a repeater, or anything else its markdown form cannot hold, is written as a directive with each of its items or parts a directive too, so the repeater stays where it is; so is a list or table written as a directive for attributes of its own:
+
+```markdown
+::::ul
+::li[Header]
+
+:::Array{items.ref="#/state/todoList"}
+::li{textContent.ref="$map/item"}
+:::
+::::
+```
+
+This is the canonical, round-trippable encoding. The older dot-path form (`children.prototype="Array" …` on the parent directive) is still accepted on parse for backward compatibility, and a list whose `children` is itself the Array object is written back in that form (§8).
 
 ### 6.6 HTML Attributes
 
@@ -455,7 +469,7 @@ Inverse of `expandStylePaths` — strips `:` and `@` prefixes before flattening.
 
 ### 12.8 `serializeJxMarkdown(doc: object, options?): string`
 
-> **Status: Partial.** Both modes ship (`serializeRoundtrip` and `serializeExport` in `extensions/parser/src/serialize.ts`; Studio saves through roundtrip mode in `packages/studio/src/files/serialize-document.ts`), and a `tagName` chosen at render time throws as stated. Roundtrip mode is not the inverse of `transpileJxMarkdown` for several ordinary shapes, and no test feeds its output back through `transpileJxMarkdown`. `textContent` or inline children of a directive outside the transpiler's phrasing set (`div`, `section`, any custom element) are written as bare block content and come back wrapped in `p`, one paragraph per inline child, with edge whitespace lost. An element-level `href`, `title` or `value` comes back under `attributes` (§6.6). The first two render the same, but a bound `value`, `checked` or `selected` becomes the control's default. An `li` or table-part `map` template, or a repeater among a list's items, does not come back as written (§6.5). The `popover-open`, `open`, `modal` and `backdrop` style keys are written with their colons (`style.:popover-open.opacity`), because the serializer keeps its own pseudo-class set instead of using `collapseStylePaths` (§12.7); they re-parse, but not in the §7.3 spelling.
+> **Status: Partial.** Both modes ship (`serializeRoundtrip` and `serializeExport` in `extensions/parser/src/serialize.ts`; Studio saves through roundtrip mode in `packages/studio/src/files/serialize-document.ts`), and a `tagName` chosen at render time throws as stated. Roundtrip mode is not the inverse of `transpileJxMarkdown` for several ordinary shapes, and no test feeds its output back through `transpileJxMarkdown`. `textContent` or inline children of a directive outside the transpiler's phrasing set (`div`, `section`, any custom element) are written as bare block content and come back wrapped in `p`, one paragraph per inline child, with edge whitespace lost. An element-level `href`, `title` or `value` comes back under `attributes` (§6.6). The first two render the same, but a bound `value`, `checked` or `selected` becomes the control's default. In a leaf directive's label (§4.2), a hard break is written as a space and a code span holding `]` ends the label early, and a bound `textContent` on a `pre`'s `code` child is written as an empty fence. The `popover-open`, `open`, `modal` and `backdrop` style keys are written with their colons (`style.:popover-open.opacity`), because the serializer keeps its own pseudo-class set instead of using `collapseStylePaths` (§12.7); they re-parse, but not in the §7.3 spelling.
 
 Converts a Jx JSON document back to markdown source (`@jxsuite/parser/serialize`). Two modes:
 

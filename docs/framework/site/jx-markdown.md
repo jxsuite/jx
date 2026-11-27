@@ -66,10 +66,12 @@ Welcome
 ::::
 ```
 
-**Leaf directives** (two colons) are self-closing:
+**Leaf directives** (two colons) take no block content. Text in square brackets is the element's inline content:
 
 ```markdown
 ::img{src="/photo.jpg" alt="A photo"}
+
+::li[Buy _fresh_ milk]
 ```
 
 **Text directives** (one colon) sit inline within prose:
@@ -143,8 +145,20 @@ An [array repeater](/docs/studio/design/repeaters) has no `tagName`, so it seria
 # Recent posts
 
 :::Array{items.ref="#/state/posts"}
-:li{children.0="${$map/item/title}"}
+::li[${$map/item/title}]
 :::
+```
+
+A template that Markdown can only write inside a list or a table (a list item, a row or a cell) is written as a directive too, and a list or table that holds a repeater is saved as directives throughout, so the repeater stays where you put it:
+
+```markdown
+::::ul
+::li[Header]
+
+:::Array{items.ref="#/state/todoList"}
+::li{textContent.ref="$map/item"}
+:::
+::::
 ```
 
 ## Heading anchors

@@ -331,11 +331,12 @@ describe("prototype directives", () => {
   test(":::Array with filter and sort attributes", () => {
     const md = [
       ':::Array{items.ref="#/state/rows" filter.ref="#/state/byDate" sort.ref="#/state/asc"}',
-      ":li{}",
+      "::li[row]",
       ":::",
       "",
     ].join("\n");
     const node = elementAt(transpileJxMarkdown(md).children, 0);
+    expect(node.map).toEqual({ tagName: "li", textContent: "row" });
     expect(node.filter).toEqual({ $ref: "#/state/byDate" });
     expect(node.sort).toEqual({ $ref: "#/state/asc" });
   });
