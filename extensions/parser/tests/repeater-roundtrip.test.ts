@@ -8,6 +8,11 @@ function write(doc: JxDocument): string {
   return serializeJxMarkdown(doc, { frontmatter: false });
 }
 
+/** Parse a hand-written document, so a null or numeric child slot reaches the serializer. */
+function hand(json: string): JxDocument {
+  return JSON.parse(json);
+}
+
 function roundtrip(doc: JxDocument): string {
   const md = write(doc);
   expect(transpileJxMarkdown(md)).toEqual(doc);
@@ -335,5 +340,87 @@ describe("repeater map template round trip", () => {
         ],
       });
     }
+  });
+
+  test("an inline repeater inside a paragraph keeps its map template, or none", () => {
+    const withMap = write({
+      children: [
+        {
+          children: [
+            "see ",
+            {
+              $prototype: "Array",
+              items: { $ref: "#/state/x" },
+              map: { tagName: "em", textContent: "y" },
+            },
+          ],
+          tagName: "p",
+        },
+      ],
+    });
+    expect(withMap).toContain("Array");
+    expect(withMap).toContain("em");
+    const noMap = write({
+      children: [
+        { children: ["see ", { $prototype: "Array", items: { $ref: "#/state/x" } }], tagName: "p" },
+      ],
+    });
+    expect(noMap).toContain("Array");
+    expect(noMap).not.toContain("em[");
+  });
+
+  test("a list holding a non-element child is written as a directive, not dropped", () => {
+    const md = write(
+      hand(
+        JSON.stringify({
+          children: [{ children: [{ tagName: "li", textContent: "a" }, 7], tagName: "ul" }],
+        }),
+      ),
+    );
+    expect(md).toContain("::ul");
+  });
+
+  test("a directive holding a null child and one holding a blank string write without them", () => {
+    const md = write(
+      hand(
+        JSON.stringify({
+          children: [
+            {
+              $prototype: "Array",
+              children: ["text", null],
+              items: { $ref: "#/state/x" },
+            },
+            {
+              children: [
+                "  ",
+                { tagName: "h2", textContent: "t" },
+                { tagName: "p", textContent: "u" },
+              ],
+              tagName: "section",
+            },
+          ],
+        }),
+      ),
+    );
+    expect(md).toContain("t");
+    expect(md).not.toContain("null");
+  });
+
+  test("a repeater's li template holding a null child and a block writes without the null", () => {
+    const md = write(
+      hand(
+        JSON.stringify({
+          children: [
+            {
+              $prototype: "Array",
+              items: { $ref: "#/state/x" },
+              map: { children: [null, { tagName: "p", textContent: "a" }], tagName: "li" },
+            },
+          ],
+        }),
+      ),
+    );
+    expect(md).toContain(":::li\n");
+    expect(md).not.toContain("null");
   });
 });
