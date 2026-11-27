@@ -33,6 +33,7 @@ import {
   isTemplateString,
   preRenderComponentHtml,
   propertyAttrText,
+  refReadsRuntimeOnlyState,
   renderStaticNode,
   resolveRefValue,
   resolveStaticValue,
@@ -106,6 +107,15 @@ describe("isDynamic", () => {
         tagName: "div",
       }),
     ).toBe(true);
+  });
+
+  test("a $ref or template in $props makes a node dynamic, a literal does not", () => {
+    expect(isDynamic({ $props: { w: { $ref: "window#/innerWidth" } }, tagName: "my-card" })).toBe(
+      true,
+    );
+    expect(isDynamic({ $props: { label: "${state.n}" }, tagName: "my-card" })).toBe(true);
+    expect(isDynamic({ $props: { size: 3 }, tagName: "my-card" })).toBe(false);
+    expect(isDynamic({ $props: { "#x": { $ref: "#/state/n" } }, tagName: "my-card" })).toBe(false);
   });
 
   test("a plain text child and a whole-children template stay static", () => {
@@ -233,6 +243,40 @@ describe("isDynamic", () => {
 });
 
 // ─── Scope / value resolution ───────────────────────────────────────────────
+
+describe("refReadsRuntimeOnlyState", () => {
+  const state = {
+    inc: { $prototype: "Function" as const, body: "state.n++" },
+    k: 5,
+    n: 1,
+  };
+  const scope = buildInitialScope(state, null, { document: { state }, holdMutable: true });
+
+  test("a written entry is runtime-only and a constant is not", () => {
+    expect(refReadsRuntimeOnlyState("#/state/n", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("n", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("parent#/n", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("#/state/k", scope)).toBe(false);
+    expect(refReadsRuntimeOnlyState("#/state/k", null)).toBe(false);
+  });
+
+  test("a nested pointer is judged by its head", () => {
+    expect(refReadsRuntimeOnlyState("#/state/n/x", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("#/state/k/x", scope)).toBe(false);
+  });
+
+  test("window and document pointers are runtime-only, a row pointer is not", () => {
+    expect(refReadsRuntimeOnlyState("window#/innerWidth", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("document#/title", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("$map/item/v", scope)).toBe(false);
+    expect(refReadsRuntimeOnlyState("other.json#/x", scope)).toBe(false);
+  });
+
+  test("a template read of runtime-only state is still left alone", () => {
+    expect(evaluateStaticTemplate("${state.n}", scope)).toBeNull();
+    expect(evaluateStaticTemplate("${state.k}", scope)).toBe(5);
+  });
+});
 
 describe("buildInitialScope", () => {
   test("binds a second declared name by position, not by name", () => {

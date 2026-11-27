@@ -1211,6 +1211,9 @@ describe("compileClient — $props in a map template", () => {
     expect(propFor("#/state/n")).toBe('.p="${state.n}"');
     expect(propFor("#/state/a/b")).toBe('.p="${state.a.b}"');
     expect(propFor("loose")).toBe('.p="${state.loose}"');
+    expect(propFor("parent#/a")).toBe('.p="${state.a}"');
+    expect(propFor("window#/x/y")).toBe('.p="${window.x.y}"');
+    expect(propFor("document#/title")).toBe('.p="${document.title}"');
   });
 
   test("emits a static $prop as a literal", () => {
@@ -1999,5 +2002,114 @@ describe("compileClient — client-timed external classes", () => {
     expect(js).toContain('  onServer: {"$prototype":"Ledger","timing":"server"},');
     expect(js).toContain('  unset: {"$prototype":"Ledger","limit":2},');
     expect(js).not.toContain("__jxInstantiate");
+  });
+});
+
+describe("compileClient — a page-level instance's $props (spec.md §13.3)", () => {
+  /** The module and the markup of a page holding `children`, over `state`. */
+  const page = (children: NonNullable<JxDocument["children"]>, state?: JxDocument["state"]) => {
+    const result = compileClient(
+      { children, state: state ?? { n: 1 }, tagName: "div", title: "T" },
+      {},
+    );
+    return { html: result.html, module: result.files[0]!.content };
+  };
+
+  test("a $ref prop becomes a property directive", () => {
+    const { html, module } = page([
+      { $props: { count: { $ref: "#/state/n" } }, tagName: "my-card" },
+    ]);
+    expect(html).toContain("data-bind");
+    expect(html).toContain(':prop._p0="count"');
+    expect(module).toContain("_p0: () => state.n");
+  });
+
+  test("a template prop binds its string, a literal a constant", () => {
+    const { html, module } = page([
+      { $props: { label: "${state.n} items", size: 3 }, tagName: "my-card" },
+    ]);
+    expect(html).toContain(':prop._p0="label"');
+    expect(html).toContain(':prop._p1="size"');
+    expect(module).toContain("_p0: () => `${state.n} items`");
+    expect(module).toContain("_p1: () => (3)");
+  });
+
+  test("the prop name keeps its case and its punctuation", () => {
+    const { html } = page([
+      { $props: { "data-x": 1, ariaNote: { $ref: "#/state/n" } }, tagName: "my-card" },
+    ]);
+    expect(html).toContain('="ariaNote"');
+    expect(html).toContain('="data-x"');
+  });
+
+  test("a private prop is not bound", () => {
+    const { html } = page([{ $props: { "#cache": { $ref: "#/state/n" } }, tagName: "my-card" }]);
+    expect(html).not.toContain(":prop.");
+  });
+
+  test("a non-hyphenated tag's $props emits no directive", () => {
+    const { html } = page([{ $props: { a: { $ref: "#/state/n" } }, tagName: "section" }]);
+    expect(html).not.toContain(":prop.");
+  });
+
+  test("hydrate writes a prop directive as a property", () => {
+    const { module } = page([{ $props: { a: { $ref: "#/state/n" } }, tagName: "my-card" }]);
+    expect(module).toContain("parts[0] === 'prop'");
+    expect(module).toContain("el[name] = bind[k]()");
+  });
+
+  test("every ref scheme lowers in a prop", () => {
+    const { module } = page([
+      {
+        $props: {
+          a: { $ref: "parent#/a" },
+          t: { $ref: "document#/title" },
+          x: { $ref: "window#/x/y" },
+        },
+        tagName: "my-card",
+      },
+    ]);
+    expect(module).toContain("() => state.a");
+    expect(module).toContain("() => window.x.y");
+    expect(module).toContain("() => document.title");
+  });
+
+  test("a handler named by a prop is on state as a (state, event) function", () => {
+    const children: NonNullable<JxDocument["children"]> = [
+      { $props: { onPick: { $ref: "#/state/pick" } }, tagName: "my-card" },
+    ];
+    const state: JxDocument["state"] = {
+      n: 1,
+      pick: {
+        $prototype: "Function",
+        body: [{ operator: "+=", target: { $ref: "#/state/n" }, value: 1 }],
+      },
+    };
+    expect(page(children, state).module).toContain('state["pick"] = (state, e) =>');
+    expect(page([{ tagName: "my-card" }], state).module).not.toContain('state["pick"] =');
+  });
+
+  test("a prop named handler is not assigned twice, and a $map row reaches it", () => {
+    const { module } = page(
+      [
+        {
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/rows" },
+            map: { $props: { onAct: { $ref: "#/state/act" } }, tagName: "my-card" },
+          },
+          tagName: "div",
+        },
+      ],
+      {
+        act: {
+          $prototype: "Function",
+          body: [{ operator: "+=", target: { $ref: "#/state/n" }, value: 1 }],
+        },
+        n: 1,
+        rows: { default: [{}] },
+      },
+    );
+    expect(module.split('state["act"] =').length).toBe(2);
   });
 });
