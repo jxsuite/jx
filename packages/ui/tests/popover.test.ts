@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { documentStyleText, setCanvasDelinkPopovers } from "@jxsuite/runtime";
-import { getNestedStyle, hasSchemaKeywords, isString } from "@jxsuite/schema/guards";
+import { getNestedStyle, isJsonObject, isString } from "@jxsuite/schema/guards";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
 import type { JxElement } from "@jxsuite/schema/types";
 
@@ -207,7 +207,7 @@ describe("jx-popover the document", () => {
     const state = doc.state ?? {};
     expect(state["mode"]).toBeUndefined();
     for (const [key, entry] of Object.entries(state)) {
-      if (hasSchemaKeywords(entry) && entry.type === "number") {
+      if (isJsonObject(entry) && entry.type === "number") {
         // A non-zero numeric default cannot express "unset": removing the attribute coerces
         // Through the current value's type, so `Number(null)` writes 0 anyway. The panel's gap
         // From its anchor is the `--jx-popover-offset` token for exactly that reason.
@@ -219,7 +219,7 @@ describe("jx-popover the document", () => {
 
   test("says in the open prop's own description that writing it is not how a panel opens", () => {
     const open = doc.state?.["open"];
-    const description = hasSchemaKeywords(open) ? open.description : undefined;
+    const description = isJsonObject(open) ? open.description : undefined;
     expect(description).toContain("showPopover()");
     expect(description).toContain("hidePopover()");
   });

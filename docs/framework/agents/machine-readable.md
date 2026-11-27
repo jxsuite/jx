@@ -84,16 +84,19 @@ Reach for it when you want lookup rather than reading: it is section-granular, s
 
 The other machine-readable surface is the format itself. The Jx schemas are plain JSON Schema 2020-12 documents, served at the URLs that are also their canonical `$id`s:
 
-| URL                                                                                            | Validates                                                                      |
-| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [`https://jxsuite.com/schema/v1`](https://jxsuite.com/schema/v1)                               | Components, pages, and layouts                                                 |
-| [`https://jxsuite.com/schema/project/v1`](https://jxsuite.com/schema/project/v1)               | The project file                                                               |
-| [`https://jxsuite.com/schema/class/v1`](https://jxsuite.com/schema/class/v1)                   | `*.class.json` class definitions                                               |
-| [`https://jxsuite.com/schema/document/paths/v2`](https://jxsuite.com/schema/document/paths/v2) | A page's `$paths` source, referenced by `schema/v1` and overridden per project |
+| URL                                                                                                    | Validates                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| [`https://jxsuite.com/schema/v1`](https://jxsuite.com/schema/v1)                                       | Components, pages, and layouts                                                                                             |
+| [`https://jxsuite.com/schema/project/v1`](https://jxsuite.com/schema/project/v1)                       | The project file                                                                                                           |
+| [`https://jxsuite.com/schema/class/v1`](https://jxsuite.com/schema/class/v1)                           | `*.class.json` class definitions                                                                                           |
+| [`https://jxsuite.com/schema/document/paths/v2`](https://jxsuite.com/schema/document/paths/v2)         | A page's `$paths` source, referenced by `schema/v1` and overridden per project                                             |
+| [`https://jxsuite.com/schema/project/core/v2`](https://jxsuite.com/schema/project/core/v2)             | The core `project.json` properties, and the `JxFieldSchema` and `RelationshipRef` definitions extension fragments build on |
+| [`https://jxsuite.com/schema/project/fields/v2`](https://jxsuite.com/schema/project/fields/v2)         | A field schema (content frontmatter fields, table columns), referenced by extension fragments and overridden per project   |
+| [`https://jxsuite.com/schema/extension-manifest/v1`](https://jxsuite.com/schema/extension-manifest/v1) | `jx-extension.json` extension manifests                                                                                    |
 
 Any compliant 2020-12 validator can consume them directly. There is no Jx-specific validation runtime. They are published from `packages/schema` through the `copy` map in the site's the project file, so the served documents are byte-for-byte the schemas the toolchain uses.
 
-For work inside a project, prefer the local composed copies. `jx schema` writes `project.schema.json` and `document.schema.json` into the project root, merging these core schemas with the fragments each enabled extension ships and inlining every referenced resource. Those files resolve offline (no `node_modules`, no network, no editor configuration), and they are what `jx validate` checks against. The hosted URLs above are the right reference when you are outside a project or want the core format without any extension's additions. The hosted `$paths` union accepts any extension source shape it cannot see, where your project's generated copy checks the exact set your extensions provide. See [Schema composition](/docs/extending/extensions/schema-composition).
+For work inside a project, prefer the local composed copies. `jx schema` writes `project.schema.json` and `document.schema.json` into the project root, merging these core schemas with the fragments each enabled extension ships and inlining every referenced resource. Those files resolve offline (no `node_modules`, no network, no editor configuration), and they are what `jx validate` checks against. The hosted URLs above are the right reference when you are outside a project or want the core format without any extension's additions. The hosted `$paths` union accepts any extension source shape it cannot see, where your project's generated copy checks the exact set your extensions provide. The hosted field union likewise holds only the core field shapes and relationship references. See [Schema composition](/docs/extending/extensions/schema-composition).
 
 ## Related
 

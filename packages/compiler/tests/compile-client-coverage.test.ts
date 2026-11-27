@@ -139,7 +139,11 @@ describe("compileClient — structured statement bodies (spec §20)", () => {
       state: {
         applyStep: {
           $prototype: "Function",
-          body: [{ operator: "+=", target: { $ref: "#/state/count" }, value: 1 }],
+          body: [
+            { operator: "+=", target: { $ref: "#/state/count" }, value: 1 },
+            { stopPropagation: true },
+            { dispatchEvent: "added" },
+          ],
           parameters: ["step"],
         },
         count: 0,
@@ -148,6 +152,11 @@ describe("compileClient — structured statement bodies (spec §20)", () => {
     });
     expect(js).toContain('state["applyStep"] = (..._a) => __jxFormula(');
     expect(js).toContain('"step": _a[0]');
+    expect(js).toContain("const e = null;");
+    expect(js).toContain(
+      'document.body.firstElementChild?.dispatchEvent(new CustomEvent("added"))',
+    );
+    expect(js).not.toContain("})()");
   });
 
   test("inline event handler with a statement-array body compiles into the handler table", () => {

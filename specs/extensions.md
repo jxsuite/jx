@@ -116,13 +116,13 @@ Located at the package root, referenced by a `"jx"` field in `package.json` (`"j
 }
 ```
 
-| Key           | Type                     | Meaning                                                                                                        |
-| ------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `name`        | `string` (required)      | Package name; must match `package.json`.                                                                       |
-| `title`       | `string`                 | Human-readable name for studio surfaces.                                                                       |
-| `description` | `string`                 | One-line description.                                                                                          |
-| `classes`     | `Record<string, string>` | `$prototype`-visible name → class descriptor path, relative to the manifest.                                   |
-| `schemas`     | `object`                 | Schema fragments this package contributes: `project` (project.json sections), `document` (document positions). |
+| Key           | Type                     | Meaning                                                                                                                                                                                          |
+| ------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`        | `string` (required)      | Package name; must match `package.json`.                                                                                                                                                         |
+| `title`       | `string`                 | Human-readable name for studio surfaces.                                                                                                                                                         |
+| `description` | `string`                 | One-line description.                                                                                                                                                                            |
+| `classes`     | `Record<string, string>` | `$prototype`-visible name → class descriptor path, relative to the manifest.                                                                                                                     |
+| `schemas`     | `object`                 | Schema fragments this package contributes: `project` (project.json sections), `document` (document positions), `fields` (a fragment whose `$defs` members join the project's field union, §5.3). |
 
 The manifest is pure data, validated by the generated `extension-manifest.schema.json` (`@jxsuite/schema`). It enumerates; it does not define behavior — behavior lives in the class descriptors it points to.
 
@@ -176,7 +176,7 @@ Two positions are **open recursion points** where fragments must reference the _
 
 | Resource $id                                   | Position                                                                                                                               | Shipped default → entry-document union                                                                                                                                                                                                                                        |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `https://jxsuite.com/schema/project/fields/v2` | Field-schema values inside section entry schemas (content frontmatter fields, table columns) — recursive through `properties`/`items`. | Default: core `JxFieldSchema` + `RelationshipRef`. Entry adds extension field extras (e.g. connector column shapes).                                                                                                                                                          |
+| `https://jxsuite.com/schema/project/fields/v2` | Field-schema values inside section entry schemas (content frontmatter fields, table columns) — recursive through `properties`/`items`. | Default: core `JxFieldSchema` + `RelationshipRef`. Entry adds the `$defs` members of each enabled extension's `schemas.fields` fragment (§4); no first-party extension ships one yet.                                                                                         |
 | `https://jxsuite.com/schema/document/paths/v2` | The `$paths` value of a document.                                                                                                      | Default: the core source shapes (`values`, data-file `$ref`, a `paginate` list, legacy array) plus an unknown-source escape hatch. Entry drops the escape hatch and unions each extension's paths shape (parser's `ContentPathsSource`; a connector table source is planned). |
 
 Fragments write `{ "$ref": "https://jxsuite.com/schema/project/fields/v2" }` at field positions — no local fallbacks needed.
@@ -191,7 +191,7 @@ Standalone validation registers the shipped defaults (`@jxsuite/schema/schemas/p
 
 ### 5.4 Validation
 
-> **Status: Partial.** Offline resolution of the committed entry documents, host-first resolution of first-party refs and whole-tree `jx validate` ship (`packages/compiler/src/site/schema-command.ts`, `packages/compiler/src/site/validate-command.ts`). The canonical URLs are not all served: the `copy` map in `sites/jxsuite.com/project.jxn` publishes `schema/v1`, `schema/project/v1`, `schema/class/v1` and `schema/document/paths/v2`, but not `https://jxsuite.com/schema/project/core/v2` or the `https://jxsuite.com/schema/project/fields/v2` default union, so a client fetching either gets a 404 rather than the shipped default.
+> **Status: Implemented.**
 
 - Every consumer resolves the committed entry documents **offline with no file access at all**: they are self-contained single-resource schemas (§5.2), so every `$ref` is a root-relative JSON Pointer into the same document. No `node_modules`, no network, no editor configuration.
 
@@ -208,7 +208,7 @@ Standalone validation registers the shipped defaults (`@jxsuite/schema/schemas/p
 - **A validator does not write what it is checking.** `jx validate` composes a stale entry document in memory and leaves the committed file untouched; `jx schema` is the command that writes. Regenerating during validation made the check green on a machine with a shadowed core precisely because it validated against the narrower artifact it had just written over the repository's.
 
 - `jx validate` (compiler CLI) validates the WHOLE project tree: `project.json` against `./project.schema.json` (ajv-2020; a restricted file loader with a host-resolution fallback still handles legacy unbundled entry documents); every document under `components/`, `pages/`, and `layouts/` against the bundled document schema; that no named formula reaches itself through `call`, a page judged together with `project.json`'s `state` as the build merges them (spec.md §19.4c); every project-local `*.class.json` against the class schema; each enabled extension's fragments compiled standalone against the shipped default unions; and a self-containment check that flags any residual relative `$ref` in a committed entry document ("regenerate with `jx schema`"). CI runs this over every project root in the repo (`bun run schema:validate-all`).
-- The generic bundler (embed fragments under `$defs` keyed by `$id`, preserving resource boundaries) is the mechanism behind the committed form, not just an escape hatch: `jx schema` bundles before writing, and the dev server / cloud studio serve the same bundles via `fetchProjectSchemas`. Where a client fetches the canonical URLs instead (they are served from jxsuite.com), it gets the shipped defaults — degradation is _under-suggestion_ of extension field extras, never false errors.
+- The generic bundler (embed fragments under `$defs` keyed by `$id`, preserving resource boundaries) is the mechanism behind the committed form, not just an escape hatch: `jx schema` bundles before writing, and the dev server / cloud studio serve the same bundles via `fetchProjectSchemas`. Where a client fetches the canonical URLs instead, it gets the shipped defaults — degradation is _under-suggestion_ of extension field extras, never false errors. Every core schema artifact is served from jxsuite.com at its `$id`: the site's `copy` map publishes each one at its `$id`'s path as `index.json`, so `https://jxsuite.com/schema/project/fields/v2`, and the `project/core/v2` resource its members point into, resolve for a client holding no entry document. `scripts/docs/schema-publication.test.ts` fails when a core artifact's `$id`, or a canonical `$ref` in a core artifact or an extension fragment, names a path the map does not publish. First-party fragment `$id`s (`https://jxsuite.com/schema/ext/...`) are not served, because nothing resolves them (§5.1). The site publishes the released tree, so the served copies are the last release's.
 
 ### 5.5 Composition is host-agnostic
 
@@ -582,7 +582,7 @@ DELETE /_jx/data/:table/:id
 
 ### 11.1 Section-owner `deploySchema` (push contributions)
 
-> **Status: Partial.** The studio push composes section-owner steps after the connector plan (`pushDataSchema`, `packages/server/src/data-api.ts`). `jx db push` (`packages/compiler/src/site/db-push.ts`) runs only each connection's connector `deploySchema`, so it never pushes a section owner's steps, the auth extension's Better Auth tables included.
+> **Status: Implemented.** `jx db push` and the studio push both run every section owner's `deploySchema` after the connector plan, through one loop (`pushSectionOwners`, `packages/compiler/src/site/section-push.ts`; `dbPush`, `packages/compiler/src/site/db-push.ts`; `pushDataSchema`, `packages/server/src/data-api.ts`).
 
 A **non-connector** `project` class may also declare a `deploySchema` capability, letting its section contribute steps to the schema push (`jx db push`, the studio push button). The signature differs from the connector variant — there is no single connection def to hand over:
 
@@ -591,7 +591,7 @@ deploySchema(sectionValue, projectConfig, { env, dryRun?, connection?, connector
   → { steps, applied, warnings, connection }
 ```
 
-`steps` are ready push-plan entries (`{ kind, table?, summary, sql?, connection? }`); hosts append them **after** the connector plan and default each step's `kind` to the contributing section key — the auth extension's Better Auth system-table migration lands as `kind: "auth"` steps this way. `connectors` carries the same provider stand-ins the mounts receive, so dev pushes hit the `local:` stand-in databases. When a push is filtered to a `connection` the section does not live on, the capability returns empty steps. Hosts stay extension-agnostic: registry dispatch only, no extension imports, no hardcoded section names.
+`steps` are ready push-plan entries (`{ kind, table?, summary, sql?, connection? }`); hosts append them **after** the connector plan and default each step's `kind` to the contributing section key — the auth extension's Better Auth system-table migration lands as `kind: "auth"` steps this way. `connectors` maps each provider id to the class the push reaches. A dev host (the dev server, and the desktop app behind the studio push button) hands the `local:` stand-ins its mounts receive (§12), so a studio push lands in the stand-in databases; `jx db push` hands each provider's own class, as the generated worker does, so a section's steps land on the connection as declared, the database the connector plan has just written. When a push is filtered to a `connection` the section does not live on, the capability returns empty steps without opening its database. A section owner that throws does not stop the push: the host reports its error beside the plan. Hosts stay extension-agnostic: registry dispatch only, no extension imports, no hardcoded section names.
 
 ---
 

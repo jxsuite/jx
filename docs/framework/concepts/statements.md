@@ -3,6 +3,8 @@ title: "Statements"
 description: "Structured function bodies in Jx: the statement kinds, how they lower to JavaScript, and when to use statements over expressions or raw code."
 spec:
   - spec.md#20
+code:
+  - packages/runtime/src/statements.ts
 ---
 
 # Statements
@@ -135,6 +137,8 @@ A structured body follows the named-formula pattern. Without `parameters`, the e
 }
 ```
 
+Call it with a `call` node, or as `state.addToCart(item)` from another body. Only a non-empty `parameters` list makes a callable; a body written on an `on*` property is always a handler. A callable runs without an event, so `stopPropagation` and `preventDefault` do nothing inside it, and `dispatchEvent` fires from the component itself: the custom element in a component, the page's root element on a page.
+
 Like a named formula, a callable body may not reach itself through `call`. See [Expressions](/docs/framework/concepts/expressions).
 
 ## Statements, expressions, or a body string?
@@ -162,7 +166,7 @@ Statements execute sequentially. A step whose value is a promise is awaited befo
 - `$switch` matches `String(discriminant)` against `cases` keys, because JSON keys are strings.
 - Statements run in order; thenable results are awaited before the next step.
 - There is no capture field; assign a `call`'s result with an `=` statement.
-- `dispatchEvent` needs a dispatch target; outside a handler (no `event`), a compiled custom element dispatches from the component instance.
+- `dispatchEvent` needs a dispatch target; outside a handler (no `event`), such as in a callable, it dispatches from the component instance in a component and from the page's root element on a page.
 - Declare dispatched events in `emits`, which is the declaration tooling reads.
 - `stopPropagation` and `preventDefault` need the handler's event; outside a handler they do nothing.
 

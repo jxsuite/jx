@@ -423,6 +423,16 @@ describe("buildScope", () => {
     expect(state.email).toBeUndefined();
   });
 
+  test("a data object with a type field is a value", async () => {
+    const state = await buildScope(
+      { state: { user: { name: "x", type: "admin" }, empty: {} } },
+      {},
+      BASE,
+    );
+    expect(state.user).toEqual({ name: "x", type: "admin" });
+    expect(state.empty).toEqual({});
+  });
+
   // Shape 3: Template string → computed
   test("Shape 3: string with ${} → computed", async () => {
     const state = await buildScope(

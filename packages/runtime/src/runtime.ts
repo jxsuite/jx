@@ -78,6 +78,7 @@ import {
   attributeStateKey,
   isPrivateStateKey,
   isPrototypeDef,
+  isPureTypeDef,
   isRef as isRefValue,
   isServerFnDef,
   isString,
@@ -104,7 +105,7 @@ import {
   scriptSpecifier,
 } from "@jxsuite/schema/document-scripts";
 
-import { readCookie, serializeCookie } from "./cookie.ts";
+import { readCookieValue, serializeCookie } from "./cookie.ts";
 import type {
   JsonObject,
   JsonValue,
@@ -524,21 +525,6 @@ export function setDocumentParser(
 ): void {
   _documentParser = parser;
 }
-
-/** JSON Schema keywords used to identify pure type definitions (Shape 2b). */
-const SCHEMA_KEYWORDS = new Set([
-  "type",
-  "properties",
-  "items",
-  "enum",
-  "minimum",
-  "maximum",
-  "minLength",
-  "maxLength",
-  "pattern",
-  "required",
-  "examples",
-]);
 
 /** /** @type {{ skip: boolean }} */
 const _serverFnConfig = { skip: false };
@@ -1191,7 +1177,7 @@ export async function buildScope(
         raw[key] = def.default;
         continue;
       } // Shape 2: expanded signal
-      if (hasSchemaKeywords(def)) {
+      if (isPureTypeDef(def)) {
         continue;
       } // Shape 2b: pure type def
       raw[key] = def; // Shape 1: plain object
@@ -1285,23 +1271,6 @@ export async function buildScope(
 
   return state;
 }
-
-/**
- * Check whether an object contains any JSON Schema keywords. Used to discriminate Shape 2b (pure
- * type definition) from Shape 1 (naked object).
- *
- * @param obj A state entry object, as the document wrote it
- * @returns {boolean}
- */
-function hasSchemaKeywords(obj: Readonly<Record<string, JxDocumentValue | undefined>>) {
-  for (const k of Object.keys(obj)) {
-    if (SCHEMA_KEYWORDS.has(k)) {
-      return true;
-    }
-  }
-  return false;
-}
-export { hasSchemaKeywords };
 
 /**
  * The names a template may read without a `state.` prefix, in the order {@link templateArgs}
@@ -4165,9 +4134,18 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
      survive. Without this a mapped row whose item was replaced by an equal one (a host rebuilding
      its projection) rebuilt every switch inside it, and the popover the case rendered closed. */
   let renderedKey: string | null = null;
+  /* The scope of the external case on screen, for the hooks a mounted document runs (spec.md
+     §16.4). Set only once the case is in the container, so a stale load runs neither. */
+  let liveCase: JxScope | null = null;
   const retire = (): void => {
     live?.stop();
     live = null;
+    const left = liveCase;
+    liveCase = null;
+    // Called as a method, so a hook that reads `this` sees the scope, as `mount()`'s does.
+    if (left && isScopeHook(left.onUnmount)) {
+      left.onUnmount(left);
+    }
   };
 
   effect(() => {
@@ -4209,7 +4187,15 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
           if (gen !== generation) {
             return;
           }
-          // An external case is a component boundary, so it inherits what a component does (§13.4).
+          /* An external case is a component boundary, so it registers the `$elements` its document
+             declares (§16.3) before it renders, as a mounted document does. */
+          if (doc.$elements) {
+            await registerElements(doc.$elements, href, options?._ctx);
+            if (gen !== generation) {
+              return;
+            }
+          }
+          // It inherits what a component does (§13.4).
           const childScope = await buildScope(withProjectFormulas(doc), {}, href, options?._ctx);
           if (gen !== generation) {
             return;
@@ -4220,6 +4206,10 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
               scope.run(() => container.append(renderNode(doc, childScope, childOpts))),
             ),
           );
+          liveCase = childScope;
+          if (isScopeHook(childScope.onMount)) {
+            childScope.onMount(childScope);
+          }
         })
         .catch((error) =>
           console.error("Jx $switch: failed to load external case", caseDef.$ref, error),
@@ -4430,20 +4420,7 @@ export async function resolvePrototype(
 
     case "Cookie": {
       const name = def.name ?? key;
-      const read = (): JsonValue => {
-        const raw = readCookie(document.cookie, name);
-        if (raw === null) {
-          return null;
-        }
-        try {
-          /* SAFETY: `JSON.parse` answers the JSON value the cookie encodes, or throws, which the
-             catch below answers with the raw text. */
-          return JSON.parse(decodeURIComponent(raw)) as JsonValue;
-        } catch {
-          return raw;
-        }
-      };
-      const cookieState = scopeRef(read() ?? def.default ?? null);
+      const cookieState = scopeRef(readCookieValue(document.cookie, name) ?? def.default ?? null);
       // Persist on change
       effect(() => {
         /* SAFETY: the store is seeded with JSON (`read` parses it, `default` is JSON) and holds
@@ -5414,7 +5391,7 @@ export function declaredDefaults(def: JxElement): Map<string, JxScopeValue> {
         out.set(key, undefined);
         continue;
       }
-      if (hasSchemaKeywords(entry)) {
+      if (isPureTypeDef(entry)) {
         continue;
       }
     }
@@ -5564,6 +5541,14 @@ export {
   transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
 } from "./css.ts";
+export {
+  COOKIE_HOST_PREFIX,
+  COOKIE_SECURE_PREFIX,
+  readCookie,
+  readCookieValue,
+  serializeCookie,
+} from "./cookie.ts";
+export type { CookieOptions } from "./cookie.ts";
 export { associateForm } from "./form-association.ts";
 export type {
   FormAssociation,

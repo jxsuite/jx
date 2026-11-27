@@ -20,7 +20,7 @@ code:
 
 # The dev server
 
-During development you don't run the compiled `dist/` output. You run your source files through the Jx dev server, a Bun-native server from `@jxsuite/server`. It serves the project directory as-is, reloads the browser when files change, executes server-side code on your behalf, and backs Studio's file operations.
+The Jx dev server is a Bun-native server from `@jxsuite/server`. It reloads the browser when files change, executes server-side code on your behalf, and backs Studio's file operations. What it serves depends on how it is started: on a site project, [`jx dev`](/docs/framework/build/cli) builds the site first and serves the built pages, so the browser shows what `jx build` would ship; any other root, and a server you embed yourself with `createDevServer`, serves the directory as-is.
 
 ## Starting it
 
@@ -92,7 +92,7 @@ Studio's UI assets are ordinary static files under the served root; opening a pr
 
 ## Running server-side code: the two proxies
 
-Production builds compile server-side work into generated handlers. In development there is no build, so the runtime hands that work to the dev server through two POST endpoints. You don't call either one yourself. They exist so documents behave the same in dev as after `jx build`.
+Production builds compile server-side work into generated handlers. When the runtime interprets your documents, as in Studio's live preview or a page of your own that loads `@jxsuite/runtime`, there is no build, so the runtime hands that work to the dev server through two POST endpoints. You don't call either one yourself. They exist so documents behave the same in dev as after `jx build`.
 
 ### Module resolution (`POST /__jx_resolve__`)
 

@@ -334,6 +334,83 @@ function stateOf(element: Element): Record<string, JsonValue> {
   return element.state;
 }
 
+describe("compiled element — parameterised structured body", () => {
+  let cart: Element;
+
+  beforeAll(async () => {
+    const { files } = await compileElement({
+      children: [
+        {
+          onclick: {
+            $expression: {
+              operator: "call",
+              target: { $ref: "#/state/addToCart" },
+              value: [{ $ref: "#/state/next" }],
+            },
+          },
+          tagName: "button",
+          textContent: "add",
+        },
+      ],
+      state: {
+        addToCart: {
+          $prototype: "Function",
+          body: [
+            { operator: "push", target: { $ref: "#/state/cart" }, value: { $ref: "$args/item" } },
+            { stopPropagation: true },
+            { dispatchEvent: "cart-changed", detail: { $ref: "$args/qty" } },
+          ],
+          parameters: [{ name: "item" }, { name: "qty", default: 1 }],
+        },
+        cart: { default: [] },
+        next: { default: "pear" },
+      },
+      tagName: "ls-cart",
+    });
+    writeFileSync(resolve(TMP, "cart.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "cart.js"));
+    win.document.body.innerHTML = "<ls-cart></ls-cart>";
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+    cart = rendered(win.document.querySelector("ls-cart"), "ls-cart");
+  });
+
+  interface CartState {
+    addToCart: (item: string) => void;
+    cart: string[];
+  }
+  const hasCartState = (el: Element): el is Element & { state: CartState } =>
+    "state" in el && typeof el.state === "object";
+  const addToCart = (item: string): void => {
+    if (!hasCartState(cart)) {
+      throw new TypeError("Expected a compiled <ls-cart>");
+    }
+    cart.state.addToCart(item);
+  };
+  const cartItems = () => stateOf(cart).cart;
+
+  test("state.key(...) binds positional arguments to parameter names", () => {
+    addToCart("apple");
+    expect(cartItems()).toContain("apple");
+  });
+
+  test("a call node invokes it positionally", () => {
+    const button = cart.querySelector("button");
+    button?.dispatchEvent(new win.Event("click", { bubbles: true }));
+    expect(cartItems()).toContain("pear");
+  });
+
+  test("run without an event it dispatches from the instance, and its event verbs are no-ops", () => {
+    const details: unknown[] = [];
+    cart.addEventListener("cart-changed", (ev) =>
+      details.push(ev instanceof win.CustomEvent ? ev.detail : undefined),
+    );
+    expect(() => addToCart("fig")).not.toThrow();
+    expect(details).toEqual([1]);
+  });
+});
+
 describe("compiled element — the property bridge", () => {
   const CHILD: JxDocument = {
     children: [

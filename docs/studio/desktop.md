@@ -12,6 +12,8 @@ spec:
   - desktop.md#9.5
   - desktop.md#9.7
 code:
+  - packages/desktop/src/backend/settings-store.ts
+  - packages/desktop/src/backend/user-store.ts
   - packages/desktop/src/backend/trust-store.ts
   - packages/schema/src/project-file.ts
   - packages/desktop/src/webview/boot.ts
@@ -54,6 +56,8 @@ Once installed, updates take care of themselves. The app checks for a new releas
 To see where you stand, click **About** at the foot of the Navigator rail. The dialog shows the app version, its release channel, and the current update status.
 
 Where an update comes from depends on how you installed. The macOS app, the Windows installer and the Linux AppImage update themselves as described above. A Microsoft Store or Mac App Store install is updated by its store, the Ubuntu snap by the Snap Store, and the NixOS build by your package manager.
+
+The Mac App Store build runs inside the App Sandbox, which hides your SSH keys and Git configuration from Studio. Its source-control panel works with HTTPS remotes only, and adding or syncing an SSH remote fails with a message that says so. The downloadable build has no such limit.
 
 ## Open a project
 

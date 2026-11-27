@@ -40,7 +40,7 @@ Verified at the working tree on 2026-09-26:
 - **The corpus does not move.** The tracked JSON documents hold 40 string-body Function entries in 13 files: `examples/components/*` (9), `packages/starters/sites/{real-estate,shop}/components/*` (2) and `sites/jxsuite.com/components/{site-search,theme-toggle}.json`. Taking the use set with root `on*` keys and lifecycle keys, 18 return a value and none is used as a callable, and 22 do not return a value and every one is used as a callable. The body-text rule and the usage rule give all 40 the same verdict.
 - Tests that pin today's inline verdicts: `runtime.test.ts` "Shape 4: Function with return in body → computed" (line 392) and the two parameter cases after it; `compile-element.test.ts` "signal functions become computed" (line 205); `compile-client.test.ts` "includes computed import when computed entries present" (line 597); `custom-elements.test.ts` line 548 (`onPick` read as `${state.onPick}`, never bound). None binds or calls a value-returning body, so none changes.
 
-**Related.** §5.3 4d (the external half of the same rule, landed), §16.4 (lifecycle keys), §19.4c (`call` nodes; `parameters` make an entry callable), §20.3 (the structured-body equivalent, `plan:spec/compiled-element-parameterised-bodies`), `compiler.md` §4.
+**Related.** §5.3 4d (the external half of the same rule, landed), §16.4 (lifecycle keys), §19.4c (`call` nodes; `parameters` make an entry callable), §20.3 (the structured-body equivalent, landed), `compiler.md` §4.
 
 ## Outcome
 
