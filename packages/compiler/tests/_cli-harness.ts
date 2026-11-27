@@ -166,12 +166,19 @@ export interface DbPushResultLike {
     warnings: string[];
     applied: boolean;
   }[];
+  sections: {
+    section: string;
+    steps: { kind: string; summary: string; sql?: string }[];
+    warnings: string[];
+    applied: boolean;
+    error?: string;
+  }[];
   bindingsPatched: boolean;
   wranglerPath: string | null;
 }
 
 let dbPushImpl: (root: string, opts: DbPushOptions) => Promise<DbPushResultLike> = () =>
-  Promise.resolve({ bindingsPatched: false, results: [], wranglerPath: null });
+  Promise.resolve({ bindingsPatched: false, results: [], sections: [], wranglerPath: null });
 
 export const dbPushCalls: { root: string; opts: DbPushOptions }[] = [];
 
@@ -264,6 +271,10 @@ export async function runEntry(entry: "cli" | "compile-cli", args: string[]) {
   const errSpy = spyOn(console, "error").mockImplementation((...a: unknown[]) => {
     errors.push(a.map(String).join(" "));
   });
+  const warns: string[] = [];
+  const warnSpy = spyOn(console, "warn").mockImplementation((...a: unknown[]) => {
+    warns.push(a.map(String).join(" "));
+  });
   const exitSpy = spyOn(process, "exit").mockImplementation((code) => {
     throw new ExitSentinelError(code);
   });
@@ -286,8 +297,9 @@ export async function runEntry(entry: "cli" | "compile-cli", args: string[]) {
   } finally {
     logSpy.mockRestore();
     errSpy.mockRestore();
+    warnSpy.mockRestore();
     exitSpy.mockRestore();
     process.argv = originalArgv;
   }
-  return { errors, exitCode, exited, logs };
+  return { errors, exitCode, exited, logs, warns };
 }

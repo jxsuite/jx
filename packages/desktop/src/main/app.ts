@@ -693,6 +693,11 @@ export async function startApp(
     backendEnv.JX_STUDIO_CHANNEL = "stable";
   }
 
+  /* The sandbox's `git` is Apple's shim: the backend keeps Git to HTTPS remotes there (§7.7). */
+  if (macAppStore) {
+    backendEnv.JX_STUDIO_SANDBOX = "1";
+  }
+
   /** Start a backend, after taking up every folder grant, so it inherits all of them. */
   function startBackend(): void {
     grants?.restore();

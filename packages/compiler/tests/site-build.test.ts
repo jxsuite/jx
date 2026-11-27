@@ -19,7 +19,7 @@ import { resolveLayout } from "../src/site/layout-resolver";
 import { mergeHead, renderHead } from "@jxsuite/site/head-merger";
 import { injectContext } from "../src/site/context-injection";
 import { buildSite } from "../src/site/site-build";
-import { DEFAULT_CHARSET } from "@jxsuite/schema/defs";
+import { DEFAULT_CHARSET, REDIRECT_STATUSES } from "@jxsuite/schema/defs";
 import { isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import { hashOf } from "../src/site/csp.ts";
@@ -363,15 +363,20 @@ describe("buildSite", () => {
       expect(existsSync(resolve(TMP, "dist/api"))).toBe(false);
     });
 
-    it("an off-enum status is a build error naming the rule", async () => {
+    it("every status the schema admits builds, and any other is a build error naming the rule", async () => {
       const root = mkdtempSync(join(tmpdir(), "jx-redirect-"));
       mkdirSync(join(root, "pages"), { recursive: true });
+      const rules = REDIRECT_STATUSES.map((status) => [
+        `/s${status}`,
+        { destination: "/x", status },
+      ]);
+      const admitted = Object.fromEntries(rules);
       writeFileSync(
         join(root, "project.json"),
         JSON.stringify({
           build: { outDir: "./dist" },
           name: "Bad Redirect",
-          redirects: { "/bad": { destination: "/x", status: 418 } },
+          redirects: { ...admitted, "/bad": { destination: "/x", status: 418 } },
         }),
         "utf8",
       );
@@ -381,10 +386,19 @@ describe("buildSite", () => {
         "utf8",
       );
       const result = await buildSite(root, { verbose: false });
-      expect(result.errors.some((e) => e.includes("/bad") && e.includes("418"))).toBe(true);
+      const refusals = result.errors.filter((e) => e.startsWith("Redirect "));
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toContain("/bad");
+      expect(refusals[0]).toContain("418");
+      expect(refusals[0]).toContain(REDIRECT_STATUSES.join(", "));
       // The rule is refused outright rather than written through to the host.
-      const emitted = join(root, "dist/_redirects");
-      expect(existsSync(emitted) && readFileSync(emitted, "utf8").includes("418")).toBe(false);
+      const emitted = readFileSync(join(root, "dist/_redirects"), "utf8");
+      expect(emitted).not.toContain("418");
+      for (const status of REDIRECT_STATUSES) {
+        expect(emitted).toContain(`/s${status} /x ${status}`);
+      }
+      expect(existsSync(join(root, "dist/s301/index.html"))).toBe(true);
+      expect(existsSync(join(root, "dist/s307/index.html"))).toBe(false);
       rmSync(root, { force: true, recursive: true });
     });
 

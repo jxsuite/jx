@@ -101,7 +101,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
   - The compiled targets inline a copy: `requestUrlHelperSource()` in `packages/compiler/src/shared.ts`, emitted beside `attrHelperSource()`.
   - A behavioural drift test holds the copy to `requestUrl` by comparing outputs.
 
-  This is the spec-wide rule in `plans/spec/README.md`, in the shape `plan:spec/compiled-cookie-attributes` chose. The code string lives in the compiler, so `dist/runtime.js` does not carry text it never runs. Outputs are compared rather than source text, because a changed branch would otherwise pass.
+  This is the spec-wide rule in `plans/spec/README.md`, in the shape the cookie helper (`cookieHelperSource` in `shared.ts`, spec.md §11.2a) chose. The code string lives in the compiler, so `dist/runtime.js` does not carry text it never runs. Outputs are compared rather than source text, because a changed branch would otherwise pass.
 
 - **Decided:** the schema declares `urlParams` in an `allOf` entry, `if` `$prototype` is `"Request"` `then` the property. Only `Request` reads it, and a flat declaration would constrain an extension class's parameter of the same name, which is the `filter`/`sort` trap schema.md §3.1 records. `plan:schema/prototype-property-declarations` introduces the same `allOf` for `FormData` and `Blob`. Whichever lands second appends to the other's array, and neither requires the other.
 - **Decided:** Studio's Data panel gains no `urlParams` field. It edits URL, method and timing and none of a `Request`'s other options, and `docs/studio/logic/data-sources.md` documents exactly those three. A map is edited in Code view. A `$ref` `url` is shown as its pointer and is not offered as a text field, because this plan specifies that form and the panel must neither throw on it nor overwrite it.
@@ -171,7 +171,7 @@ Re-verified against `d4cecc34` on 2026-09-27.
      ```
 
      The comment line reads `(dynamic URL)` whenever the helper is used, and the JSDoc gains one sentence: a caller emitting such an entry must emit `requestUrlHelperSource()` once. Any other definition takes the existing path, byte for byte.
-6. **`packages/compiler/src/targets/compile-client.ts`**: in the `Request` branch of `compileClient`, set `needsRequestUrl` when `requestNeedsUrlHelper(def)`. `emitClientModule` pushes `requestUrlHelperSource()` directly after `attrHelperSource()` when it is set. The flag joins the trailing options object that `plan:spec/compiled-request-fetch` step 2 and `plan:spec/compiled-cookie-attributes` introduce; if it is still one positional flag, fold it into that object as step 2 says.
+6. **`packages/compiler/src/targets/compile-client.ts`**: in the `Request` branch of `compileClient`, set `needsRequestUrl` when `requestNeedsUrlHelper(def)`. `emitClientModule` pushes `requestUrlHelperSource()` directly after `attrHelperSource()` when it is set. The flag joins the trailing options object `emitClientModule` already takes for `needsCookie`, which `plan:spec/compiled-request-fetch` step 2 also extends.
 7. **`packages/compiler/src/targets/compile-element.ts`**: push `requestUrlHelperSource()` after `attrHelperSource()` in the preamble (line 410–416) when `requestEntries.some(([, d]) => requestNeedsUrlHelper(d as JxPrototypeDef))`. Extend the `requestEntries` comment: the helper, like the import, is emitted only when a `Request` needs it.
 8. **`packages/studio/src/panels/signals-panel.ts`**:
    - `SignalDef.url` becomes `string | { $ref: string }`.

@@ -12,7 +12,7 @@
 import { siteBasePath, withBase } from "@jxsuite/schema/asset-paths";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { canonicalizeLocale } from "@jxsuite/schema/locale";
+import { canonicalizeLocale, malformedLocaleError } from "@jxsuite/schema/locale";
 import { isString } from "@jxsuite/schema/guards";
 import type { ManifestConfig, ProjectConfig, SecurityTxtConfig } from "@jxsuite/schema/types";
 
@@ -211,7 +211,7 @@ export function buildSecurityTxt(projectConfig: ProjectConfig, now: Date): WellK
   for (const tag of config.preferredLanguages ?? []) {
     const canonical = canonicalizeLocale(tag);
     if (canonical === null) {
-      errors.push(`securityTxt.preferredLanguages: "${tag}" is not a well-formed language tag.`);
+      errors.push(malformedLocaleError("securityTxt.preferredLanguages", tag));
     } else {
       languages.push(canonical);
     }

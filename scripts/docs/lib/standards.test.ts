@@ -15,12 +15,19 @@ import {
   compareIds,
   GAP_TIER_BY_STATUS,
   isConformance,
+  isOrg,
+  numberedIdForm,
+  ORGS,
   orgOfId,
+  orgOfUrl,
   parseStandardsSource,
   splitRow,
   STANDARD_ID,
   tierOf,
+  urlKey,
+  urlNumberProblem,
 } from "./standards.ts";
+import type { Org } from "./standards.ts";
 import { parseSpecSource, STATUS_VOCAB } from "./spec-status.ts";
 import { HEADER } from "../test-fixtures.ts";
 
@@ -227,10 +234,13 @@ describe("pure helpers", () => {
     expect(orgOfId("WebAuthn Level 3")).toBeNull();
   });
 
-  test("a hyphenated name is a valid identifier", () => {
-    // WAI-ARIA and JSON-LD carry a hyphen in their FIRST token.
-    for (const id of ["WAI-ARIA", "JSON-LD 1.1", "WCAG 2.2", "ATAG 2.0"]) {
+  test("a hyphenated or dotted name is a valid identifier", () => {
+    // WAI-ARIA and JSON-LD carry a hyphen in their FIRST token; Schema.org a dot.
+    for (const id of ["WAI-ARIA", "JSON-LD 1.1", "WCAG 2.2", "ATAG 2.0", "Schema.org"]) {
       expect(STANDARD_ID.test(id), `${id} should be a valid identifier`).toBe(true);
+    }
+    for (const id of [".org", "schema.org"]) {
+      expect(STANDARD_ID.test(id), `${id} should be rejected`).toBe(false);
     }
   });
 
@@ -248,7 +258,117 @@ describe("pure helpers", () => {
     ).not.toBeNull();
     expect(canonicalUrlProblem("Unicode", "https://www.unicode.org/reports/tr15/")).toBeNull();
     expect(canonicalUrlProblem("WHATWG", "https://dom.spec.whatwg.org/")).toBeNull();
-    expect(canonicalUrlProblem("Other", "https://anything/")).toBeNull();
+    expect(
+      canonicalUrlProblem("WHATWG", "https://html.spec.whatwg.org/#the-template-element"),
+    ).not.toBeNull();
+    const registry = "https://www.iana.org/assignments/iana-ipv4-special-registry";
+    expect(canonicalUrlProblem("IANA", registry)).toBeNull();
+    expect(canonicalUrlProblem("IANA", `${registry}/`)).not.toBeNull();
+    const draft = "https://json-schema.org/draft/2020-12/schema";
+    expect(canonicalUrlProblem("JSON Schema", draft)).toBeNull();
+    for (const url of [
+      `${draft}/`,
+      "https://json-schema.org/draft/2020-12",
+      "https://json-schema.org/understanding-json-schema/",
+    ]) {
+      expect(canonicalUrlProblem("JSON Schema", url), url).not.toBeNull();
+    }
+    for (const url of [
+      "https://spec.commonmark.org/current/",
+      "https://git-scm.com/docs/gitignore",
+    ]) {
+      expect(canonicalUrlProblem("Other", url), url).toBeNull();
+    }
+    for (const url of [
+      "https://spec.commonmark.org/current/?v=1",
+      "https://spec.commonmark.org/current/#tabs",
+      "http://spec.commonmark.org/current/",
+      "https://spec.commonmark.org:8443/current/",
+      "https://spec.commonmark.org",
+      "https://anything/",
+    ]) {
+      expect(canonicalUrlProblem("Other", url), url).not.toBeNull();
+    }
+    // SAFETY: the catalog is untyped JSON, so a body outside the union is what this probes.
+    expect(canonicalUrlProblem("Git" as Org, "https://git-scm.com/docs/gitignore")).not.toBeNull();
+  });
+
+  test("every declared body has a canonical form, and none admits a query or a fragment", () => {
+    const EXAMPLE: Record<Org, string> = {
+      IETF: "https://www.rfc-editor.org/rfc/rfc9110",
+      W3C: "https://www.w3.org/TR/wcag22/",
+      WHATWG: "https://dom.spec.whatwg.org/",
+      Unicode: "https://www.unicode.org/reports/tr15/",
+      Ecma: "https://ecma-international.org/publications-and-standards/standards/ecma-262/",
+      IANA: "https://www.iana.org/assignments/media-types",
+      ISO: "https://www.iso.org/standard/12345.html",
+      "JSON Schema": "https://json-schema.org/draft/2020-12/schema",
+      Other: "https://spec.commonmark.org/current/",
+    };
+    expect(Object.keys(EXAMPLE).toSorted()).toEqual([...ORGS].toSorted());
+    for (const org of ORGS) {
+      expect(canonicalUrlProblem(org, EXAMPLE[org]), org).toBeNull();
+      expect(canonicalUrlProblem(org, `${EXAMPLE[org]}?q=1`), `${org} query`).not.toBeNull();
+      expect(canonicalUrlProblem(org, `${EXAMPLE[org]}#f`), `${org} fragment`).not.toBeNull();
+    }
+  });
+
+  test("orgOfUrl infers the body from a recognized domain", () => {
+    expect(orgOfUrl("https://www.rfc-editor.org/rfc/rfc9110")).toBe("IETF");
+    expect(orgOfUrl("https://datatracker.ietf.org/doc/html/rfc9110")).toBe("IETF");
+    expect(orgOfUrl("https://dom.spec.whatwg.org/")).toBe("WHATWG");
+    expect(orgOfUrl("https://www.w3.org/TR/css-contain-3/")).toBe("W3C");
+    expect(orgOfUrl("https://json-schema.org/draft/2020-12/schema")).toBe("JSON Schema");
+    expect(orgOfUrl("https://spec.commonmark.org/current/")).toBeNull();
+    expect(orgOfUrl("https://notw3.org/")).toBeNull();
+    expect(orgOfUrl("not a url")).toBeNull();
+  });
+
+  test("numberedIdForm and urlNumberProblem agree with orgOfId", () => {
+    for (const org of ["IETF", "Unicode", "Ecma", "ISO"] as const) {
+      expect(numberedIdForm(org), org).not.toBeNull();
+    }
+    for (const org of ["W3C", "WHATWG", "IANA", "JSON Schema", "Other"] as const) {
+      expect(numberedIdForm(org), org).toBeNull();
+    }
+    const rfc = "https://www.rfc-editor.org";
+    expect(urlNumberProblem("IETF", "RFC 9110", `${rfc}/rfc/rfc9110`)).toBeNull();
+    expect(urlNumberProblem("IETF", "BCP 47", `${rfc}/info/bcp47`)).toBeNull();
+    expect(
+      urlNumberProblem("Unicode", "UAX #9", "https://www.unicode.org/reports/tr9/"),
+    ).toBeNull();
+    expect(
+      urlNumberProblem(
+        "Ecma",
+        "ECMA-262",
+        "https://ecma-international.org/publications-and-standards/standards/ecma-262/",
+      ),
+    ).toBeNull();
+    expect(
+      urlNumberProblem("ISO", "ISO 8601", "https://www.iso.org/standard/70907.html"),
+    ).toBeNull();
+    expect(urlNumberProblem("IETF", "RFC 9110", "https://www.w3.org/TR/x/")).toBeNull();
+    expect(urlNumberProblem("IETF", "RFC 9110", `${rfc}/rfc/rfc9111`)).not.toBeNull();
+    expect(urlNumberProblem("IETF", "BCP 47", `${rfc}/info/std47`)).not.toBeNull();
+    expect(
+      urlNumberProblem("Unicode", "UAX #15", "https://www.unicode.org/reports/tr29/"),
+    ).not.toBeNull();
+  });
+
+  test("urlKey folds a trailing slash and case only", () => {
+    expect(urlKey("https://Spec.CommonMark.org/current/")).toBe(
+      urlKey("https://spec.commonmark.org/current"),
+    );
+    expect(urlKey("https://www.w3.org/TR/WCAG22/")).toBe(urlKey("https://www.w3.org/TR/wcag22/"));
+    expect(urlKey("https://spec.commonmark.org/current/")).not.toBe(
+      urlKey("https://spec.commonmark.org/current/x"),
+    );
+    expect(urlKey("not a url")).toBe("not a url");
+  });
+
+  test("isOrg knows the bodies", () => {
+    expect(isOrg("Other")).toBe(true);
+    expect(isOrg("Git")).toBe(false);
   });
 
   test("tierOf maps only the unbuilt statuses", () => {

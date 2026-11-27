@@ -5,6 +5,7 @@ spec:
   - site-architecture.md#4
 code:
   - packages/compiler/src/site/pages-discovery.ts
+  - packages/site/src/routes.ts
   - packages/site/src/pagination.ts
   - packages/site/src/routes.ts
 ---
@@ -40,6 +41,8 @@ Bracket syntax in filenames creates parameterized routes:
 | `pages/docs/[...path].json`  | `/docs/*`        | `/docs/api/runtime/install` |
 
 `[param]` matches exactly one path segment. `[...param]` is a catch-all: it matches the whole remaining path, slashes included, so one catch-all page can serve an entire subtree.
+
+A parameter is always a whole path segment and a catch-all is always the last one, so `post-[id].json` and `[...path]/edit.json` are refused. Parameter names use letters, digits and `_`, don't start with a digit, and appear once per path. Route patterns follow the [URLPattern](https://urlpattern.spec.whatwg.org/) standard, so the characters it reads as syntax (`:` `*` `?` `+` `(` `)` `{` `}`) can't appear in the name of a page or of a folder that holds one. `jx build` reports a file that breaks one of these rules as an error naming it.
 
 ## Generating pages with $paths
 

@@ -26,7 +26,7 @@ The specs own the tables. Nothing generates them, and nothing else is authoritat
 
 ### 2.1 Recognized issuing bodies
 
-> **Status: Partial.** The catalog admits issuing bodies outside these eight: the `Org` union in `scripts/docs/lib/standards.ts` ends in `Other`, and `scripts/docs/standards.json` files CommonMark, GFM, JSON Feed 1.1 and Sitemaps 0.9 under `Other` and Gitignore under `Git`, which is not in the union at all. Nothing in `scripts/docs/check-standards.ts` compares a catalog entry's `org` with this list, so those five standards are cited as rows across four specs.
+> **Status: Partial.** The catalog admits one issuing body outside these eight: `ORGS` in `scripts/docs/lib/standards.ts` ends in `Other`, under which `scripts/docs/standards.json` files CommonMark, GFM, Gitignore, IPTC Photo Metadata, JSON Feed 1.1 and Sitemaps 0.9, and `bun run docs:standards` refuses any other `org` (`catalog-org-unknown`). This section does not name that class, so six standards it does not admit are cited as rows across several specs.
 
 A row may cite a published standard from IETF, W3C, WHATWG, the Unicode Consortium, Ecma International, IANA (its registries), ISO, or JSON Schema. The issuing body is not a column: it is a property of the standard rather than of the binding, so it is recorded once in the catalog (§5.1) and rendered on the generated page.
 
@@ -149,26 +149,31 @@ It ratchets in both directions, as `scripts/docs/claims.json` does for marketing
 
 ### 5.2 Canonical URL forms per body
 
-> **Status: Partial.** `CANONICAL` in `scripts/docs/lib/standards.ts` enforces the forms below through `canonicalUrlProblem`, but three patterns admit a second spelling of the same document: the WHATWG pattern accepts a trailing `#fragment`, the IANA pattern an optional trailing `/`, and the JSON Schema pattern any path, a trailing `/` included, which the table's `https://json-schema.org/…` form does not pin either. An entry whose org is `Other`, or is outside the `Org` union, is never checked, so §10's RFC 3986 claim of no query and no fragment holds today only because no catalog URL carries one.
+> **Status: Implemented.** `canonicalUrlProblem` in `scripts/docs/lib/standards.ts` holds every catalog entry to its body's form below: no form admits a port, a query or a fragment, and only `Other`'s, which cannot pin a path, admits a trailing-`/` variant; §5.3's one-URL rule folds it. `bun run docs:standards` refuses an `org` that is not a row of this table (`catalog-org-unknown`) and an `Other` entry whose URL is on a listed body's domain (`catalog-org-mismatch`).
 
-| Body        | Form                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------- |
-| IETF        | `https://www.rfc-editor.org/rfc/rfcNNNN`, or `/info/bcpNN` and `/info/stdNN`          |
-| W3C         | `https://www.w3.org/TR/<shortname>/` — the latest-version URL, never a dated snapshot |
-| WHATWG      | `https://<spec>.spec.whatwg.org/`                                                     |
-| Unicode     | `https://www.unicode.org/reports/trNN/`                                               |
-| Ecma        | `https://ecma-international.org/publications-and-standards/standards/ecma-NNN/`       |
-| IANA        | `https://www.iana.org/assignments/<registry>`                                         |
-| ISO         | `https://www.iso.org/standard/NNNNN.html`                                             |
-| JSON Schema | `https://json-schema.org/…`                                                           |
+| Body        | Form                                                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| IETF        | `https://www.rfc-editor.org/rfc/rfcNNNN`, or `/info/bcpNN` and `/info/stdNN`                                         |
+| W3C         | `https://www.w3.org/TR/<shortname>/` — the latest-version URL, never a dated snapshot                                |
+| WHATWG      | `https://<spec>.spec.whatwg.org/`                                                                                    |
+| Unicode     | `https://www.unicode.org/reports/trNN/`                                                                              |
+| Ecma        | `https://ecma-international.org/publications-and-standards/standards/ecma-NNN/`                                      |
+| IANA        | `https://www.iana.org/assignments/<registry>`                                                                        |
+| ISO         | `https://www.iso.org/standard/NNNNN.html`                                                                            |
+| JSON Schema | `https://json-schema.org/draft/YYYY-MM/schema` — the draft's meta-schema URI, the value a schema's `$schema` names   |
+| Other       | `https://<host>/<path>` — the specification's own URL, with no port, query or fragment, on no domain of a body above |
+
+`Other` files a specification maintained outside the bodies above; §2.1 and §2.2 decide which may be cited. It is the one form that cannot pin a host, so it pins what RFC 3986 lets it: an absolute `https` URI with a lower-case dotted host and no port, query or fragment.
 
 `tools.ietf.org` is retired and `datatracker.ietf.org/doc/html/rfcNNNN` is a second spelling of the same document; both are rejected with the replacement named, so the fix is mechanical. One canonical form per body is deliberate: two would mean the same RFC gets two spellings across sixteen specs and neither a reader nor a diff could tell them apart.
 
 ### 5.3 Identifier grammar
 
-> **Status: Partial.** `STANDARD_ID` in `scripts/docs/lib/standards.ts` accepts every form below, and `catalog-org-mismatch` in `scripts/docs/check-standards.ts` rejects a numbered identifier filed under the wrong body, but the converse is unchecked: `orgOfId` infers no body from a title-cased name, so a document of a body that numbers its documents may be catalogued under one (`HTTP Semantics` filed under IETF passes), and nothing stops two catalog entries from sharing a URL. Every current entry complies, so the identifier is stable across specs because of the catalog's contents rather than the gate.
+> **Status: Implemented.** `STANDARD_ID` in `scripts/docs/lib/standards.ts` accepts the forms below, and `scripts/docs/check-standards.ts` rejects a numbered identifier filed under another body (`catalog-org-mismatch`), a title-cased name filed under a body that numbers its documents (`catalog-id-unnumbered`), a number its URL does not repeat (`catalog-url-number-mismatch`), and two entries sharing a URL (`catalog-duplicate-url`).
 
-`RFC 9110`, `BCP 47`, `STD 90`, `UAX #15`, `UTS #46`, `ECMA-402`, `ISO/IEC 8859-1`, or a title-cased name for a body that does not number its documents (`WebAuthn Level 3`, `JSON Schema 2020-12`). The identifier is what the generated page groups by, so it is stable across specs.
+`RFC 9110`, `BCP 47`, `STD 90`, `UAX #15`, `UTS #46`, `ECMA-402`, `ISO/IEC 8859-1`, or a title-cased name for a body that does not number its documents (`WebAuthn Level 3`, `JSON Schema 2020-12`, `Schema.org`). The identifier is what the generated page groups by, so it is stable across specs.
+
+IETF, the Unicode Consortium, Ecma International and ISO number their documents, so an entry filed under one of them is catalogued by its number, and its URL names the same number (ISO's URL carries a catalogue number instead, so an ISO entry is exempt from that half). One document has one identifier: no two catalog entries share a URL, compared case-insensitively and without a trailing `/`.
 
 ## 6. Evidence
 
@@ -231,10 +236,10 @@ Generated by `bun run docs:generate`, a gitignored build output the site writes 
 
 ## 10. Standards Alignment
 
-| Standard                                           | Class       | Binds | Evidence                      | Note                                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------------------------- | ----------- | ----- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) | **Subset**  | §5.2  | scripts/docs/lib/standards.ts | The canonical-URL rules admit only absolute `https` URIs with no query and no fragment — a subset of the generic syntax.                                                                                                                                                                                                                    |
-| [BCP 14](https://www.rfc-editor.org/info/bcp14)    | **Adopted** | §12   | specs/standards.md#12         | The RFC 8174 boilerplate, declared once for the whole corpus. Its "and only when they appear in all capitals" clause is the operative half: these specifications are explanatory prose using "must" and "should" in their ordinary senses constantly, so the capitalized forms are rare and every one of them is a conformance requirement. |
+| Standard                                           | Class       | Binds | Evidence                                                          | Note                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------- | ----------- | ----- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) | **Subset**  | §5.2  | scripts/docs/lib/standards.ts, scripts/docs/lib/standards.test.ts | The canonical-URL rules admit only absolute `https` URIs with no port, no query and no fragment — a subset of the generic syntax.                                                                                                                                                                                                           |
+| [BCP 14](https://www.rfc-editor.org/info/bcp14)    | **Adopted** | §12   | specs/standards.md#12                                             | The RFC 8174 boilerplate, declared once for the whole corpus. Its "and only when they appear in all capitals" clause is the operative half: these specifications are explanatory prose using "must" and "should" in their ordinary senses constantly, so the capitalized forms are rare and every one of them is a conformance requirement. |
 
 ## 11. Adoption Backlog
 

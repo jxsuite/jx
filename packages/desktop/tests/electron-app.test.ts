@@ -1105,6 +1105,16 @@ describe("self-updates", () => {
 });
 
 describe("a Mac App Store build, which the App Sandbox lets into a folder only after it is picked", () => {
+  test("tells its backend it is sandboxed, so Git keeps to HTTPS remotes", async () => {
+    const { spawned } = await started({ deps: { macAppStore: true, platform: "darwin" } });
+    expect(spawned[0]?.env.JX_STUDIO_SANDBOX).toBe("1");
+  });
+
+  test("any other build does not", async () => {
+    const { spawned } = await started();
+    expect(spawned[0]?.env).not.toHaveProperty("JX_STUDIO_SANDBOX");
+  });
+
   const BARE = [
     "/bin/electron",
     "/b/app-main.js",

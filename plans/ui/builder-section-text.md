@@ -74,7 +74,7 @@ All edits are to `specs/ui.md`, in place. No numbered heading moves. Every parag
 7. **Fragment**, as in Specs & docs.
 8. **Plan housekeeping.** Delete this file in the landing pull request. No plan requires it.
 
-**Integration contract.** No plan requires this one. Once it lands, ui.md §5.5 is Implemented, and its prose names no open work on either side of the kit/Studio line. A plan that changes a §5.5 element or the Studio code its rows cite (`style-panel.ts`'s token reads, `bindSplit`'s snap, `style-utils.ts`'s shorthand expansion) edits the matching row in the same pull request and reopens the marker if the row stops holding. `plan:ui/behaviour-list-text` cites the `jx-dimension-field` row and the "Overflow is the host's" and "Drag and drop is an island" paragraphs. None of these changes here, so the two plans can land in either order.
+**Integration contract.** No plan requires this one. Once it lands, ui.md §5.5 is Implemented, and its prose names no open work on either side of the kit/Studio line. A plan that changes a §5.5 element or the Studio code its rows cite (`style-panel.ts`'s token reads, `bindSplit`'s snap, `style-utils.ts`'s shorthand expansion) edits the matching row in the same pull request and reopens the marker if the row stops holding. ui.md §3.3 cites the `jx-dimension-field` row and the "Overflow is the host's" and "Drag and drop is an island" paragraphs. None of these changes here, so the two plans can land in either order.
 
 ## Tests
 

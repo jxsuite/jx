@@ -385,7 +385,7 @@ Two rules bind all three. **Secrets are never values in the project file**: the 
 10. `$head` entries are `{ tagName, attributes }` objects, never HTML strings.
 11. Layouts inject content with `{ "tagName": "slot" }`. There is no `$slot` or `$content`.
 12. All state entries are reactive by default; no `signal: true` flag exists.
-13. `timing` (`"compiler"`, `"server"`, `"client"`) decides where a data source resolves. `"client"` is the default.
+13. `timing` (`"compiler"`, `"server"`, `"client"`) decides where a data source resolves. Left out, a Web-API prototype such as `Request` is `"client"`, and an external class such as `ContentCollection` is resolved during the build; write `"compiler"` when only the HTML reads it.
 
 ## Check your work
 

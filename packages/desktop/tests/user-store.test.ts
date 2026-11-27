@@ -13,11 +13,20 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  mkdirSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { readJsonStore, readStringStore, updateStore, writeStore } from "../src/backend/user-store";
+import {
+  readJsonStore,
+  readStringStore,
+  StoreLockTimeoutError,
+  updateStore,
+  withFileLock,
+  writeStore,
+} from "../src/backend/user-store";
 
 const DIR = mkdtempSync(join(process.env.TMPDIR || "/tmp", "jx-user-store-"));
 
@@ -149,4 +158,169 @@ describe("the per-path lock", () => {
     expect(await readStringStore(storeFile("one.json"))).toEqual({ which: "one" });
     expect(await readStringStore(storeFile("two.json"))).toEqual({ which: "two" });
   });
+});
+
+function deadPid(): number {
+  return Bun.spawnSync(["true"]).pid;
+}
+
+function age(path: string, seconds: number): void {
+  const when = new Date(Date.now() - seconds * 1000);
+  utimesSync(path, when, when);
+}
+
+async function timeoutOf(attempt: Promise<unknown>): Promise<StoreLockTimeoutError> {
+  try {
+    await attempt;
+  } catch (error) {
+    if (error instanceof StoreLockTimeoutError) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error("expected a StoreLockTimeoutError");
+}
+
+const FAST = { staleMs: 60_000, waitMs: 80 };
+
+describe("the cross-process lock", () => {
+  test("holds a lockfile beside the store for the length of the work", async () => {
+    const store = storeFile();
+    let seen = "";
+    await withFileLock(store, async () => {
+      seen = readFileSync(`${store}.lock`, "utf8");
+    });
+    expect(seen.startsWith(`${process.pid} `)).toBe(true);
+    expect(readdirSync(DIR).filter((n) => n.endsWith(".lock") || n.endsWith(".stale"))).toEqual([]);
+  });
+
+  test("waits while another live process holds the lock", async () => {
+    const store = storeFile();
+    writeFileSync(`${store}.lock`, `${process.pid} someone-else`);
+    const pending = updateStore(store, readStringStore, (c) => ({ ...c, a: "1" }));
+    await Bun.sleep(60);
+    expect(readdirSync(DIR)).not.toContain("store.json");
+    rmSync(`${store}.lock`);
+    expect(await pending).toEqual({ a: "1" });
+  });
+
+  test("breaks a lock whose holder has exited", async () => {
+    const store = storeFile();
+    writeFileSync(`${store}.lock`, `${deadPid()} gone`);
+    expect(await updateStore(store, readStringStore, (c) => ({ ...c, a: "1" }))).toEqual({
+      a: "1",
+    });
+    expect(readdirSync(DIR)).not.toContain("store.json.lock");
+  });
+
+  test("breaks a lock older than the stale bound although its pid is alive", async () => {
+    const store = storeFile();
+    writeFileSync(`${store}.lock`, `${process.pid} old`);
+    age(`${store}.lock`, 60);
+    expect(await updateStore(store, readStringStore, (c) => ({ ...c, a: "1" }))).toEqual({
+      a: "1",
+    });
+  });
+
+  test("an empty lock counts as held until it is stale", async () => {
+    const store = storeFile();
+    writeFileSync(`${store}.lock`, "");
+    let ran = false;
+    const work = async () => {
+      ran = true;
+      return 1;
+    };
+    const error = await timeoutOf(withFileLock(store, work, FAST));
+    expect(error.holder).toBeNull();
+    expect(ran).toBe(false);
+    age(`${store}.lock`, 120);
+    expect(await withFileLock(store, work, FAST)).toBe(1);
+  });
+
+  test("gives up rather than writing without the lock", async () => {
+    const store = storeFile();
+    writeFileSync(`${store}.lock`, `${process.pid} someone-else`);
+    let ran = false;
+    const error = await timeoutOf(
+      withFileLock(
+        store,
+        async () => {
+          ran = true;
+        },
+        FAST,
+      ),
+    );
+    expect(error.holder).toBe(process.pid);
+    expect(ran).toBe(false);
+    expect(readFileSync(`${store}.lock`, "utf8")).toBe(`${process.pid} someone-else`);
+  });
+
+  test("a lock path it cannot read times out", async () => {
+    const store = storeFile();
+    mkdirSync(`${store}.lock`);
+    const error = await timeoutOf(withFileLock(store, async () => 1, FAST));
+    expect(error.holder).toBeNull();
+  });
+
+  test("release leaves a lock it no longer holds", async () => {
+    const store = storeFile();
+    await withFileLock(store, async () => {
+      writeFileSync(`${store}.lock`, `${process.pid} successor`);
+    });
+    expect(readFileSync(`${store}.lock`, "utf8")).toBe(`${process.pid} successor`);
+  });
+
+  test("release tolerates a lock that is already gone", async () => {
+    const store = storeFile();
+    const value = await withFileLock(store, async () => {
+      rmSync(`${store}.lock`);
+      return 7;
+    });
+    expect(value).toBe(7);
+    expect(readdirSync(DIR).filter((n) => n.endsWith(".lock") || n.endsWith(".stale"))).toEqual([]);
+  });
+
+  test("release never throws over a lock it cannot read, restore or remove", async () => {
+    const store = storeFile();
+    const value = await withFileLock(store, async () => {
+      // A directory has taken the lock's place.
+      // Release cannot read, restore or remove it, and must still return the work's result.
+      rmSync(`${store}.lock`);
+      mkdirSync(`${store}.lock`);
+      return 9;
+    });
+    expect(value).toBe(9);
+  });
+
+  test("a lockfile error other than contention rejects at once", async () => {
+    const store = join(DIR, `${"x".repeat(251)}`);
+    let code = "";
+    try {
+      await updateStore(store, readStringStore, (c) => c);
+    } catch (error) {
+      code = error instanceof Error && "code" in error ? String(error.code) : "";
+    }
+    expect(code).toBe("ENAMETOOLONG");
+  });
+});
+
+describe("across processes", () => {
+  test("two processes patching disjoint keys of one store keep every key", async () => {
+    const store = storeFile();
+    const barrier = join(DIR, "barrier");
+    mkdirSync(barrier);
+    const writer = join(import.meta.dir, "_store-writer.ts");
+    const children = ["a", "b"].map((prefix) =>
+      Bun.spawn([process.execPath, writer, store, prefix, "40", barrier], {
+        stderr: "inherit",
+        stdout: "inherit",
+      }),
+    );
+    while (readdirSync(barrier).length < 2) {
+      await Bun.sleep(5);
+    }
+    writeFileSync(join(barrier, "go"), "");
+    expect(await Promise.all(children.map((child) => child.exited))).toEqual([0, 0]);
+    expect(Object.keys(await readStringStore(store))).toHaveLength(80);
+  }, 30_000);
 });
