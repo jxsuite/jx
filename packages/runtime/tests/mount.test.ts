@@ -108,6 +108,17 @@ describe("mount — render, dispose, lifecycle", () => {
     expect(host.textContent).toBe("2");
   });
 
+  test("an onMount whose body returns a value still runs", async () => {
+    const m = await mount(
+      {
+        state: { onMount: { $prototype: "Function", body: "state.ran = true; return state.ran" } },
+        tagName: "p",
+      },
+      host,
+    );
+    expect(m.scope.ran).toBe(true);
+  });
+
   test("dispose stops effects, removes the root, calls onUnmount once, and is idempotent", async () => {
     const onMount = mock((_scope: JxScope) => null);
     const onUnmount = mock((_scope: JxScope) => null);

@@ -202,6 +202,37 @@ describe("compiled element — one calling convention (spec.md §5.3 4d)", () =>
   });
 });
 
+describe("compiled element — a value-returning handler", () => {
+  test("a bound body that returns a value handles its event", async () => {
+    const { files } = await compileElement({
+      children: [
+        { onclick: { $ref: "#/state/toggle" }, tagName: "button" },
+        { id: "open", tagName: "p", textContent: "${state.open}" },
+      ],
+      state: {
+        open: false,
+        toggle: { $prototype: "Function", body: "state.open = !state.open; return state.open" },
+      },
+      tagName: "ls-toggler",
+    });
+    writeFileSync(resolve(TMP, "toggler.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "toggler.js"));
+    win.document.body.innerHTML = "<ls-toggler></ls-toggler>";
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+    const el = rendered(win.document.querySelector("ls-toggler"), "ls-toggler");
+    expect(el.querySelector("#open")?.textContent).toBe("false");
+    rendered(el.querySelector("button"), "button").dispatchEvent(
+      new win.Event("click", { bubbles: true }),
+    );
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+    expect(el.querySelector("#open")?.textContent).toBe("true");
+  });
+});
+
 describe("compiled element — $props delivery", () => {
   let propsHost: Element;
 

@@ -4,8 +4,8 @@
  * Produces clean HTML with `data-bind` marker attributes and a small JS bootstrapper using
  * vue/reactivity's `effect` + `computed`.
  *
- * Functions whose body contains `return` become computed() on state. Mapped arrays ($prototype:
- * "Array") use lit-html for efficient rendering.
+ * Function entries the classifier calls computed become computed() on state. Mapped arrays
+ * ($prototype: "Array") use lit-html for efficient rendering.
  *
  * Output pattern: HTML: pre-rendered with data-bind, :prop="key", @event="key" JS: state (reactive
  * state + computed signals), bind (DOM getters), on (event handlers), hydrate()
@@ -231,6 +231,7 @@ export function compileClient(
   const bindEntries: [string, string][] = []; // [key, bodyExpr]   → bind = {...}
   const onEntries: [string, HandlerDef][] = []; // [key, { args, body }] → on = {...}
   const initBlocks: string[] = []; // Lines emitted after state for prototype init
+  const stateCallables = new Set<string>(); // String-body callables also assigned to `state[key]`
   let needsCookie = false; // A Cookie entry makes the module carry the cookie helper
   const serverCalls: string[] = []; // One block per `timing: "server"` entry, after the computed block
 
@@ -301,7 +302,8 @@ export function compileClient(
         // Body contains return → computed
         computedEntries.push([key, `() => { ${body} }`]);
       } else {
-        // No return → event handler
+        // A callable: `state[key]` for a template or `call` site, `on[key]` for an event binding.
+        stateCallables.add(key);
         onEntries.push([key, { args: handlerParamNames(def), body }]);
       }
       continue;
@@ -403,6 +405,7 @@ export function compileClient(
     computedEntries,
     bindEntries,
     onEntries,
+    stateCallables,
     initBlocks,
     serverCalls,
     srcImports,
@@ -1190,6 +1193,8 @@ function bareMapRefsToLit(body: string): string {
  * @param {[string, string][]} computedEntries
  * @param {[string, string][]} bindEntries
  * @param {[string, any][]} onEntries
+ * @param {Set<string>} stateCallables Keys of callable string-body entries, assigned to `state`
+ *   before the init blocks; their `on` entry delegates to that function.
  * @param {string[]} initBlocks
  * @param {string[]} serverCalls
  * @param {SrcImports} srcImports
@@ -1202,6 +1207,7 @@ function emitClientModule(
   computedEntries: [string, string][],
   bindEntries: [string, string][],
   onEntries: [string, HandlerDef][],
+  stateCallables: ReadonlySet<string>,
   initBlocks: string[],
   serverCalls: string[],
   srcImports: SrcImports,
@@ -1277,6 +1283,16 @@ function emitClientModule(
   }
   lines.push("});", "");
 
+  /* A callable string body is `state[key]` before any init block runs, so a `Request` URL, a
+     computed or a template that calls `state.key(…)` finds it whatever the key order. */
+  for (const [key, def] of onEntries) {
+    if (stateCallables.has(key)) {
+      lines.push(
+        `${refAccessor("state", escapeToken(key))} = (${def.args.join(", ")}) => { ${def.body}\n};`,
+      );
+    }
+  }
+
   // Prototype init blocks (Request fetch, LocalStorage read, etc.)
   if (initBlocks.length > 0) {
     for (const block of initBlocks) {
@@ -1318,6 +1334,12 @@ function emitClientModule(
   if (onEntries.length > 0) {
     lines.push("const on = {");
     for (const [key, def] of onEntries) {
+      if (stateCallables.has(key)) {
+        lines.push(
+          `  ${objectKey(key)}: (e) => ${refAccessor("state", escapeToken(key))}(state, e),`,
+        );
+        continue;
+      }
       // Every entry's list starts with `state`, and the event is the one argument after it.
       lines.push(
         `  ${objectKey(key)}: (e) => { const fn = (${def.args.join(", ")}) => { ${def.body}\n}; fn(state, e); },`,

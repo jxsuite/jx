@@ -24,6 +24,8 @@ import {
   SELF_CLOSING,
 } from "../shared.ts";
 import type { CompileContext } from "../shared.ts";
+import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
+import type { FunctionRole } from "@jxsuite/schema/function-role";
 import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
 import type { JsonPrimitive, JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
@@ -58,9 +60,11 @@ export function compileStaticPage(
 ) {
   const { title = "Jx App" } = opts;
 
-  const rootContext = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
+  // Classified once: the root is built into a context here and again as the first node.
+  const rootRoles = raw.state ? classifyFunctionEntries(raw) : undefined;
+  const rootContext = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {}, rootRoles);
   const styleBlock = compileStyles(raw, raw.$media ?? {}, opts.projectStyle ?? null);
-  const bodyContent = compileNode(raw, rootContext);
+  const bodyContent = compileNode(raw, rootContext, rootRoles);
 
   const files: EmittedFile[] = [];
 
@@ -97,7 +101,11 @@ export function compileStaticPage(
  * @param {CompileContext} context
  * @returns {string}
  */
-function compileNode(def: StaticChild, context: CompileContext): string {
+function compileNode(
+  def: StaticChild,
+  context: CompileContext,
+  roles?: ReadonlyMap<string, FunctionRole>,
+): string {
   // String children are text nodes
   if (isString(def)) {
     return escapeHtml(def);
@@ -119,6 +127,7 @@ function compileNode(def: StaticChild, context: CompileContext): string {
     context.scope,
     def.state ?? context.scopeDefs,
     def.$media ?? context.media,
+    roles,
   );
 
   // Resolved against the same scope the attributes are, so the prerendered element and its

@@ -65,7 +65,7 @@ An event binding always calls the handler with the state and the event. The body
 
 ## Inline computed values
 
-A function with only a `body` (no `arguments`) that returns a value acts as a computed, and the framework wraps it in `computed()` when it detects the entry is referenced reactively:
+A function with only a `body` that returns a value, declares no `arguments` or `parameters`, and is never called or bound is a computed value: the framework wraps it in `computed()`, and you read it like any other state entry:
 
 ```json
 {
@@ -86,6 +86,8 @@ Only a `return` with a value on the same line makes an entry a computed. A bare 
   }
 }
 ```
+
+Use decides first. An entry you bind to an event, call as `state.helper(state)`, invoke through a `call` expression, or name as a lifecycle hook stays a function even when its body returns a value, so a handler ending in `return state.open` or with a `return` inside a callback still runs when clicked. Sidecar entries follow the same rule, below.
 
 ## Modules
 
@@ -274,7 +276,7 @@ A parameter object can carry a `type`, and a body is checked against it ([A para
 
 ## How it works
 
-At runtime, the scope builder recognizes the `$prototype: "Function"` shape and turns each entry into a callable on the reactive scope. Exports and bodies are invoked with `state` as their first argument; event bindings pass the DOM event second, as `(state, event)`. A body-only function referenced from a reactive position is wrapped in `computed()` instead, so it re-evaluates when the state it reads changes.
+At runtime, the scope builder recognizes the `$prototype: "Function"` shape and turns each entry into a callable on the reactive scope. Exports and bodies are invoked with `state` as their first argument; event bindings pass the DOM event second, as `(state, event)`. A body that returns a value, declares no parameters and is never called or bound is wrapped in `computed()` instead, so it re-evaluates when the state it reads changes.
 
 Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$export` entry with no `$prototype`, executed across the RPC boundary. See [Timing](/docs/framework/concepts/timing).
 

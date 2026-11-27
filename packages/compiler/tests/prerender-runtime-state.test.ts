@@ -13,12 +13,13 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildInitialScope,
+  createCompileContext,
   emitRequestFetch,
   evaluateStaticTemplate,
   srcImportBinding,
 } from "../src/shared";
 import { isFunction } from "@jxsuite/schema/guards";
-import type { JxPrototypeDef, JxStateDefinition } from "@jxsuite/schema/types";
+import type { JxDocument, JxPrototypeDef, JxStateDefinition } from "@jxsuite/schema/types";
 
 /** @param {Record<string, JxStateDefinition>} defs */
 const scopeOf = (defs: Record<string, JxStateDefinition>) => buildInitialScope(defs);
@@ -457,5 +458,37 @@ describe("buildInitialScope — entries a handler writes to, in a scope that doe
 
     expect(evaluateStaticTemplate("${state.n}", child)).toBeNull();
     expect(evaluateStaticTemplate("${state.label}", child)).toBe("x");
+  });
+});
+
+// ── A value-returning body the document calls is a function ─────────────────
+
+describe("buildInitialScope — roles from the document", () => {
+  const doc = {
+    children: [{ tagName: "p", textContent: "${state.fmt(state)}" }],
+    state: { fmt: { $prototype: "Function", body: "return 'ok'" } },
+    tagName: "div",
+  } satisfies JxDocument;
+
+  test("a value-returning body the document calls is a scope function", () => {
+    const { scope } = createCompileContext(doc);
+    const descriptor = Object.getOwnPropertyDescriptor(scope, "fmt");
+    expect(descriptor?.value).toBeDefined();
+    expect(descriptor?.get).toBeUndefined();
+  });
+
+  test("a template calling it prerenders the result", () => {
+    const { scope } = createCompileContext(doc);
+    expect(evaluateStaticTemplate("${state.fmt(state)}", scope)).toBe("ok");
+  });
+
+  test("without the document, only uses inside state count", () => {
+    const alone = buildInitialScope(doc.state);
+    expect(Object.getOwnPropertyDescriptor(alone, "fmt")?.get).toBeDefined();
+    const called = buildInitialScope({
+      fmt: { $prototype: "Function", body: "return 'ok'" },
+      use: { $prototype: "Function", body: "state.fmt(state)" },
+    });
+    expect(Object.getOwnPropertyDescriptor(called, "fmt")?.value).toBeDefined();
   });
 });

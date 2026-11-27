@@ -45,7 +45,7 @@ None of these is `async`, and `compileStatements` emits `expr;` for every expres
 
 Two compiled problems are not §20.2's:
 
-- `compile-client.ts` never puts a handler-form body on `state`, so `call` cannot reach one in an island. `plan:spec/computed-function-classification` records the string-body case.
+- `compile-client.ts` never puts a handler-form body on `state`, so `call` cannot reach one in an island. spec.md §5.3 4b's rule records the string-body case.
 - A `$map/item` ref in a compiled statement compiles to an unbound `_item`.
 
 ## Outcome

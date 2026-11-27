@@ -816,6 +816,8 @@ export interface CompileContext {
  * @param {JxScope | null} [parentScope]
  * @param {Record<string, JxStateDefinition>} [scopeDefs]
  * @param {Record<string, string>} [media]
+ * @param roles The node's verdicts when the caller already classified this same node, so the
+ *   document is not walked for usage twice.
  * @returns {CompileContext}
  */
 export function createCompileContext(
@@ -823,9 +825,10 @@ export function createCompileContext(
   parentScope: JxScope | null = null,
   scopeDefs: Record<string, JxStateDefinition> = {},
   media: Record<string, string> = {},
+  roles?: ReadonlyMap<string, FunctionRole>,
 ): CompileContext {
   const scope = raw?.state
-    ? buildInitialScope(raw.state, parentScope)
+    ? buildInitialScope(raw.state, parentScope, { roles: roles ?? classifyFunctionEntries(raw) })
     : (parentScope ?? emptyScope());
   return { media, scope, scopeDefs };
 }
@@ -1199,6 +1202,12 @@ export interface BuildScopeOptions {
    * held too (compiler.md §8.1 scans "every handler body in the document").
    */
   document?: JxElement | JxMutableNode | undefined;
+  /**
+   * The document's verdicts from `classifyFunctionEntries`. A caller that holds the document passes
+   * them so a use outside `state` (an `on*` binding, a template's `state.key(…)`) counts. Absent,
+   * only a use inside `state` does (spec.md §5.3 4b).
+   */
+  roles?: ReadonlyMap<string, FunctionRole>;
 }
 
 /**
@@ -1253,7 +1262,7 @@ export function buildInitialScope(
   }
 
   // The same verdict every other tier reads (spec.md §5.3 4b, 4d).
-  const roles = classifyFunctionEntries({ state: defs });
+  const roles = options.roles ?? classifyFunctionEntries({ state: defs });
 
   for (const [key, def] of Object.entries(defs)) {
     if (!isNonNullObject(def) || Array.isArray(def)) {
@@ -3778,7 +3787,7 @@ export function buildInstanceScope(
   props: Record<string, JsonValue> | null,
 ): JxScope {
   if (!props) {
-    return buildInitialScope(doc.state ?? {}, null);
+    return buildInitialScope(doc.state ?? {}, null, { roles: classifyFunctionEntries(doc) });
   }
   const stateDefs = { ...doc.state };
   for (const [key, value] of Object.entries(props)) {
@@ -3788,7 +3797,9 @@ export function buildInstanceScope(
         ? { ...existing, default: value }
         : value;
   }
-  return buildInitialScope(stateDefs, null);
+  return buildInitialScope(stateDefs, null, {
+    roles: classifyFunctionEntries({ ...doc, state: stateDefs }),
+  });
 }
 
 /**

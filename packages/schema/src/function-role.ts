@@ -51,6 +51,9 @@ function collectCallableKeys(doc: JxElement): Set<string> {
   const visit = (node: JsonValue | undefined): void => {
     if (isString(node)) {
       // `${state.formatDate(d)}` in a template, or `state.helper(x)` in another function's body.
+      if (!node.includes("state.")) {
+        return;
+      }
       for (const call of node.matchAll(/\bstate\.([A-Za-z_$][\w$]*)\s*\(/gu)) {
         /* SAFETY: the pattern's one capture group is not optional, so every match fills index 1
            with the called member's name. */
@@ -83,10 +86,11 @@ function collectCallableKeys(doc: JxElement): Set<string> {
         }
       }
     }
-    for (const [key, value] of Object.entries(node)) {
+    for (const key in node) {
       if (key === "$defs") {
         continue;
       }
+      const value = node[key];
       if (key.startsWith("on") && isRef(value)) {
         addStateRef(value.$ref);
       }
@@ -147,7 +151,12 @@ export function handlerParamNames(def: JxFunctionDef): string[] {
   return list;
 }
 
-/** The rules in order: the first that applies decides. */
+/**
+ * The rules in order: the first that applies decides. A structured body is callable; declared
+ * parameters make an entry callable; a callable use of the entry (spec.md §5.3 4d) makes it
+ * callable; otherwise a string body is computed exactly when it returns a value (§5.3 4b), and a
+ * bodyless `$src` entry is computed.
+ */
 function functionEntryRole(
   key: string,
   def: JxFunctionDef,
@@ -161,7 +170,8 @@ function functionEntryRole(
     return "callable";
   }
   if (isString(def.body)) {
-    return bodyReturnsValue(def.body) ? "computed" : "callable";
+    // Test the body first so a document of handlers never walks for usage.
+    return bodyReturnsValue(def.body) && !callableKeys().has(key) ? "computed" : "callable";
   }
   if (def.$src) {
     return callableKeys().has(key) ? "callable" : "computed";
@@ -174,7 +184,8 @@ function functionEntryRole(
  * document is the one a tier builds, after the project-state merge, so a project-global entry one
  * page calls and another only reads is a function on the first and a computed on the second.
  *
- * The walk for usage runs at most once, and only when a bodyless `$src` entry reaches it.
+ * The walk for usage runs at most once, and only when an entry's verdict needs it: a bodyless
+ * `$src` entry, or a string body that returns a value and declares no parameters.
  *
  * @param doc The document (or just `{ state }`) being built.
  */

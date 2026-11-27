@@ -40,6 +40,7 @@ import {
 import { cemManifest, cemManifestText } from "@jxsuite/schema/cem-manifest";
 import type { CemDefinition } from "@jxsuite/schema/cem-manifest";
 import { DEFAULT_CHARSET, REDIRECT_STATUSES } from "@jxsuite/schema/defs";
+import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
 import { errorMessage } from "@jxsuite/schema/parse";
 import {
   isNpmSpecifier,
@@ -1935,6 +1936,7 @@ async function compilePage(
   const scope = buildInitialScope(layoutDoc.state ?? {}, null, {
     document: layoutDoc,
     holdMutable: true,
+    roles: classifyFunctionEntries(layoutDoc),
   });
 
   /*
@@ -2008,7 +2010,10 @@ async function compilePage(
      value is what the page shows. Built on first use: most pages place no such template, and the
      scope clones the page's whole state. */
   let slotScopeMemo: JxScope | undefined;
-  const slotScope = () => (slotScopeMemo ??= buildInitialScope(layoutDoc.state ?? {}));
+  const slotScope = () =>
+    (slotScopeMemo ??= buildInitialScope(layoutDoc.state ?? {}, null, {
+      roles: classifyFunctionEntries(layoutDoc),
+    }));
   /*
    * Which components ship their module on this page (compiler.md §8.1): a definition that is not
    * fully static, and every registered tag such a definition renders when this page draws it,

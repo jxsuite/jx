@@ -73,6 +73,86 @@ describe("an inline string body", () => {
   });
 });
 
+describe("an inline string body that returns a value, by use", () => {
+  const fn = (body: string) => ({ $prototype: "Function", body }) as const;
+
+  test("bound to an on* event is callable", () => {
+    const doc = {
+      children: [{ onclick: { $ref: "#/state/toggle" }, tagName: "button" }],
+      state: { toggle: fn("state.open = !state.open; return state.open") },
+    };
+    expect(roleOf(doc, "toggle")).toBe("callable");
+  });
+
+  test("a handler whose only return sits in a callback is callable when bound", () => {
+    const doc = {
+      children: [{ onclick: { $ref: "#/state/prune" }, tagName: "button" }],
+      state: { prune: fn("state.items = state.items.filter(i => { return !i.done })") },
+    };
+    expect(roleOf(doc, "prune")).toBe("callable");
+  });
+
+  test("bound on the document root is callable", () => {
+    const doc = {
+      onclick: { $ref: "#/state/toggle" },
+      state: { toggle: fn("return state.open") },
+      tagName: "div",
+    };
+    expect(roleOf(doc, "toggle")).toBe("callable");
+  });
+
+  test("named as a lifecycle hook is callable", () => {
+    const doc = { state: { onMount: fn("state.ran = true; return state.ran") } };
+    expect(roleOf(doc, "onMount")).toBe("callable");
+  });
+
+  test("called as state.key( from a template is callable", () => {
+    const doc = {
+      children: [{ tagName: "p", textContent: "${state.fmt(state)}" }],
+      state: { fmt: fn("return 'x'") },
+    };
+    expect(roleOf(doc, "fmt")).toBe("callable");
+  });
+
+  test("a call node's target is callable", () => {
+    const doc = {
+      state: {
+        fmt: fn("return 'x'"),
+        total: { $expression: { operator: "call", target: { $ref: "#/state/fmt" }, value: [] } },
+      },
+    };
+    expect(roleOf(doc, "fmt")).toBe("callable");
+  });
+
+  test("only read stays computed", () => {
+    const doc = {
+      children: [{ tagName: "p", textContent: "${state.label}" }],
+      state: { label: fn("return 'x'") },
+    };
+    expect(roleOf(doc, "label")).toBe("computed");
+  });
+
+  test("callable use wins over a value read", () => {
+    const doc = {
+      children: [
+        { tagName: "p", textContent: "${state.fmt(state)}" },
+        { tagName: "p", textContent: "${state.fmt}" },
+      ],
+      state: { fmt: fn("return 'x'") },
+    };
+    expect(roleOf(doc, "fmt")).toBe("callable");
+  });
+
+  test("a body with no value-returning return is a handler whether or not anything binds it", () => {
+    const bound = {
+      children: [{ onclick: { $ref: "#/state/go" }, tagName: "button" }],
+      state: { go: fn("state.n = 1") },
+    };
+    expect(roleOf(bound, "go")).toBe("callable");
+    expect(roleOf({ state: { go: fn("state.n = 1") } }, "go")).toBe("callable");
+  });
+});
+
 describe("a bodyless $src entry", () => {
   const entry = { $prototype: "Function", $src: "./rows.js" } as const;
 
@@ -138,7 +218,7 @@ describe("a bodyless $src entry", () => {
     expect(roleOf(doc, "rows")).toBe("callable");
   });
 
-  test("a lifecycle hook is callable, and one whose string body returns a value is still computed", () => {
+  test("a lifecycle hook is callable", () => {
     const doc = {
       state: {
         onMount: { $prototype: "Function", $src: "./hooks.js" },
@@ -146,7 +226,7 @@ describe("a bodyless $src entry", () => {
       },
     };
     expect(roleOf(doc, "onMount")).toBe("callable");
-    expect(roleOf(doc, "onUnmount")).toBe("computed");
+    expect(roleOf(doc, "onUnmount")).toBe("callable");
     expect([...LIFECYCLE_KEYS]).toEqual(["onMount", "onUnmount", "onAdopted"]);
   });
 
@@ -164,7 +244,7 @@ describe("a bodyless $src entry", () => {
     expect(roleOf(doc as JxElement, "rows")).toBe("computed");
   });
 
-  test("the walk runs once, and only when a bodyless $src entry needs it", () => {
+  test("the walk runs once, and only when an entry's verdict needs it", () => {
     let reads = 0;
     const counting = (state: NonNullable<JxElement["state"]>): JxElement => {
       const doc: JxElement = { state };
@@ -177,8 +257,16 @@ describe("a bodyless $src entry", () => {
       });
       return doc;
     };
-    classifyFunctionEntries(counting({ a: { $prototype: "Function", body: "return 1" } }));
+    classifyFunctionEntries(counting({ a: { $prototype: "Function", body: "state.n = 1" } }));
     expect(reads).toBe(0);
+    classifyFunctionEntries(
+      counting({
+        a: { $prototype: "Function", body: "return 1" },
+        b: { $prototype: "Function", body: "return 2" },
+      }),
+    );
+    expect(reads).toBe(1);
+    reads = 0;
     classifyFunctionEntries(counting({ a: entry, b: { ...entry, $src: "./b.js" } }));
     expect(reads).toBe(1);
   });

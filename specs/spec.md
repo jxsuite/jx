@@ -401,7 +401,7 @@ Functions and data sources are both declared via `$prototype`:
 
 ##### 4b — Function (Inline computed)
 
-> **Status: Partial.** The bare-`return;` rule and the "no `arguments`" condition ship in every tier: the interpreter's `buildScope`, both compiled targets and the build-time scope in `packages/compiler/src/shared.ts` read one verdict, `classifyFunctionEntries` (`packages/schema/src/function-role.ts`). No tier classifies an inline body by reactive use, as the first paragraph below describes; classification reads the declaration and the body text.
+> **Status: Implemented.** The interpreter's `buildScope`, both compiled targets and the build-time scope read one verdict per entry from `classifyFunctionEntries` (`packages/schema/src/function-role.ts`), which applies the rule below to the whole document the tier builds.
 
 ```json
 "titleClass": {
@@ -410,9 +410,9 @@ Functions and data sources are both declared via `$prototype`:
 }
 ```
 
-A function with only `body` (no `arguments`) and no event binding acts as a computed value — the framework automatically wraps it in `computed()` when it detects it is referenced reactively.
+A Function entry with a string `body` is a **computed value** when all three hold: it declares no `parameters` or `arguments`; the document never uses it as a callable (bound to an `on*` event, the target of a `call` node, called as `state.key(…)`, or named as a lifecycle hook, as §5.3 4d lists); and its body returns a value. The framework wraps it in `computed()`, so it is read like any other state entry and re-evaluates when the state it reads changes. Otherwise the entry is a function. A callable use decides before the body does, so a handler whose body returns a value still handles its event, and an entry that is both called and read is a function in both places.
 
-A body counts as returning a value only when something follows `return` on the same line. A bare `return;` is an early-exit guard, so a handler that begins `if (!x) return;` stays a handler; a newline after `return` is an ASI bare return and counts the same way.
+A body counts as returning a value only when something follows `return` on the same line. A bare `return;` is an early-exit guard, so a handler that begins `if (!x) return;` stays a handler; a newline after `return` is an ASI bare return and counts the same way. The test is textual, so a `return` inside a nested callback also counts; that matters only for an entry nothing calls or binds.
 
 ##### 4c — Function (External)
 
