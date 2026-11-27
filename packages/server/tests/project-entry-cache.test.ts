@@ -22,7 +22,12 @@ interface Calls {
 const calls: Calls = { completed: 0, includeHeld: [], lazy: [], registry: 0, sections: 0 };
 let failSections = false;
 
+/* Spread the real module: other exports (`sectionOwnerActive`) are imported by compiler modules that
+   share this mocked specifier's file, and a bare replacement leaves them unresolvable. */
+const realProjectSections = await import("@jxsuite/compiler/project-sections");
+
 void mock.module("@jxsuite/compiler/project-sections", () => ({
+  ...realProjectSections,
   loadProjectSections: async (
     _root: string,
     config: ProjectConfig,
