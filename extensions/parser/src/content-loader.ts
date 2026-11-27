@@ -58,7 +58,7 @@ import {
 import type { RouteSpec } from "./content-routes.ts";
 import { compileExclude, compileHold, compileWhere } from "./content-rules.ts";
 import type { ExcludeMatcher, HoldPredicate, WherePredicate } from "./content-rules.ts";
-import { coerceEntryDates, isCoercedDate, isDateFormat } from "./dates.ts";
+import { coerceEntryDates, toInstant } from "./dates.ts";
 import type { ContentNodes } from "./inert.ts";
 import type { ContentLoaderEntry, ContentTypeDef } from "./types.ts";
 import { walkFiles } from "./walk.ts";
@@ -871,6 +871,36 @@ function relativeTo(root: string, file: string): string | null {
   return rel === "" || rel === ".." || rel.startsWith("../") ? null : rel;
 }
 
+/**
+ * Give each entry loaded from `filePath` that file's modification time as `_meta.mtime`, unless the
+ * format class already set one.
+ *
+ * The modification time is the only date a file always has. A feed falls back to it when the
+ * frontmatter carries none, and the sitemap dates a route generated from an entry by it (parser.md
+ * §9.3). Only a regular file is dated: a format class handed a directory, or content that is not on
+ * disk, leaves the entries undated rather than dated by something that is not their file.
+ *
+ * @param {ContentLoaderEntry[]} entries - Entries one file yielded (mutated in place)
+ * @param {string} filePath - Absolute path of that file
+ */
+function stampSourceMtime(entries: ContentLoaderEntry[], filePath: string): void {
+  let mtime: string;
+  try {
+    const stat = statSync(filePath);
+    if (!stat.isFile()) {
+      return;
+    }
+    mtime = toInstant(stat.mtime);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry._meta?.mtime === undefined) {
+      entry._meta = { ...entry._meta, mtime };
+    }
+  }
+}
+
 /** One source file and the entries it yielded, before the collection-wide rules run. */
 interface LoadedFile {
   filePath: string;
@@ -887,8 +917,6 @@ interface FinishContext {
   mount: AssetMount | undefined;
   projectConfig: ProjectConfig | undefined;
   locale: string | undefined;
-  /** Whether the format branch's date-coercion pass applies (it does not for JSON and remote). */
-  coerceDates: boolean;
   /** Extensions of the collection's entry files, for link resolution. */
   entryExtensions: Set<string>;
   /** The source directory, when there is one. */
@@ -1034,12 +1062,14 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
     }
   }
 
+  /* Coerce declared date fields before validating. This is the one point in the pipeline that holds
+     both the entries and the schema, and every branch (format class, native JSON, remote) ends
+     here, so a date is coerced once whichever source produced it and a third-party format class
+     needs no code of its own. */
   // 4. Dates, then validation: kept entries only.
   if (ctx.schema) {
-    if (ctx.coerceDates) {
-      for (const warning of coerceEntryDates(entries, ctx.schema, name)) {
-        console.warn(warning.message);
-      }
+    for (const warning of coerceEntryDates(entries, ctx.schema, name)) {
+      console.warn(warning.message);
     }
     validateEntries(entries, ctx.schema, name);
   }
@@ -1427,7 +1457,6 @@ async function loadContentType(
   const { schema } = contentTypeDef;
   const rules = compileTypeRules(name, contentTypeDef);
   const finishContext = (extra: Partial<FinishContext>): FinishContext => ({
-    coerceDates: false,
     entryExtensions: new Set<string>(),
     includeHeld,
     locale,
@@ -1508,7 +1537,9 @@ async function loadContentType(
     for (const filePath of discoverJSONFiles(resolvedSource, rules.exclude)) {
       const rel = relOf(filePath);
       try {
-        loaded.push({ entries: loadJSONEntries(filePath), filePath, rel });
+        const fileEntries = loadJSONEntries(filePath);
+        stampSourceMtime(fileEntries, filePath);
+        loaded.push({ entries: fileEntries, filePath, rel });
       } catch (error) {
         throw unreadableFile(name, rel ?? filePath, error);
       }
@@ -1569,6 +1600,7 @@ async function loadContentType(
     } catch (error) {
       throw unreadableFile(name, rel ?? filePath, error);
     }
+    stampSourceMtime(fileEntries, filePath);
     loaded.push({ entries: fileEntries, filePath, rel });
   }
   if (loaded.length === 0 && !rules.exclude.empty) {
@@ -1578,15 +1610,9 @@ async function loadContentType(
     );
   }
 
-  /*
-   * Coerce declared date fields before validating. This is the one point in the pipeline that holds
-   * both the entries and the schema: `Csv.load` receives a schema and `Markdown.load` does not, so
-   * doing it per-format would mean doing it twice and missing every third-party format class.
-   */
   return finishEntries(
     loaded,
     finishContext({
-      coerceDates: true,
       entryExtensions: new Set([...entry.extensions, ...fileExtensions]),
       sourceRoot,
       ...(deferBody === true && {
@@ -1672,12 +1698,9 @@ function validateEntries(
         continue;
       }
 
-      if (isDateFormat(def.format) && isString(value) && !isCoercedDate(value)) {
-        console.warn(
-          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" is declared ` +
-            `${def.format} but "${value}" was not coerced — it will sort and filter as plain text.`,
-        );
-      } else if (def.type === "string" && !isString(value)) {
+      /* A declared date is not checked here: the coercion pass ahead of this one has either
+         normalized it or reported it, once. */
+      if (def.type === "string" && !isString(value)) {
         console.warn(
           `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected string, got ${jsTypeName(value)}`,
         );

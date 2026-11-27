@@ -3,8 +3,7 @@ status: drafted
 disposition: reconcile
 claims:
   - spec.md#13.3
-requires:
-  - spec/one-way-prop-forwarding-page-bindings
+requires: []
 workspaces:
   - packages/runtime
   - packages/compiler
@@ -32,7 +31,7 @@ The body (line 1547) promises the opposite: "the child receives the same reactiv
 
 **Corrections to the census reading**
 
-1. **"A compiled parent binds `.prop=`" holds only inside a component definition and in a client `$map` row.** An instance written on a page or a layout gets nothing live in a built site. `expandComponents` (`packages/compiler/src/site/site-build.ts`) serialises its `$props` raw into `data-jx-props`, `$ref`s included, and `buildClientNode` has no `$props` branch. A scratch build of a page with `n` (written by a button's handler) and `<my-count $props: { count: { $ref: "#/state/n" } }>` emitted `<my-count data-jx-static><p>[object Object]|undefined</p></my-count>` and no module. So §13.3 needs `plan:spec/one-way-prop-forwarding-page-bindings` as well as the bridge. That enabling plan also owns the other defects found in that path.
+1. **"A compiled parent binds `.prop=`" holds only inside a component definition and in a client `$map` row.** An instance written on a page or a layout gets nothing live in a built site. `expandComponents` (`packages/compiler/src/site/site-build.ts`) serialises its `$props` raw into `data-jx-props`, `$ref`s included, and `buildClientNode` has no `$props` branch. A scratch build of a page with `n` (written by a button's handler) and `<my-count $props: { count: { $ref: "#/state/n" } }>` emitted `<my-count data-jx-static><p>[object Object]|undefined</p></my-count>` and no module. So §13.3 needs the landed page-level prop delivery (compiler.md §8.1, §9.1) as well as the bridge. That enabling plan also owns the other defects found in that path.
 2. **A function prop is not an upward channel in any tier.** The stub proposed that "a child that needs to change parent state calls a function prop (`onAction` in §13.2's example)". It cannot:
    - `bindHandler` (`runtime.ts`) calls a `$ref` handler as `handlerFn(scope, e)` with the scope of the element it is bound on, which in a child is the child's.
    - `resolveFunction` stores a handler entry unbound.
@@ -60,7 +59,7 @@ The body (line 1547) promises the opposite: "the child receives the same reactiv
 ## Decisions
 
 - **Decided:** reconcile to one-way flow. The audit record's spec-wide decisions name this reconcile, and §2.4 ("explicit over implicit") and §15.3 ("signals do not cross component boundaries implicitly") already imply it. No tier has a write-back channel, and adding one would make every primitive prop a two-writer value with no rule for which write wins.
-- **Decided:** `requires` `plan:spec/one-way-prop-forwarding-page-bindings` (the property bridge it also needed, `compiler.md` §4.4, has landed), because the new text says a bound prop is re-delivered in every tier:
+- **Decided:** no `requires` edge on the page-level prop delivery (compiler.md §8.1, §9.1), which has landed (the property bridge it also needed, `compiler.md` §4.4, has landed), because the new text says a bound prop is re-delivered in every tier:
   - without the bridge a compiled child ignores every write after connection.
   - without the enabling plan an instance on a built page receives an unresolved `$ref`.
 - **Decided:** state the object and array case as a consequence of passing a reference, including the detachment: a child that assigns a new object keeps it until the parent assigns one. That is what both tiers do, and a spec that names only mutation would read as a promise that reassignment is shared too.
@@ -106,7 +105,7 @@ Run `bun test --isolate --coverage` from `packages/runtime` and from `packages/c
 - "a function prop runs against the scope of the element that calls it": child state `{ n: 0, onBump: null }` with an inner button `onclick: { $ref: "#/state/onBump" }`; parent `{ n: 1, bump: (state) => { state.n++; } }`; instance `onBump: { $ref: "#/state/bump" }`. A click leaves `parent.n === 1` and renders the child's `n` as `1`. This pins the Open; invert it if the Open goes the other way.
 - "an event dispatched at the host runs the parent's instance handler in the parent's scope": child state `{ count: 0 }` and a root-level `onclick` with body `[{ dispatchEvent: "picked", detail: { $ref: "#/state/count" } }]`. The instance carries `onpicked: { $prototype: "Function", body: [{ operator: "=", target: { $ref: "#/state/n" }, value: { $ref: "event#/detail" } }] }`. Setting `el.count = 7` and calling `el.click()` sets `parent.n === 7`.
 
-**`packages/compiler/tests/client-page-props.test.ts`**, the harness `plan:spec/one-way-prop-forwarding-page-bindings` creates. It is extended with the child's compiled module (`compileElement`) written beside the page module, imported in document order (page module first, as `injectComponentScripts` places them):
+**`packages/compiler/tests/client-page-props.test.ts`**, the harness the landed page-level prop delivery (compiler.md §8.1, §9.1) creates. It is extended with the child's compiled module (`compileElement`) written beside the page module, imported in document order (page module first, as `injectComponentScripts` places them):
 
 - "a page-level instance re-renders when the page state it binds changes": a click on the page's button renders the child's new `count`.
 - "a write to the instance's prop stays in the instance": `el.count = 9` renders `9` in the child and leaves the button's `${state.n}` text alone. The next click renders the page's value in the child.

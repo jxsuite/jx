@@ -210,19 +210,46 @@ export function isRoutedPageFile(relativePath: string, pageExtensions?: Iterable
 }
 
 /**
- * Route priority (spec §4.4, Astro's rules): static beats dynamic, dynamic beats catch-all.
+ * How specific one pattern segment is, read exactly as `matchPattern` reads it: `2` for a catch-all
+ * (exactly `*`), `1` for a parameter (starts with `:`), `0` for a literal. Lower ranks first.
+ */
+function segmentRank(segment: string): 0 | 1 | 2 {
+  if (segment === "*") {
+    return 2;
+  }
+  return segment.startsWith(":") ? 1 : 0;
+}
+
+/**
+ * Which of two routes outranks the other (spec `site-architecture.md` §4.4): negative when `a`
+ * does, positive when `b` does, zero when neither does.
  *
- * Sorting a route table with this is what makes `matchRoute` a first-match scan — `/about` is found
- * before `/[slug]` can claim it, whatever order the directory walk produced.
+ * Routes are compared segment by segment from the left and the first segment where they differ
+ * decides: a literal outranks a parameter, a parameter outranks a catch-all, and a route that ends
+ * where another continues ranks first. Zero means the two have the same length and the same segment
+ * kind at every position, so they are one shape and the rule cannot choose between them.
+ */
+export function routePriority(a: FileRoute, b: FileRoute): number {
+  const ranksA = splitPath(a.urlPattern).map((segment) => segmentRank(segment));
+  const ranksB = splitPath(b.urlPattern).map((segment) => segmentRank(segment));
+  const shared = Math.min(ranksA.length, ranksB.length);
+  for (let index = 0; index < shared; index += 1) {
+    if (ranksA[index] !== ranksB[index]) {
+      return ranksA[index]! - ranksB[index]!;
+    }
+  }
+  return ranksA.length - ranksB.length;
+}
+
+/**
+ * Route table order (spec `site-architecture.md` §4.4): {@link routePriority}, then pattern text so
+ * routes of one shape sort the same everywhere.
+ *
+ * Sorting a route table with this is what makes `matchRoute` a first-match scan, whatever order the
+ * directory walk produced.
  */
 export function compareRoutes(a: FileRoute, b: FileRoute): number {
-  if (a.isDynamic !== b.isDynamic) {
-    return a.isDynamic ? 1 : -1;
-  }
-  if (a.isCatchAll !== b.isCatchAll) {
-    return a.isCatchAll ? 1 : -1;
-  }
-  return a.urlPattern.localeCompare(b.urlPattern);
+  return routePriority(a, b) || a.urlPattern.localeCompare(b.urlPattern);
 }
 
 /** One route matched against a URL, with the parameter values that matched it. */

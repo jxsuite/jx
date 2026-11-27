@@ -364,6 +364,8 @@ export interface JxElement {
   $prototype?: string;
   $static?: boolean;
   $prerendered?: boolean;
+  /** Spliced content the build marked: no string in it is a template (spec.md §8.4). Never authored. */
+  $literal?: boolean;
   $title?: string;
   $id?: string;
   $src?: string;

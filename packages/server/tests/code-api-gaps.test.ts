@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { JsonObject } from "@jxsuite/schema/types";
 import { handleCodeApi } from "../src/code-api";
 
@@ -10,8 +13,8 @@ function handled(res: Response | null): Response {
   return res;
 }
 
-// Code-api locates the oxlint binary by walking up from its own directory probing
-// Node_modules/.bin, so in the workspace layout it finds the repo-root hoisted bin directly —
+// Code-api locates the oxlint CLI by walking up from its own directory probing
+// Node_modules/oxlint, so in the workspace layout it finds the repo-root hoisted copy directly —
 // No staging or symlinking is needed for these tests to exercise the real linter.
 
 function codeRequest(action: string, body: JsonObject) {
@@ -62,5 +65,36 @@ describe("code-api — lint diagnostics adjustment", () => {
     expect(data.diagnostics.length).toBeGreaterThan(0);
     const label = data.diagnostics[0].labels?.[0];
     expect(label.span.line).toBe(2);
+  });
+});
+
+describe("code-api — lint takes oxlint's defaults, from a private directory", () => {
+  test("lint uses oxlint's defaults, not a discovered config", async () => {
+    // The repository's config enables no-var, and oxlint discovers it from this suite's cwd.
+    const { req, url } = codeRequest("lint", { code: "var x = 1;" });
+    const res = await handleCodeApi(req, url);
+    const data = await res?.json();
+    expect(JSON.stringify(data)).not.toContain("no-var");
+  });
+
+  test("a config planted in the temp directory is ignored", async () => {
+    const planted = mkdtempSync(join(tmpdir(), "jx-planted-"));
+    const previous = process.env.TMPDIR;
+    try {
+      writeFileSync(join(planted, ".oxlintrc.json"), '{"rules":{"no-var":"error"}}');
+      process.env.TMPDIR = planted;
+      const { req, url } = codeRequest("lint", { code: "var x = 1;" });
+      const res = await handleCodeApi(req, url);
+      const data = await res?.json();
+      expect(JSON.stringify(data)).not.toContain("no-var");
+      expect(readdirSync(planted).filter((name) => name.startsWith("jx-lint-"))).toEqual([]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TMPDIR;
+      } else {
+        process.env.TMPDIR = previous;
+      }
+      rmSync(planted, { force: true, recursive: true });
+    }
   });
 });
