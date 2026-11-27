@@ -8,7 +8,7 @@ workspaces:
   - packages/runtime
 size: L
 prs:
-  - jxsuite/jx#774
+  - jxsuite/jx#781
 ---
 
 # A built site renders every `$switch` case the interpreter renders, an external `$ref` case included, instead of an empty container
