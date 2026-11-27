@@ -272,19 +272,26 @@ export function collapseStylePaths(styleObj: JsonObject) {
 
 // ─── Detection ──────────────────────────────────────────────────────────────
 
+/** The component rule: a character on each side of a hyphen (specs/jx-markdown.md §3.1). */
+const COMPONENT_TAG = /.+-.+/;
+
 /**
- * Check if a markdown source string is a Jx component (vs content markdown). Returns true if
- * frontmatter contains a `tagName` key with a hyphen.
+ * Whether a markdown source is a Jx component rather than content markdown: its parsed frontmatter
+ * `tagName` is a string matching the rule `Markdown.class.json` declares as
+ * `$studio.documentMode.componentWhen` (specs/jx-markdown.md §3.1). A source that does not
+ * transpile is not a component.
  *
  * @param {string} source - Raw markdown string
  * @returns {boolean}
  */
-export function isJxMarkdown(source: string) {
-  const fmMatch = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!fmMatch) {
+export function isJxMarkdown(source: string): boolean {
+  let tagName: unknown;
+  try {
+    ({ tagName } = transpileJxMarkdown(source));
+  } catch {
     return false;
   }
-  return /^tagName:\s*.+-.+/m.test(fmMatch[1]!);
+  return isString(tagName) && COMPONENT_TAG.test(tagName);
 }
 
 // ─── Transpiler ─────────────────────────────────────────────────────────────
