@@ -6,8 +6,9 @@
  *
  * - `roundtrip` (default) — lossless for everything it can express (a `tagName` chosen at render time
  *   cannot be, and throws): YAML frontmatter from non-children doc keys, non-markdown elements
- *   emitted as remark directives with collapsed dot-path attributes. Inverse of
- *   `transpileJxMarkdown()`.
+ *   emitted as remark directives with collapsed dot-path attributes. A list or table that holds
+ *   what markdown cannot (a repeater, a part with Jx props) is written as directives throughout.
+ *   Inverse of `transpileJxMarkdown()`.
  * - `export` — lossy: strips all Jx decoration, unwraps wrapper tags, inlines custom elements via
  *   injected component definitions, evaluates template strings via injected hooks. Produces clean
  *   GFM with no directives or frontmatter.
@@ -51,7 +52,10 @@ import type {
 } from "@jxsuite/schema/types";
 import type { MdastNode, UnifiedPlugin, UnifiedProcessor } from "./types.ts";
 
-/** Static text content of a node — bound (`$ref`) text has no serializable form. */
+/**
+ * Static text content of a node. Bound (`$ref`) text has no markdown spelling; the roundtrip writer
+ * keeps it as a `textContent.ref` directive attribute instead (see {@link boundText}).
+ */
 function textOf(el: JxElement | undefined): string | undefined {
   return el && isString(el.textContent) ? el.textContent : undefined;
 }
@@ -560,8 +564,21 @@ function normalizeAllowlist(allowlist?: ReadonlySet<string> | string[]): Readonl
   return allowlist instanceof Set ? allowlist : new Set(allowlist);
 }
 
+/** Whether an element's `textContent` is a binding (an object) rather than static text. */
+function boundText(el: JxElement): boolean {
+  return isNonNullObject(el.textContent);
+}
+
+/** An element's static text (a string or number `textContent`), or `undefined`. */
+function staticText(el: JxElement): string | undefined {
+  return isString(el.textContent) || isNumber(el.textContent) ? String(el.textContent) : undefined;
+}
+
 /** Check if a Jx element has properties beyond the mdast-compatible ones. */
 function hasJxProps(el: JxElement) {
+  if (boundText(el)) {
+    return true;
+  }
   // A computed-children template has no Markdown spelling, so even a `p` needs a directive to hold it.
   if (isTemplateString(el.children)) {
     return true;
@@ -687,6 +704,159 @@ function gfmTableRows(el: JxElement): { head: JxElement[]; body: JxElement[][] }
   return body.length > 0 ? { body, head } : null;
 }
 
+/**
+ * The children each list and table tag holds in markdown, read from the nesting rules Studio shares
+ * so the serializer and the editor name the same parts.
+ */
+const NATIVE_PARTS: Readonly<Record<string, ReadonlySet<string>>> = Object.fromEntries(
+  (["ul", "ol", "table", "thead", "tbody", "tr"] as const).map((tag) => [
+    tag,
+    new Set<string>(MD_ELEMENTS.nesting[tag].only),
+  ]),
+);
+
+/** The list and table parts: written as markdown only inside a native list or table. */
+const PART_TAGS: ReadonlySet<string> = new Set([
+  ...MD_ELEMENTS.nesting.ul.only,
+  ...MD_ELEMENTS.nesting.ol.only,
+  ...MD_ELEMENTS.nesting.table.only,
+  ...MD_ELEMENTS.nesting.thead.only,
+  ...MD_ELEMENTS.nesting.tbody.only,
+  ...MD_ELEMENTS.nesting.tr.only,
+]);
+
+/** A child slot as an element, or `undefined` for a string, number, null or other non-object. */
+function elementOf(slot: ChildSlot | JxDocumentValue): JxElement | undefined {
+  if (!isNonNullObject(slot)) {
+    return undefined;
+  }
+  /* SAFETY: a non-null object in a child slot is an element by contract; every reader of it
+     tolerates the odd object a hand-edited document leaves there. */
+  return slot as JxElement;
+}
+
+/**
+ * Whether a list or table can be written as markdown without losing a child. Anything its markdown
+ * form cannot hold (a repeater, a part with Jx props, a bound `textContent`, a `children` object)
+ * sends the whole element to a directive, because markdown has no way to place a directive between
+ * list items or table rows. Whitespace-only strings do not count: both native writers drop them.
+ */
+function holdsNatively(el: JxElement, allowlist: ReadonlySet<string>): boolean {
+  const parts = isString(el.tagName) ? NATIVE_PARTS[el.tagName] : undefined;
+  if (!parts || el.children === undefined) {
+    return true;
+  }
+  if (!Array.isArray(el.children)) {
+    return false;
+  }
+  return el.children.every((child) => {
+    if (isString(child)) {
+      return child.trim() === "";
+    }
+    const part = elementOf(child);
+    const partTag = part?.tagName;
+    return (
+      part !== undefined &&
+      isString(partTag) &&
+      parts.has(partTag) &&
+      allowlist.has(partTag) &&
+      !hasJxProps(part) &&
+      holdsNatively(part, allowlist)
+    );
+  });
+}
+
+/**
+ * Whether children are one run of inline content: each a string, a number, or an element that is
+ * not an allowlisted markdown block and holds only such content, with at least one text or markdown
+ * inline anchor so an item holding only components stays a container.
+ */
+function isInlineOnly(children: readonly ChildSlot[], allowlist: ReadonlySet<string>): boolean {
+  const phrasing = (child: ChildSlot): boolean => {
+    if (isString(child) || isNumber(child)) {
+      return true;
+    }
+    const el = elementOf(child);
+    if (!el) {
+      return false;
+    }
+    const tag = isString(el.tagName) ? el.tagName : "";
+    if (MD_INLINE.has(tag)) {
+      return true;
+    }
+    if (MD_BLOCK.has(tag) && allowlist.has(tag)) {
+      return false;
+    }
+    return !Array.isArray(el.children) || el.children.every((c) => phrasing(c));
+  };
+  const anchored = (child: ChildSlot): boolean =>
+    isString(child) || isNumber(child) || MD_INLINE.has(String(elementOf(child)?.tagName));
+  return children.every((c) => phrasing(c)) && children.some((c) => anchored(c));
+}
+
+/** Block children of a directive: parts are directives, the rest as usual, blanks dropped. */
+function blockChildren(
+  children: readonly ChildSlot[],
+  allowlist: ReadonlySet<string>,
+): MdastNode[] {
+  return children.flatMap((child) => {
+    if (isString(child) && child.trim() === "") {
+      return [];
+    }
+    const converted = blockChild(child, allowlist);
+    return converted ? [converted] : [];
+  });
+}
+
+/** One block child of a directive: a list or table part is always a directive here. */
+function blockChild(child: ChildSlot | JxDocumentValue, allowlist: ReadonlySet<string>) {
+  const el = elementOf(child);
+  if (el && PART_TAGS.has(String(el.tagName))) {
+    return partToDirective(el, allowlist);
+  }
+  return convertJxNode(
+    el ?? (isString(child) || isNumber(child) ? child : undefined),
+    true,
+    allowlist,
+  );
+}
+
+/**
+ * A list item or table part as a directive: a leaf whose label holds its inline content, a bare
+ * leaf when empty, or a container when it holds blocks (jx-markdown.md §4.2, §6.5).
+ */
+function partToDirective(el: JxElement, allowlist: ReadonlySet<string>): MdastNode {
+  const name = String(el.tagName);
+  const attributes = collectDirectiveAttrs(el);
+  const text = staticText(el);
+  if (text !== undefined && text !== "") {
+    return {
+      attributes,
+      children: [{ type: "text", value: text }],
+      name,
+      type: "leafDirective",
+    };
+  }
+  const children = Array.isArray(el.children) ? el.children : [];
+  if (children.length === 0) {
+    return { attributes, children: [], name, type: "leafDirective" };
+  }
+  if (isInlineOnly(children, allowlist)) {
+    return {
+      attributes,
+      children: convertJxChildren(children, false, allowlist),
+      name,
+      type: "leafDirective",
+    };
+  }
+  return {
+    attributes,
+    children: blockChildren(children, allowlist),
+    name,
+    type: "containerDirective",
+  };
+}
+
 function convertJxNode(
   slot: JxDocumentValue | undefined,
   isBlock: boolean,
@@ -717,7 +887,8 @@ function convertJxNode(
     !hasOnlyMarkdownAttributes(el, tag) ||
     TABLE_PARTS.has(tag) ||
     (tag === "table" && tableRows === null) ||
-    (isBlock && tag === "img")
+    (isBlock && tag === "img") ||
+    !holdsNatively(el, allowlist)
   ) {
     return convertToDirective(el, isBlock, allowlist);
   }
@@ -915,6 +1086,25 @@ function serializableTag(tagName: TagNameSlot): string {
  */
 const PROTOTYPE_DIRECTIVE_NAMES = new Set(["Array"]);
 
+/**
+ * Escapes for text inside a leaf or container directive's label. mdast-util-directive enters no
+ * `phrasing` construct when it writes a label, so remark-stringify's phrasing escapes do not apply
+ * there and `*b*` or `<b>` would re-parse as markup; these are those escapes, scoped to the label.
+ */
+const LABEL_UNSAFE = [
+  { character: "*" },
+  { character: "_" },
+  { character: "`" },
+  { character: "<" },
+  { character: "~" },
+  { character: "[" },
+  { after: String.raw`\[`, character: "!" },
+  { after: "[#A-Za-z]", character: "&" },
+  { after: "[A-Za-z]", character: ":" },
+].map((rule) =>
+  Object.assign(rule, { inConstruct: ["leafDirectiveLabel", "containerDirectiveLabel"] }),
+);
+
 const JX_ANNOTATION_KEYS = new Set(["$title", "$description"]);
 
 /** Element props (and attributes) bound for directive attributes, keyed as the element keys them. */
@@ -924,6 +1114,10 @@ function collectDirectiveAttrs(el: JxElement) {
   const propsObj: DirectiveProps = {};
 
   for (const [key, value] of Object.entries(el)) {
+    if (key === "textContent" && boundText(el)) {
+      propsObj.textContent = value;
+      continue;
+    }
     if (key === "tagName" || key === "textContent" || key === "innerHTML" || key === "attributes") {
       continue;
     }
@@ -962,14 +1156,18 @@ function convertToDirective(
 
   // The caller has already refused a chosen tag (serializableTag), so a tag here is a literal.
   const tag = isString(el.tagName) ? el.tagName : "div";
+  if (isBlock && PART_TAGS.has(tag)) {
+    return partToDirective(el, allowlist);
+  }
   const attrs = collectDirectiveAttrs(el);
+  const text = staticText(el);
 
   if (!isBlock) {
     return {
       attributes: attrs,
       children:
-        el.textContent != null
-          ? [{ type: "text", value: String(el.textContent) }]
+        text !== undefined
+          ? [{ type: "text", value: text }]
           : convertJxChildren(childList(el), false, allowlist),
       name: tag,
       type: "textDirective",
@@ -978,7 +1176,7 @@ function convertToDirective(
 
   // A legacy whole-slot repeater (an object) has no child list to emit.
   const childArray = Array.isArray(el.children) ? el.children : undefined;
-  if (!childArray?.length && el.textContent == null) {
+  if (!childArray?.length && text === undefined) {
     return {
       attributes: attrs,
       children: [],
@@ -988,10 +1186,10 @@ function convertToDirective(
   }
 
   let directiveChildren: MdastNode[];
-  if (el.textContent != null) {
+  if (text !== undefined) {
     directiveChildren = [
       {
-        children: [{ type: "text", value: String(el.textContent) }],
+        children: [{ type: "text", value: text }],
         type: "paragraph",
       },
     ];
@@ -1001,7 +1199,7 @@ function convertToDirective(
     directiveChildren =
       inlineNodes.length > 0 ? [{ children: inlineNodes, type: "paragraph" }] : [];
   } else {
-    directiveChildren = convertJxChildren(childList(el), true, allowlist);
+    directiveChildren = blockChildren(childList(el), allowlist);
   }
 
   return {
@@ -1015,7 +1213,8 @@ function convertToDirective(
 /**
  * Serialize a tagName-less `$prototype` node (e.g. an Array repeater) to a directive named after
  * its prototype. items/filter/sort (and any other scalar props) become attributes; the `map`
- * template is the single nested child. `$prototype` (carried by the name) and `map` (the body) are
+ * template is the single nested child, written as a block child so a list item or table part stays
+ * a directive (jx-markdown.md §6.5). `$prototype` (carried by the name) and `map` (the body) are
  * omitted from the attributes.
  */
 function prototypeToDirective(
@@ -1032,7 +1231,11 @@ function prototypeToDirective(
     propsObj[key] = value;
   }
   const attrs = collapsePropsToAttrMap(propsObj);
-  const mapNode = el.map ? convertJxNode(el.map, isBlock, allowlist) : null;
+  const mapNode = el.map
+    ? isBlock
+      ? blockChild(el.map, allowlist)
+      : convertJxNode(el.map, false, allowlist)
+    : null;
   const children = mapNode ? [mapNode] : [];
   return {
     attributes: attrs,
@@ -1899,7 +2102,7 @@ function serializeRoundtrip<ScopeValue>(
     const processor = createProcessor()
       .use(remarkGfm)
       .use(remarkDirective)
-      .use(remarkStringifyPlugin, { ...markers });
+      .use(remarkStringifyPlugin, { ...markers, unsafe: LABEL_UNSAFE });
     // Runs of blank lines are squeezed in the body only: inside the frontmatter they are a block
     // Scalar's own text (a `|-` excerpt's paragraph breaks), and squeezing them edits a value.
     lines.push(processor.stringify(mdast).replaceAll(/\n{3,}/g, "\n\n"));

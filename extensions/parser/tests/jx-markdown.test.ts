@@ -424,6 +424,19 @@ tagName: my-comp
     });
   });
 
+  test("a leaf directive's label is its inline content", () => {
+    const doc = transpileJxMarkdown("::li[Buy milk]\n\n::li[Buy *fresh* milk]\n\n::hr\n");
+    expect(childAt(doc, 0)).toEqual({ tagName: "li", textContent: "Buy milk" });
+    expect(childAt(doc, 1).tagName).toBe("li");
+    expect(childAt(doc, 1).textContent).toBeUndefined();
+    expect(childAt(doc, 1).children).toEqual([
+      "Buy ",
+      { tagName: "em", textContent: "fresh" },
+      " milk",
+    ]);
+    expect(childAt(doc, 2)).toEqual({ tagName: "hr" });
+  });
+
   test("handles leaf directives as self-closing elements", () => {
     const source = `---
 tagName: my-comp
