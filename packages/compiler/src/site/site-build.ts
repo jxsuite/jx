@@ -122,7 +122,9 @@ import {
   escapeStyleText,
   evaluateStaticTemplate,
   inheritProjectFormulas,
+  isLiteralNode,
   isLiveComponent,
+  markLiteral,
   isPureNamedFormula,
   isRuntimeOnlyStateKey,
   listSettled,
@@ -2541,8 +2543,9 @@ function textChildValue(value: JxScope[string]): string | null {
  * @returns {JxElement}
  */
 function expandMapTemplate(template: JxElement, scope: JxScope): JxElement {
-  // A map template is authored JSON, so a child reached by recursion may not be an object.
-  if (!isNonNullObject(template)) {
+  // A map template is authored JSON, so a child reached by recursion may not be an object. Spliced
+  // Content is data (spec.md §8.4) and is kept as it stands.
+  if (!isNonNullObject(template) || isLiteralNode(template)) {
     return template;
   }
   const node: JxElement = {};
@@ -2651,7 +2654,8 @@ function resolveDocTemplates(
   buildResolved: ReadonlySet<string>,
 ) {
   // Children are authored JSON, so a member reached by recursion may be neither node nor string.
-  if (!isNonNullObject(node)) {
+  // Spliced content is data, never a template (spec.md §8.4).
+  if (!isNonNullObject(node) || isLiteralNode(node)) {
     return;
   }
 
@@ -2733,13 +2737,9 @@ function resolveDocTemplates(
   if (isTemplateString(rawChildren)) {
     const resolved = evaluateStaticTemplate(rawChildren, scope);
     if (Array.isArray(resolved)) {
-      /* SAFETY: a children template that yields an array stands for the child list itself, and
-         every member is walked by `resolveDocTemplates` below, which skips non-objects. */
-      const resolvedNodes = resolved as (JxElement | string)[];
-      node.children = resolvedNodes;
-      for (const child of resolvedNodes) {
-        resolveDocTemplates(child, scope, buildResolved);
-      }
+      /* SAFETY: a children template that yields an array stands for the child list itself, which
+         is content: `markLiteral` keeps every template in it text. */
+      node.children = markLiteral(resolved as (JxElement | string)[]);
     }
   } else if (Array.isArray(node.children)) {
     let i = 0;
@@ -2749,12 +2749,9 @@ function resolveDocTemplates(
         const resolved = evaluateStaticTemplate(child, scope);
         if (Array.isArray(resolved)) {
           /* SAFETY: a child template that yields an array stands for the children it splices in,
-             and every member is walked by `resolveDocTemplates` below, which skips non-objects. */
-          const resolvedNodes = resolved as (JxElement | string)[];
+             which are content: `markLiteral` keeps every template in them text. */
+          const resolvedNodes = markLiteral(resolved as (JxElement | string)[]);
           node.children.splice(i, 1, ...resolvedNodes);
-          for (const spliced of resolvedNodes) {
-            resolveDocTemplates(spliced, scope, buildResolved);
-          }
           i += resolvedNodes.length;
           continue;
         }

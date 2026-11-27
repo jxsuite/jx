@@ -61,6 +61,8 @@ import {
   PREFORMATTED_TAGS,
   pureSchemeOf,
   isExpandedInstance,
+  isLiteralNode,
+  renderStaticNode,
   resolveStaticValue,
   serverCallHelperSource,
   collectFunctionImports,
@@ -454,6 +456,11 @@ function buildClientNode(
   }
   if (!isNonNullObject(def)) {
     return "";
+  }
+
+  // Spliced content is data (spec.md §8.4): written as static, escaped markup and bound to nothing.
+  if (isLiteralNode(def)) {
+    return renderStaticNode(def, context.scope, null, null, context.preformatted === true);
   }
 
   const nextContext = createCompileContext(

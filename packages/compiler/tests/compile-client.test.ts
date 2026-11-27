@@ -27,6 +27,26 @@ function primitiveChildrenDoc(fixture: PrimitiveChildrenFixture): JxDocument {
 }
 
 describe("compileClient", () => {
+  test("a literal node emits its templates as text and binds nothing", () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          $literal: true,
+          attributes: { title: "${state.a}" },
+          children: [{ $literal: true, tagName: "code", textContent: "x ${state.a} y" }],
+          style: { color: "${state.a}" },
+          tagName: "p",
+        },
+      ],
+      state: { a: { default: "hi" } },
+    };
+    const { files, html } = compileClient(doc, { title: "T" });
+    expect(html).toContain("<code>x ${state.a} y</code>");
+    expect(html).toContain('title="${state.a}"');
+    expect(files[0]!.content).not.toContain("state.a} y");
+    expect(html).not.toContain("data-bind");
+  });
+
   test("children inside <pre> are concatenated without the readability indent", () => {
     const doc: JxDocument = {
       children: [
