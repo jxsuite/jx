@@ -95,6 +95,16 @@ describe("buildSite — an instance's $props on a page", () => {
       state: { k: 5 },
       title: "Constant",
     });
+    writeJSON(TMP, "pages/directive.json", {
+      children: [
+        {
+          $props: { "#note": { $ref: "#/state/k" }, fixed: { $ref: "#/state/k" } },
+          tagName: "my-count",
+        },
+      ],
+      state: { k: 5 },
+      title: "Directive",
+    });
     writeJSON(TMP, "pages/stateless.json", {
       children: [{ $props: { count: { $ref: "window#/innerWidth" } }, tagName: "my-count" }],
       title: "Stateless",
@@ -169,5 +179,12 @@ describe("buildSite — an instance's $props on a page", () => {
     expect(html).not.toContain(":attr.data-jx-props");
     expect(payloads(html)).toContainEqual({ note: "use ${x}" });
     expect(html).toContain(String.raw`\u0024{x}`);
+  });
+
+  it("a #-prefixed $props key is a directive, neither a prop nor a payload entry", () => {
+    const html = read("directive/index.html");
+    expect(html).toContain("<p>0|5</p>");
+    expect(html).not.toContain("#note");
+    expect(html).not.toContain("note&quot;");
   });
 });
