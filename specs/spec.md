@@ -1559,15 +1559,13 @@ At runtime, `buildScope` injects the mapped `$src` into each bare `$prototype` e
 
 ### 13.1 Component Instances
 
-> **Status: Partial.** Registration and instantiation by tag ship. The example below is wrong: `$elements` is an ARRAY of `{ "$ref" }` objects or package names (the schema's `type: "array"`, `registerElements` in `packages/runtime/src/runtime.ts`, `compileElement`), and the tag comes from the referenced document's own `tagName`, not a key; the keyed map shown throws at runtime and fails validation.
+> **Status: Implemented.** `registerElements` (`packages/runtime/src/runtime.ts`) resolves each `{ "$ref" }` entry, registers the referenced document's own `$elements` first and defines the element under that document's `tagName`; an element node with the tag instantiates it. `compileElement` (`packages/compiler/src/targets/compile-element.ts`) imports a definition's `{ "$ref" }` entries as modules, and the static emitter expands an instance from the definition its tag names (`renderComponentInstance` in `packages/compiler/src/shared.ts`). Which components a site build compiles for a page's entries is imports.md §1.3's rule. Verified in `packages/runtime/tests/runtime-gaps-elements.test.ts`.
 
-A component instance is created by **registering** the component document in the top-level `$elements` map (§16) and then placing an element node with its **custom-element `tagName`**, passing data through `$props`:
+A component instance is created by **registering** the component document in the top-level `$elements` array (§16.3) and then placing an element node with its **custom-element `tagName`**, passing data through `$props`. An entry names a document, not a tag: the tag is the one the referenced definition declares as its root `tagName` (§16.1), so `card.json` below is a definition whose `tagName` is `my-card`, and a document registers under the same name wherever it is listed:
 
 ```json
 {
-  "$elements": {
-    "my-card": { "$ref": "./components/card.json" }
-  },
+  "$elements": [{ "$ref": "./components/card.json" }],
   "children": [
     {
       "tagName": "my-card",
