@@ -1,5 +1,5 @@
 ---
-status: drafted
+status: ready
 disposition: implement
 claims:
   - desktop.md#7.7
@@ -28,13 +28,13 @@ A sandboxed application reads a folder only after the user picks it, and the per
 - **Decided:** the store's build has no updater, and no site import (its browser is never set on macOS, §9.5).
 - **Decided:** `com.apple.security.network.server` stays. Each window's backend server listens on loopback for its Studio window and canvas iframe (§9.7), and binding a listening socket in the sandbox needs it. The reply to App Review and the App Review Information notes say so.
 - **Decided:** the backend reaches a picked folder because it starts after the grant. The sandbox build asks for the project folder (a picked file grants only itself), keeps an app-scope bookmark per folder, restores them before spawning the backend, and restarts the backend when a pick is not covered, asking first when a project is open. Routing file access through the main process was not needed.
-- **Open:** whether `git` is worth keeping in the sandbox. The system's `git` is Apple's developer-tools shim and cannot read the user's Git configuration, keys or credential helpers. Options: keep it for HTTPS, disable the Git workflow in this build, or ship a Git of our own.
+- **Decided:** Git stays in the sandboxed build for HTTPS remotes only (owner decision, over the plan's reader suggestion). The system's `git` is Apple's shim and cannot read SSH keys, configuration or credential helpers, so the backend (told by `JX_STUDIO_SANDBOX`, set when `process.mas`) refuses to add, push, pull or fetch a remote whose URL is not `https://`, with a message that names the URL. Shipping a Git of our own was not chosen: it is a large package for a channel that has no other need of it.
 
 ## Implementation
 
 - Create the app record, the Apple Distribution and Mac Installer Distribution certificates and the provisioning profile (a person does this in App Store Connect and the developer portal), and store them as secrets (`MAS_CERTIFICATE_BASE64`, `MAS_INSTALLER_CERTIFICATE_BASE64`, their passwords, `MAS_PROVISIONING_PROFILE_BASE64`).
 - Run `store-publish-mac.yml` by `workflow_dispatch` and read its logs, then install the build from TestFlight and open a project.
-- Settle the two Open decisions above on what that build does, and implement the chosen access path.
+- The Git decision is implemented (HTTPS remotes only in the sandbox); it is measured only on the TestFlight build, which is the first time the shim and a real HTTPS remote meet.
 - Read the first release's `mas-submit` job and the version it left in App Store Connect: it is the first run of `scripts/mas-submit.ts` against Apple, so check that the new version carried its description, screenshots and review contact information over, and that "What's New" is the text the lane set.
 
 ## Tests
@@ -49,4 +49,4 @@ A sandboxed application reads a folder only after the user picks it, and the per
 
 - A TestFlight build installs and opens a picked project, edits it, and finds it again after a relaunch.
 - The lane uploads a build on a desktop release and warns, without failing, until its secrets exist, then submits it, and a rerun of the submission alone does not upload twice.
-- The two Open decisions are Decided in §7.7.
+- Both former Open decisions are Decided in §7.7, and the Git one is measured on a TestFlight build.

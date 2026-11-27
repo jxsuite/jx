@@ -1,7 +1,7 @@
 import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
-import { hasSchemaKeywords, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -93,7 +93,7 @@ function firstElement(node: JxElement): JxElement {
 /** The `description` of one state entry of the shipped document, or "" when it carries none. */
 function stateDescription(name: string): string {
   const entry = documents["jx-switch"].state?.[name];
-  return hasSchemaKeywords(entry) ? (entry.description ?? "") : "";
+  return isJsonObject(entry) && isString(entry.description) ? entry.description : "";
 }
 
 /** The `checked` state entry of the shipped document, and the input node it is bound to. */

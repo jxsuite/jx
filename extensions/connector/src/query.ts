@@ -12,6 +12,7 @@
 import { isBoolean, isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import type { ExpressionBuilder, ExpressionWrapper, SelectQueryBuilder, SqlBool } from "kysely";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import { typedId } from "./columns.ts";
 import type { ColumnSpec } from "./columns.ts";
 
 /**
@@ -125,6 +126,12 @@ function ruleExpression(
   spec: ColumnSpec | null,
 ): BoolExpr {
   const { op, value } = rule;
+  if (spec?.references?.idType === "integer") {
+    const keyed = integerReferenceExpression(eb, op, value, column);
+    if (keyed) {
+      return keyed;
+    }
+  }
   switch (op) {
     case "==": {
       return value === null || value === undefined
@@ -158,6 +165,50 @@ function ruleExpression(
     default: {
       // Unknown ops match everything, like the in-memory evaluator.
       return eb.lit<SqlBool>(true);
+    }
+  }
+}
+
+/**
+ * A keyed integer reference column answers every op it answered as `text`, without a Postgres cast
+ * error: a probe that is no integer id matches no row for `==` and every row for `!=`.
+ */
+function integerReferenceExpression(
+  eb: DynamicEb,
+  op: JsonValue | undefined,
+  value: JsonValue | undefined,
+  column: string,
+): BoolExpr | null {
+  const probe = value === null || value === undefined ? null : typedId("integer", value);
+  switch (op) {
+    case "==":
+    case "!=": {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      if (probe === undefined) {
+        return eb.lit<SqlBool>(op === "!=");
+      }
+      return op === "=="
+        ? eb(column, "=", probe)
+        : eb.or([eb(column, "!=", probe), eb(column, "is", null)]);
+    }
+    case "empty": {
+      return eb(column, "is", null);
+    }
+    case "not empty": {
+      return eb(column, "is not", null);
+    }
+    case "contains": {
+      const text = eb.cast(eb.ref(column), "text");
+      return eb(text, "like", containsPattern(null, value));
+    }
+    case "not contains": {
+      const text = eb.cast(eb.ref(column), "text");
+      return eb.or([eb(text, "not like", containsPattern(null, value)), eb(column, "is", null)]);
+    }
+    default: {
+      return null;
     }
   }
 }

@@ -1,5 +1,6 @@
 /**
- * Db-push — `jx db push [root] [--dry-run] [--connection <name>]` (plan Part 4a).
+ * Db-push — `jx db push [root] [--dry-run] [--connection <name>]` (specs/site-architecture.md
+ * §12.2, specs/extensions.md §11.1).
  *
  * Registry-driven: every `connections` entry resolves to its connector class (by
  * `connector.provider`) and the additive schema sync runs through the class's `deploySchema`
@@ -13,7 +14,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { applyBindingFragments } from "@jxsuite/create/scaffold";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
+import { pushSectionOwners } from "./section-push.ts";
 import { loadProjectConfig } from "./site-loader.ts";
+import type { SectionPushResult } from "./section-push.ts";
 import type { DataPushRequest, FormatEntry } from "@jxsuite/schema/format-registry";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject } from "@jxsuite/schema/types";
@@ -33,6 +36,8 @@ export interface ConnectionPushResult {
 
 export interface DbPushResult {
   results: ConnectionPushResult[];
+  /** Each section owner's steps, run after the connector plan on the connections as declared. */
+  sections: SectionPushResult[];
   /** True when wrangler.jsonc was rewritten with binding fragments. */
   bindingsPatched: boolean;
   wranglerPath: string | null;
@@ -132,6 +137,16 @@ export async function dbPush(
     }
   }
 
+  /* Section owners (the auth extension's account tables) push after the connector plan, handed each
+     provider's own class so their steps land on the database the plan just wrote. A throw rides on
+     the owner's result: the connector statements have run, so the bindings below still patch. */
+  const sections = await pushSectionOwners(registry, config, {
+    dryRun,
+    env,
+    connection: only,
+    standins: false,
+  });
+
   // Apply binding fragments to wrangler.jsonc (skipped on dry runs and non-wrangler projects).
   const wranglerPath = resolve(projectRoot, "wrangler.jsonc");
   let bindingsPatched = false;
@@ -144,7 +159,12 @@ export async function dbPush(
     }
   }
 
-  return { bindingsPatched, results, wranglerPath: existsSync(wranglerPath) ? wranglerPath : null };
+  return {
+    bindingsPatched,
+    results,
+    sections,
+    wranglerPath: existsSync(wranglerPath) ? wranglerPath : null,
+  };
 }
 
 /** Find the connector class serving a provider id. */
