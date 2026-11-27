@@ -541,7 +541,7 @@ describe("structured bodies — buildInitialScope", () => {
       },
     });
     const { addToCart } = scope;
-    assertStateHandler(addToCart);
+    assertNamedFormula(addToCart);
     addToCart("apple");
     expect(scope.cart).toEqual(["apple", 2]);
   });
