@@ -113,9 +113,11 @@ which expands to:
 
 ## Style attributes
 
-Element styles are `style.*` dot-path attributes. CSS pseudo-classes drop their `:` prefix and named media queries drop their `@` prefix, and the transpiler restores both. Pseudo-_elements_ get two colons back: `backdrop` becomes `::backdrop`, while `before` and `after` keep the one-colon spelling CSS has always accepted.
+Element styles are `style.*` dot-path attributes. CSS pseudo-classes drop their `:` prefix and named media queries drop their `@` prefix, and the transpiler restores both. Pseudo-_elements_ get two colons back: `placeholder`, `selection`, `before`, `after` and `backdrop` become `::placeholder`, `::selection` and so on, the spelling the Style tab writes. Names are restored at any depth, so `style.--dark.hover.color` is a hover rule inside the dark breakpoint.
 
 Only recognised names are restored. An unrecognised one stays bare and is then read as a descendant type selector, which matches nothing and says nothing about it, so [popover](/docs/framework/concepts/overlays) states are on the list: `popover-open`, `open` and `modal` alongside `hover`, `focus` and the rest.
+
+Any other pseudo-class or pseudo-element keeps its colons, since only the first character of an attribute key is restricted: `style.::marker.color` works as written. A `--` key that holds a value, such as `style.--accent="teal"`, is a CSS custom property and keeps its name.
 
 ```markdown
 ::button{style.padding="8px 16px" style.hover.backgroundColor="blue" style.--dark.color="#f0f0f0"}
