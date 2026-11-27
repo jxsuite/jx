@@ -228,3 +228,152 @@ describe("syncTables", () => {
     await db.destroy();
   });
 });
+
+describe("foreign keys", () => {
+  const users = {
+    connection: "main",
+    id: "integer",
+    schema: { properties: { name: { type: "string" } }, type: "object" },
+  } satisfies TableDef;
+  const comments = {
+    connection: "main",
+    schema: {
+      properties: { author: { $ref: "#/data/users" }, message: { type: "string" } },
+      type: "object",
+    },
+  } satisfies TableDef;
+
+  test("a to-one reference creates a keyed column the database enforces", async () => {
+    const db = makeDb();
+    const result = await syncTables(db, { comments, users }, { dialect: "sqlite" });
+    const create = result.statements.find((s) => s.startsWith('create table "comments"'))!;
+    expect(create).toContain('"author_id" integer references "users" ("id") on delete set null');
+    const keys = await sql<{
+      table: string;
+    }>`select "table" from pragma_foreign_key_list('comments')`.execute(db);
+    expect(keys.rows.map((r) => r.table)).toEqual(["users"]);
+    await sql`insert into users (name) values ('a')`.execute(db);
+    expect(
+      sql`insert into comments (id, author_id) values ('x', 99)`.execute(db),
+    ).rejects.toThrow();
+    await sql`insert into comments (id, author_id) values ('x', 1)`.execute(db);
+    await sql`delete from users where id = 1`.execute(db);
+    const left = await sql<{ author_id: number | null }>`select author_id from comments`.execute(
+      db,
+    );
+    expect(left.rows[0]!.author_id).toBeNull();
+  });
+
+  test("targets are created before the tables that reference them", async () => {
+    const result = await syncTables(
+      makeDb(),
+      { comments, loose: { ...users, id: "uuid" }, users },
+      { dialect: "sqlite", dryRun: true },
+    );
+    const creates = result.statements
+      .filter((s) => s.startsWith("create table"))
+      .map((s) => s.split('"')[1]);
+    expect(creates).toEqual(["loose", "users", "comments"]);
+  });
+
+  test("adding a reference field to an existing table adds the column with its key", async () => {
+    const db = makeDb();
+    const bare = {
+      ...comments,
+      schema: { properties: { message: { type: "string" } }, type: "object" },
+    } satisfies TableDef;
+    await syncTables(db, { comments: bare, users }, { dialect: "sqlite" });
+    const added = await syncTables(db, { comments, users }, { dialect: "sqlite" });
+    expect(added.statements).toEqual([
+      'alter table "comments" add column "author_id" integer references "users" ("id") on delete set null',
+    ]);
+    const again = await syncTables(db, { comments, users }, { dialect: "sqlite" });
+    expect(again.statements).toEqual([]);
+    expect(again.warnings).toEqual([]);
+  });
+
+  test("a legacy text reference column onto an integer target is one drift warning", async () => {
+    const db = makeDb();
+    await sql`create table users (id integer primary key, name text, created_at text, updated_at text)`.execute(
+      db,
+    );
+    await sql`create table comments (id text primary key, created_at text, updated_at text, message text, author_id text)`.execute(
+      db,
+    );
+    const result = await syncTables(db, { comments, users }, { dialect: "sqlite" });
+    expect(result.statements).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    const [warning] = result.warnings;
+    for (const part of ["TEXT", "with no foreign key", "integer", 'referencing "users"']) {
+      expect(warning).toContain(part);
+    }
+    const info = await sql<{
+      type: string;
+    }>`select type from pragma_table_info('comments') where name = 'author_id'`.execute(db);
+    expect(info.rows[0]!.type).toBe("TEXT");
+  });
+
+  test("postgres dry-run keys inline and defers only a cycle's back edge", async () => {
+    const a = {
+      connection: "main",
+      schema: { properties: { b: { $ref: "#/data/b" } }, type: "object" },
+    } satisfies TableDef;
+    const b = {
+      connection: "main",
+      schema: { properties: { a: { $ref: "#/data/a" } }, type: "object" },
+    } satisfies TableDef;
+    const tree = {
+      connection: "main",
+      schema: { properties: { parent: { $ref: "#/data/tree" } }, type: "object" },
+    } satisfies TableDef;
+    const result = await syncTables(
+      makeDb(),
+      { a, b, tree },
+      { dialect: "postgres", dryRun: true },
+    );
+    expect(result.statements.find((s) => s.startsWith('create table "b"'))).toContain(
+      'references "a"',
+    );
+    expect(result.statements.find((s) => s.startsWith('create table "tree"'))).toContain(
+      'references "tree"',
+    );
+    expect(result.statements.find((s) => s.startsWith('create table "a"'))).not.toContain(
+      "references",
+    );
+    expect(result.statements.at(-1)).toBe(
+      'alter table "a" add constraint "a_b_id_fkey" foreign key ("b_id") references "b" ("id") on delete set null',
+    );
+  });
+
+  test("postgres catalog names are not drift, and an unreadable key catalog reports no key drift", async () => {
+    const db = makeDb();
+    await sql`create table things (id text primary key, created_at text, updated_at text, n int4, x float8, flag bool, author_id text)`.execute(
+      db,
+    );
+    await sql`create table users (id text primary key, created_at text, updated_at text)`.execute(
+      db,
+    );
+    const things = {
+      connection: "main",
+      schema: {
+        properties: {
+          author: { $ref: "#/data/users" },
+          flag: { type: "boolean" },
+          n: { type: "integer" },
+          x: { type: "number" },
+        },
+        type: "object",
+      },
+    } satisfies TableDef;
+    const plain = {
+      connection: "main",
+      schema: { properties: {}, type: "object" },
+    } satisfies TableDef;
+    const result = await syncTables(
+      db,
+      { things, users: plain },
+      { dialect: "postgres", dryRun: true },
+    );
+    expect(result.warnings).toEqual([]);
+  });
+});
