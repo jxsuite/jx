@@ -2089,6 +2089,30 @@ describe("compileClient — a page-level instance's $props (spec.md §13.3)", ()
     expect(page([{ tagName: "my-card" }], state).module).not.toContain('state["pick"] =');
   });
 
+  test("each handler a prop names is assigned once, and a pointer naming no state entry is skipped", () => {
+    const fn: JxFunctionDef = {
+      $prototype: "Function",
+      body: [{ operator: "+=", target: { $ref: "#/state/n" }, value: 1 }],
+    };
+    const { module } = page(
+      [
+        {
+          $props: {
+            a: { $ref: "#/state/first" },
+            b: { $ref: "parent#/second" },
+            c: { $ref: "window#/third" },
+            d: "plain",
+          },
+          tagName: "my-card",
+        },
+      ],
+      { first: fn, n: 1, second: fn, third: fn },
+    );
+    expect(module.split('state["first"] =').length).toBe(2);
+    expect(module.split('state["second"] =').length).toBe(2);
+    expect(module).not.toContain('state["third"] =');
+  });
+
   test("a prop named handler is not assigned twice, and a $map row reaches it", () => {
     const { module } = page(
       [
