@@ -1,5 +1,33 @@
 # Changelog
 
+## [14.1.0](https://github.com/jxsuite/jx/compare/studio-v14.0.0...studio-v14.1.0) (2026-11-27)
+
+
+### Features
+
+* **collab:** a save answers once, and presence names the rooms a client holds ([#751](https://github.com/jxsuite/jx/issues/751)) ([b1e1073](https://github.com/jxsuite/jx/commit/b1e10730a105f835e2ec35cb7635ee5fa30d2827))
+* **collab:** keep the section 3.1 merge granularity on every write to the shared document ([#749](https://github.com/jxsuite/jx/issues/749)) ([2d11e7b](https://github.com/jxsuite/jx/commit/2d11e7b4a825303c63c2536127f5c05e94286019))
+* **schema:** one predicate decides a pure type definition in both tiers ([#792](https://github.com/jxsuite/jx/issues/792)) ([e18d32d](https://github.com/jxsuite/jx/commit/e18d32d2f40fa978fed1809b2c2c4454c4d38ea0))
+* **site:** rank routes segment by segment and build a URL two pages generate once ([#788](https://github.com/jxsuite/jx/issues/788)) ([7875d07](https://github.com/jxsuite/jx/commit/7875d0773f8b5ab5bf5631f2b2cc8d6f3fd5d242))
+* **studio:** show an attach that could not open as Not connected with its reason ([#750](https://github.com/jxsuite/jx/issues/750)) ([d46ef7f](https://github.com/jxsuite/jx/commit/d46ef7fc3a56e68e324f0e7af318e7bbcdf7a7a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.4
+    * @jxsuite/collab bumped to 0.14.0
+    * @jxsuite/create bumped to 1.8.9
+    * @jxsuite/erase bumped to 0.3.8
+    * @jxsuite/formulas bumped to 0.0.41
+    * @jxsuite/markup bumped to 1.0.17
+    * @jxsuite/protocol bumped to 7.1.0
+    * @jxsuite/runtime bumped to 9.1.0
+    * @jxsuite/schema bumped to 8.3.0
+    * @jxsuite/site bumped to 4.2.0
+    * @jxsuite/ui bumped to 0.17.0
+
 ## [14.0.0](https://github.com/jxsuite/jx/compare/studio-v13.2.0...studio-v14.0.0) (2026-11-23)
 
 

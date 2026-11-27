@@ -1,5 +1,37 @@
 # Changelog
 
+## [9.4.0](https://github.com/jxsuite/jx/compare/server-v9.3.1...server-v9.4.0) (2026-11-27)
+
+
+### Features
+
+* **collab:** a save answers once, and presence names the rooms a client holds ([#751](https://github.com/jxsuite/jx/issues/751)) ([b1e1073](https://github.com/jxsuite/jx/commit/b1e10730a105f835e2ec35cb7635ee5fa30d2827))
+* **compiler:** jx db push runs section owners' deploySchema after the connector plan ([#772](https://github.com/jxsuite/jx/issues/772)) ([86ae47e](https://github.com/jxsuite/jx/commit/86ae47edded62bccb3800163c8bc744bbcaea5f5))
+* **desktop:** the backend formats and lints function bodies in its own process ([#774](https://github.com/jxsuite/jx/issues/774)) ([21da4b4](https://github.com/jxsuite/jx/commit/21da4b4a9957e5340c597bc60d108da437c91d11))
+* **studio:** show an attach that could not open as Not connected with its reason ([#750](https://github.com/jxsuite/jx/issues/750)) ([d46ef7f](https://github.com/jxsuite/jx/commit/d46ef7fc3a56e68e324f0e7af318e7bbcdf7a7a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.45.4
+    * @jxsuite/catalog bumped to 0.1.21
+    * @jxsuite/collab bumped to 0.14.0
+    * @jxsuite/compiler bumped to 11.2.0
+    * @jxsuite/create bumped to 1.8.9
+    * @jxsuite/erase bumped to 0.3.8
+    * @jxsuite/import bumped to 0.44.11
+    * @jxsuite/protocol bumped to 7.1.0
+    * @jxsuite/runtime bumped to 9.1.0
+    * @jxsuite/schema bumped to 8.3.0
+    * @jxsuite/site bumped to 4.2.0
+    * @jxsuite/starters bumped to 5.2.2
+  * devDependencies
+    * @jxsuite/auth bumped to 0.9.0
+    * @jxsuite/connector bumped to 0.9.0
+    * @jxsuite/parser bumped to 5.3.0
+
 ## [9.3.1](https://github.com/jxsuite/jx/compare/server-v9.3.0...server-v9.3.1) (2026-11-23)
 
 

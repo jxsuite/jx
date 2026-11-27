@@ -1,5 +1,19 @@
 # Changelog
 
+## [7.1.0](https://github.com/jxsuite/jx/compare/protocol-v7.0.0...protocol-v7.1.0) (2026-11-27)
+
+
+### Features
+
+* **desktop:** the backend formats and lints function bodies in its own process ([#774](https://github.com/jxsuite/jx/issues/774)) ([21da4b4](https://github.com/jxsuite/jx/commit/21da4b4a9957e5340c597bc60d108da437c91d11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.3.0
+
 ## [7.0.0](https://github.com/jxsuite/jx/compare/protocol-v6.7.0...protocol-v7.0.0) (2026-11-23)
 
 

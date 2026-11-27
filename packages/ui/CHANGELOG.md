@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.0](https://github.com/jxsuite/jx/compare/ui-v0.16.1...ui-v0.17.0) (2026-11-27)
+
+
+### Features
+
+* **schema:** one predicate decides a pure type definition in both tiers ([#792](https://github.com/jxsuite/jx/issues/792)) ([e18d32d](https://github.com/jxsuite/jx/commit/e18d32d2f40fa978fed1809b2c2c4454c4d38ea0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 9.1.0
+    * @jxsuite/schema bumped to 8.3.0
+
 ## [0.16.1](https://github.com/jxsuite/jx/compare/ui-v0.16.0...ui-v0.16.1) (2026-11-23)
 
 

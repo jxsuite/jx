@@ -1,5 +1,31 @@
 # Changelog
 
+## [10.1.0](https://github.com/jxsuite/jx/compare/desktop-v10.0.0...desktop-v10.1.0) (2026-11-27)
+
+
+### Features
+
+* **desktop:** keep Git for HTTPS remotes only in the Mac App Store build ([#764](https://github.com/jxsuite/jx/issues/764)) ([bb4c3a3](https://github.com/jxsuite/jx/commit/bb4c3a3306cd1bbff9a98377398f067ef8fa2823))
+* **desktop:** lock the user stores across processes ([#766](https://github.com/jxsuite/jx/issues/766)) ([d71ec08](https://github.com/jxsuite/jx/commit/d71ec0867cbc165adfb3304efca2ddac7c5ce37b))
+* **desktop:** record the Mac App Store build's export compliance from a variable ([#744](https://github.com/jxsuite/jx/issues/744)) ([8b4a45e](https://github.com/jxsuite/jx/commit/8b4a45e355727d5811f2e11d408ebd510f3c8433))
+* **desktop:** the backend formats and lints function bodies in its own process ([#774](https://github.com/jxsuite/jx/issues/774)) ([21da4b4](https://github.com/jxsuite/jx/commit/21da4b4a9957e5340c597bc60d108da437c91d11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 11.2.0
+    * @jxsuite/create bumped to 1.8.9
+    * @jxsuite/protocol bumped to 7.1.0
+    * @jxsuite/schema bumped to 8.3.0
+    * @jxsuite/server bumped to 9.4.0
+    * @jxsuite/starters bumped to 5.2.2
+    * @jxsuite/studio bumped to 14.1.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.4.0
+    * @jxsuite/ui bumped to 0.17.0
+
 ## [10.0.0](https://github.com/jxsuite/jx/compare/desktop-v9.5.0...desktop-v10.0.0) (2026-11-23)
 
 

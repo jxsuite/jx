@@ -1,5 +1,23 @@
 # Changelog
 
+## [9.1.0](https://github.com/jxsuite/jx/compare/runtime-v9.0.3...runtime-v9.1.0) (2026-11-27)
+
+
+### Features
+
+* **compiler:** compiled pages read and write a Cookie entry by the runtime's rule ([#761](https://github.com/jxsuite/jx/issues/761)) ([9ed693f](https://github.com/jxsuite/jx/commit/9ed693f03d97c2e6734406831537cb38565f7288))
+* **compiler:** render a $switch in lit regions and run an external case's hooks ([#781](https://github.com/jxsuite/jx/issues/781)) ([9639cbb](https://github.com/jxsuite/jx/commit/9639cbb291e7c0fb1fdfd171d741daca182e8f20))
+* **schema:** one predicate decides a pure type definition in both tiers ([#792](https://github.com/jxsuite/jx/issues/792)) ([e18d32d](https://github.com/jxsuite/jx/commit/e18d32d2f40fa978fed1809b2c2c4454c4d38ea0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.3.0
+  * devDependencies
+    * @jxsuite/erase bumped to 0.3.8
+
 ## [9.0.3](https://github.com/jxsuite/jx/compare/runtime-v9.0.2...runtime-v9.0.3) (2026-11-23)
 
 

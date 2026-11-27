@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.8](https://github.com/jxsuite/jx/compare/erase-v0.3.7...erase-v0.3.8) (2026-11-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 8.3.0
+
 ## [0.3.7](https://github.com/jxsuite/jx/compare/erase-v0.3.6...erase-v0.3.7) (2026-11-23)
 
 
