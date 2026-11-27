@@ -23,6 +23,7 @@ import {
   isJsonObject,
   isNonNullObject,
   isNumber,
+  isRef,
   isString,
 } from "@jxsuite/schema/guards";
 import { ALERT_NODE, DEFAULT_ALERT_TITLES, inlineText } from "./alerts.ts";
@@ -157,14 +158,7 @@ export function collapseDotPaths(obj: JsonObject) {
   return result;
 }
 
-/**
- * CSS pseudo-CLASS names — keys that become `:` prefixed in style objects.
- *
- * `before` and `after` are pseudo-_elements_ and belong in the set below on the modern spelling,
- * but they have been written with one colon since this file existed and CSS still accepts that
- * form. Moving them would rewrite every `.md` component in the repo for no behaviour change, so
- * they stay here; {@link CSS_PSEUDO_ELEMENTS} is for names that have never had a one-colon form.
- */
+/** CSS pseudo-CLASS names, restored with one colon (jx-markdown.md §7.3). */
 const CSS_PSEUDO_NAMES = new Set([
   "hover",
   "focus",
@@ -180,10 +174,6 @@ const CSS_PSEUDO_NAMES = new Set([
   "last-child",
   "focus-within",
   "focus-visible",
-  "placeholder",
-  "selection",
-  "before",
-  "after",
   // The overlay states. Without these an author could declare a popover in a `.md` component and
   // Have no way to style it open — `style.popover-open.opacity` fell through unmapped, and
   // `collectStyles` then read the bare key as a DESCENDANT TYPE SELECTOR, emitting
@@ -194,27 +184,42 @@ const CSS_PSEUDO_NAMES = new Set([
 ]);
 
 /**
- * CSS pseudo-ELEMENT names — keys that become `::` prefixed.
+ * CSS pseudo-ELEMENT names, restored with two colons.
  *
- * A separate set because the prefix is different, not because the concept is. `backdrop` is the
- * only member today and it is the one a popover needs: there is no one-colon form of it, so the
- * single-colon set above could not have carried it.
+ * `backdrop`, `placeholder` and `selection` have no one-colon form, so a one-colon rule is
+ * discarded by the browser. `before` and `after` have a legacy one-colon form CSS still accepts,
+ * and take two so a `.md` key matches the one Studio's Style tab and every JSON document write.
  */
-const CSS_PSEUDO_ELEMENTS = new Set(["backdrop"]);
+const CSS_PSEUDO_ELEMENTS = new Set(["backdrop", "placeholder", "selection", "before", "after"]);
+
+/** A nested rule body, as opposed to a declaration value (a string, a `$ref` binding, or an array). */
+function isStyleBlock(value: unknown): value is JsonObject {
+  return isJsonObject(value) && !isRef(value);
+}
 
 /**
- * Apply CSS pseudo-class and media query key mapping to a style object's top-level keys.
+ * Map the keys of a style object that hold a block, at every depth.
  *
  * Transforms keys that cannot use `:` or `@` prefixes in remark-directive attributes: - `hover` →
- * `:hover` (for known CSS pseudo-class names) - `--dark` → `@--dark` (for custom property / media
- * query keys)
+ * `:hover` (pseudo-class names) - `placeholder` → `::placeholder` (pseudo-element names) - `--md` →
+ * `@--md` (breakpoint keys). A key holding a value is a declaration and keeps its name.
  *
  * @param {Record<string, V>} styleObj
  * @returns {Record<string, V>} The same values under their mapped keys
  */
-export function applyStyleKeyMapping<V>(styleObj: Record<string, V>) {
-  const result: Record<string, V> = {};
-  for (const [key, value] of Object.entries(styleObj)) {
+export function applyStyleKeyMapping<V>(styleObj: Record<string, V>): Record<string, V> {
+  // SAFETY: Only keys change; each value is the input value or a mapped copy of the block it was.
+  return mapStyleKeys(styleObj as JsonObject) as Record<string, V>;
+}
+
+function mapStyleKeys(styleObj: JsonObject) {
+  const result: JsonObject = {};
+  for (const [key, raw] of Object.entries(styleObj)) {
+    if (!isStyleBlock(raw)) {
+      result[key] = raw;
+      continue;
+    }
+    const value = mapStyleKeys(raw);
     if (CSS_PSEUDO_ELEMENTS.has(key)) {
       result[`::${key}`] = value;
     } else if (CSS_PSEUDO_NAMES.has(key)) {
@@ -231,8 +236,9 @@ export function applyStyleKeyMapping<V>(styleObj: Record<string, V>) {
 /**
  * Expand dot-path attributes with style-aware key mapping.
  *
- * Maps known CSS pseudo-class names → `:` prefix and `--` keys → `@` prefix, since `:` and `@`
- * cannot appear at the start of remark-directive attribute keys.
+ * Maps known CSS pseudo-class names → `:` prefix, pseudo-element names → `::` prefix and `--` keys
+ * → `@` prefix at every depth, since `:` and `@` cannot appear at the start of remark-directive
+ * attribute keys.
  *
  * @param {Record<string, string>} attrs
  * @returns {Record<string, string | ExpandedAttributes>}
@@ -241,19 +247,14 @@ export function expandStylePaths(attrs: Record<string, string>) {
   return applyStyleKeyMapping(expandDotPaths(attrs));
 }
 
-/**
- * Collapse a style object back to flat dot-path attributes (inverse of expandStylePaths).
- *
- * Strips `:` prefix from pseudo-class keys and `@` prefix from media keys before flattening with
- * collapseDotPaths.
- *
- * @param {JsonObject} styleObj
- * @returns {Record<string, string>}
- */
-export function collapseStylePaths(styleObj: JsonObject) {
+function unmapStyleKeys(obj: JsonObject): JsonObject {
   const normalized: JsonObject = {};
-
-  for (const [key, value] of Object.entries(styleObj)) {
+  for (const [key, raw] of Object.entries(obj)) {
+    if (!isStyleBlock(raw)) {
+      normalized[key] = raw;
+      continue;
+    }
+    const value = unmapStyleKeys(raw);
     /* `::` before `:`, or a pseudo-element would match the pseudo-class arm on its second colon
        and be re-emitted with one colon. */
     if (key.startsWith("::") && CSS_PSEUDO_ELEMENTS.has(key.slice(2))) {
@@ -266,8 +267,20 @@ export function collapseStylePaths(styleObj: JsonObject) {
       normalized[key] = value;
     }
   }
+  return normalized;
+}
 
-  return collapseDotPaths(normalized);
+/**
+ * Collapse a style object back to flat dot-path attributes (inverse of expandStylePaths).
+ *
+ * Strips the `:`, `::` and `@` prefixes at every depth before flattening with collapseDotPaths. A
+ * key the mapping would not have produced (`:placeholder`, `::marker`) is kept as written.
+ *
+ * @param {JsonObject} styleObj
+ * @returns {Record<string, string>}
+ */
+export function collapseStylePaths(styleObj: JsonObject) {
+  return collapseDotPaths(unmapStyleKeys(styleObj));
 }
 
 // ─── Detection ──────────────────────────────────────────────────────────────

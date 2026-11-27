@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { buildStyleRules } from "@jxsuite/runtime/css";
 import { isNodeObject } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import type { MdastNode } from "../src/types";
@@ -25,6 +26,7 @@ import {
   slugifyHeading,
   transpileJxMarkdown,
 } from "../src/transpile";
+import { serializeJxMarkdown } from "../src/serialize";
 
 /** The single element a conversion produced; text, a fragment or nothing fails the test. */
 function elementFrom(result: ReturnType<typeof mdastNodeToJx> | undefined): JxElement {
@@ -153,7 +155,9 @@ describe("applyStyleKeyMapping", () => {
     expect(applyStyleKeyMapping({ hover: { color: "red" } })).toEqual({
       ":hover": { color: "red" },
     });
-    expect(applyStyleKeyMapping({ "first-child": "x" })).toEqual({ ":first-child": "x" });
+    expect(applyStyleKeyMapping({ "first-child": { color: "x" } })).toEqual({
+      ":first-child": { color: "x" },
+    });
   });
 
   test("prefixes -- keys with @", () => {
@@ -1187,5 +1191,114 @@ describe("overlay style keys — the states a popover in a .md component needs",
     expect(applyStyleKeyMapping({ "not-a-pseudo": { x: "1" } })).toEqual({
       "not-a-pseudo": { x: "1" },
     });
+  });
+});
+
+describe("pseudo-element style keys take two colons", () => {
+  test("placeholder, selection, before and after become pseudo-elements", () => {
+    for (const name of ["placeholder", "selection", "before", "after"]) {
+      expect(applyStyleKeyMapping({ [name]: { color: "x" } })).toEqual({
+        [`::${name}`]: { color: "x" },
+      });
+    }
+  });
+
+  test("the rule is one the browser keeps", () => {
+    const tree = transpileJxMarkdown(
+      '::input{style.placeholder.color="gray" style.selection.color="red"}',
+    );
+    const { style } = elementAt(tree.children, 0);
+    const rules = buildStyleRules(style ?? {}, { scope: "#x" });
+    expect(rules.map((r) => r.text)).toEqual([
+      "#x::placeholder { color: gray }",
+      "#x::selection { color: red }",
+    ]);
+  });
+
+  test("each collapses to its bare name and re-expands to itself", () => {
+    const style = { "::placeholder": { color: "gray" }, "::before": { content: "'x'" } };
+    const flat = collapseStylePaths(style);
+    expect(flat).toEqual({ "placeholder.color": "gray", "before.content": "'x'" });
+    expect(expandStylePaths(flat)).toEqual(style);
+  });
+
+  test("a key the mapping never writes is kept as written", () => {
+    const style = { ":placeholder": { color: "b" }, "::marker": { color: "r" } };
+    const flat = collapseStylePaths(style);
+    expect(flat).toEqual({ ":placeholder.color": "b", "::marker.color": "r" });
+    expect(expandStylePaths(flat)).toEqual(style);
+  });
+});
+
+describe("style keys are restored at every depth", () => {
+  test("a state inside a breakpoint, and a breakpoint inside a state", () => {
+    const tree = transpileJxMarkdown(
+      '::button{style.--md.hover.color="x" style.hover.--md.gap="1rem" style.hover.placeholder.color="y"}',
+    );
+    const { style } = elementAt(tree.children, 0);
+    expect(style).toEqual({
+      "@--md": { ":hover": { color: "x" } },
+      ":hover": { "@--md": { gap: "1rem" }, "::placeholder": { color: "y" } },
+    });
+    const rules = buildStyleRules(style ?? {}, {
+      scope: "#x",
+      mediaQueries: { "--md": "(min-width: 768px)" },
+    });
+    const selectors = rules.map((r) => r.selector);
+    expect(selectors).toContain("#x:hover");
+    expect(selectors).toContain("#x:hover::placeholder");
+    for (const sel of selectors) {
+      expect(sel).not.toContain(" ");
+    }
+  });
+
+  test("a custom property keeps its name, at the top and inside a block", () => {
+    const tree = transpileJxMarkdown(
+      '::div{style.--accent="teal" style.hover.--accent="navy" style.--glow.ref="#/state/glow"}',
+    );
+    const { style } = elementAt(tree.children, 0);
+    expect(style).toEqual({
+      "--accent": "teal",
+      ":hover": { "--accent": "navy" },
+      "--glow": { $ref: "#/state/glow" },
+    });
+    const rules = buildStyleRules({ "--accent": "teal" }, { scope: "#x" });
+    expect(rules.map((r) => r.text)).toEqual(["#x { --accent: teal }"]);
+  });
+
+  test("only a block is mapped", () => {
+    const style = { hover: "x", "first-child": "x", "@font-face": [{ "font-family": "A" }] };
+    expect(applyStyleKeyMapping(style)).toEqual(style);
+  });
+
+  test("collapseStylePaths inverts every depth", () => {
+    const style = {
+      "@--md": { ":hover": { color: "x" } },
+      ":hover": {
+        "@--md": { gap: "1rem" },
+        "::placeholder": { color: "y" },
+        "--accent": "navy",
+      },
+      "--accent": "teal",
+      "--glow": { $ref: "#/state/glow" },
+    };
+    expect(expandStylePaths(collapseStylePaths(style))).toEqual(style);
+  });
+
+  test("a Studio save and reopen keeps nested states and custom properties", () => {
+    const doc = {
+      tagName: "my-x",
+      children: [
+        {
+          tagName: "button",
+          style: {
+            "@--dark": { ":hover": { color: "x" } },
+            "--brand": "red",
+            "::placeholder": { color: "gray" },
+          },
+        },
+      ],
+    };
+    expect(transpileJxMarkdown(serializeJxMarkdown(doc))).toEqual(doc);
   });
 });

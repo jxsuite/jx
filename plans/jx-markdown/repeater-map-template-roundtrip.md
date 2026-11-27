@@ -138,7 +138,7 @@ Extended:
 
 This plan does not graduate jx-markdown.md: §12.8 stays open, because its plan requires this one.
 
-**Landing.** The pull request deletes this file and removes `jx-markdown/repeater-map-template-roundtrip` from `plans/jx-markdown/roundtrip-lossless.md`'s `requires`, first re-checking that plan's "What the two prerequisites land" against what shipped and adding the §12.8 sentence above to its Context: its `labelSafe` closes the label limits, and deleting the marker makes the `pre` case its to fix.
+**Landing.** The pull request deletes this file and removes `jx-markdown/repeater-map-template-roundtrip` from `plans/jx-markdown/roundtrip-lossless.md`'s `requires`, first re-checking that plan's "What the prerequisites land" against what shipped and adding the §12.8 sentence above to its Context: its `labelSafe` closes the label limits, and deleting the marker makes the `pre` case its to fix.
 
 ## Acceptance
 

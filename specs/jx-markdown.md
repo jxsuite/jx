@@ -324,9 +324,7 @@ style:
 
 ### 7.3 Pseudo-Classes in Style Attributes
 
-> **Status: Partial.** The mapping ships as listed (`CSS_PSEUDO_NAMES`, `CSS_PSEUDO_ELEMENTS` and `applyStyleKeyMapping` in `extensions/parser/src/transpile.ts`), but `placeholder` and `selection` are CSS pseudo-elements that have never had a one-colon form, and the transpiler gives them one colon: `style.placeholder.color` becomes `:placeholder`, `buildStyleRules` (`packages/runtime/src/css.ts`, which the compiler shares) emits `#id:placeholder`, and the browser discards the rule.
-
-The `:` character cannot start a remark-directive attribute key. CSS pseudo-class names are written **without** the `:` prefix inside `style.*` attributes, and the transpiler adds it:
+The `:` character cannot start a remark-directive attribute key. CSS pseudo-class and pseudo-element names are written **without** their colons inside `style.*` attributes, and the transpiler restores them:
 
 ```markdown
 ::button{style.backgroundColor="white" style.hover.backgroundColor="blue" style.hover.cursor="pointer" style.focus.outline="2px solid blue"}
@@ -345,11 +343,15 @@ Produces:
 }
 ```
 
-Recognized pseudo-CLASS names: `hover`, `focus`, `active`, `visited`, `disabled`, `checked`, `valid`, `invalid`, `required`, `empty`, `first-child`, `last-child`, `focus-within`, `focus-visible`, `placeholder`, `selection`, `before`, `after`, `popover-open`, `open`, `modal`.
+Recognized pseudo-CLASS names, which take one colon: `hover`, `focus`, `active`, `visited`, `disabled`, `checked`, `valid`, `invalid`, `required`, `empty`, `first-child`, `last-child`, `focus-within`, `focus-visible`, `popover-open`, `open`, `modal`.
 
-Recognized pseudo-ELEMENT names, which take **two** colons: `backdrop`. A separate set because the prefix differs, not because the concept does; `before` and `after` keep their one-colon spelling, which CSS still accepts and which every existing `.md` component is written with.
+Recognized pseudo-ELEMENT names, which take **two** colons: `backdrop`, `placeholder`, `selection`, `before`, `after`. A separate set because the prefix differs, not because the concept does. `backdrop`, `placeholder` and `selection` have never had a one-colon form, so a one-colon rule for them is discarded by the browser; `before` and `after` have a legacy one-colon form CSS still accepts, and take two so a `.md` component and Studio's Style tab name the same key.
+
+A name is restored at every depth of the style path, wherever it names a block: `style.--dark.hover.color` is a `:hover` block inside the `@--dark` block (§7.4), and `style.hover.placeholder.color` is a `::placeholder` block inside `:hover`. A key that holds a value rather than a block is a declaration and keeps its name.
 
 An unrecognized name is left unprefixed and is then read as a descendant TYPE selector — `style.popover-open.opacity=1` emitted `#panel popover-open { opacity: 1 }`, a rule matching nothing with nothing to say so. That is why the overlay states had to be named here: without them a popover authored in a `.md` component could not be styled open at all.
+
+Only the first character of an attribute key is restricted, so a selector outside both lists is written with its own colons after `style.`: `style.::marker.color`, `style.:user-invalid.outline`, `style.:popover-open::backdrop.opacity`. Such a key is kept exactly as written.
 
 ### 7.4 Media Queries in Style Attributes
 
@@ -370,6 +372,8 @@ Produces:
   }
 }
 ```
+
+The `@` is restored at every depth, so a breakpoint may sit inside a state (`style.hover.--md.gap`) as well as around one (§7.3). Only a `--` key that holds a block is a breakpoint: a `--` key given a value (`style.--accent="teal"`, or a binding written `style.--accent.ref="#/state/accent"`) is a CSS custom property, a declaration under spec.md §9.1, and keeps its name. The exception is a name in §6.3's table, which is read as that annotation at every segment of a dot path, so a custom property of that name cannot be written in a `.md` file.
 
 ## 8. Array Children
 
@@ -439,11 +443,11 @@ Expands flat dot-path attribute keys into nested objects with Jx `$`-prefix rest
 
 ### 12.4 `expandStylePaths(attrs: Record<string, string>): Record<string, any>`
 
-Like `expandDotPaths` but also maps CSS pseudo-class names to `:` prefix and `--` keys to `@` prefix. Used for top-level style attribute expansion.
+Like `expandDotPaths`, then applies `applyStyleKeyMapping` (§12.5). Used for style attribute expansion.
 
 ### 12.5 `applyStyleKeyMapping(styleObj: Record<string, any>): Record<string, any>`
 
-Maps top-level keys of a style object: pseudo-class names get `:` prefix, `--` keys get `@` prefix. Used internally by `routeAttributes()` to transform `style.*` dot-path attributes after generic expansion.
+Maps the keys of a style object that hold a block, at every depth: pseudo-class names get `:` and pseudo-element names get `::` (§7.3), `--` keys get `@` (§7.4). A block is a plain object that is not a `{ "$ref": … }` binding; any other key is a declaration and is left as written. Used internally by `routeAttributes()` to transform `style.*` dot-path attributes after generic expansion.
 
 ### 12.6 `collapseDotPaths(obj: Record<string, any>): Record<string, string>`
 
@@ -451,11 +455,11 @@ Inverse of `expandDotPaths` — flattens a nested object to dot-path attributes.
 
 ### 12.7 `collapseStylePaths(styleObj: Record<string, any>): Record<string, string>`
 
-Inverse of `expandStylePaths` — strips `:` and `@` prefixes before flattening.
+Inverse of `expandStylePaths`: strips the `:`, `::` and `@` prefixes §12.5 adds, at every depth, before flattening. A key §12.5 would not have produced, such as `:placeholder` or `::marker`, is kept as written and re-expands to itself.
 
 ### 12.8 `serializeJxMarkdown(doc: object, options?): string`
 
-> **Status: Partial.** Both modes ship (`serializeRoundtrip` and `serializeExport` in `extensions/parser/src/serialize.ts`; Studio saves through roundtrip mode in `packages/studio/src/files/serialize-document.ts`), and a `tagName` chosen at render time throws as stated. Roundtrip mode is not the inverse of `transpileJxMarkdown` for several ordinary shapes, and no test feeds its output back through `transpileJxMarkdown`. `textContent` or inline children of a directive outside the transpiler's phrasing set (`div`, `section`, any custom element) are written as bare block content and come back wrapped in `p`, one paragraph per inline child, with edge whitespace lost. An element-level `href`, `title` or `value` comes back under `attributes` (§6.6). The first two render the same, but a bound `value`, `checked` or `selected` becomes the control's default. An `li` or table-part `map` template, or a repeater among a list's items, does not come back as written (§6.5). The `popover-open`, `open`, `modal` and `backdrop` style keys are written with their colons (`style.:popover-open.opacity`), because the serializer keeps its own pseudo-class set instead of using `collapseStylePaths` (§12.7); they re-parse, but not in the §7.3 spelling.
+> **Status: Partial.** Both modes ship (`serializeRoundtrip` and `serializeExport` in `extensions/parser/src/serialize.ts`; Studio saves through roundtrip mode in `packages/studio/src/files/serialize-document.ts`), and a `tagName` chosen at render time throws as stated. Roundtrip mode is not the inverse of `transpileJxMarkdown` for several ordinary shapes, and no test feeds its output back through `transpileJxMarkdown`. `textContent` or inline children of a directive outside the transpiler's phrasing set (`div`, `section`, any custom element) are written as bare block content and come back wrapped in `p`, one paragraph per inline child, with edge whitespace lost. An element-level `href`, `title` or `value` comes back under `attributes` (§6.6). The first two render the same, but a bound `value`, `checked` or `selected` becomes the control's default. An `li` or table-part `map` template, or a repeater among a list's items, does not come back as written (§6.5). The `popover-open`, `open` and `modal` pseudo-class keys and every pseudo-element key (`backdrop`, `placeholder`, `selection`, `before`, `after`) are written with their colons (`style.:popover-open.opacity`, `style.::placeholder.color`), because the serializer keeps its own pseudo-class set instead of using `collapseStylePaths` (§12.7); they re-parse, but not in the §7.3 spelling.
 
 Converts a Jx JSON document back to markdown source (`@jxsuite/parser/serialize`). Two modes:
 
