@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - spec.md#11.2
 requires:
-  - spec/compiled-cookie-attributes
   - spec/compiled-request-fetch
   - spec/web-api-prototype-parity-readable-stream
 workspaces:
@@ -34,7 +33,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 
 - **`URLSearchParams`** (2878): `computed(() => new URLSearchParams(p).toString())`. `p` holds every key but `$prototype`, each a `$ref` (`resolveRef`), a `${}` template (`evaluateTemplate`) or the literal.
 - **`LocalStorage` / `SessionStorage`** (2896): reads `store.getItem(def.key ?? key)`, then `JSON.parse`, else `def.default ?? null`. A throw falls back to the default. An `effect` then persists: `null` removes the item, anything else is `setItem(JSON.stringify(v))`, and each write is inside its own `try`. The `localStorage`/`sessionStorage` lookup itself (line 2898) is outside every `try`, so storage the browser refuses to open throws out of `buildScope`.
-- **`Cookie`** (2924): `plan:spec/compiled-cookie-attributes` moves its read and write into `cookie.ts`, and gives the compiler `emitCookieBinding` and `cookieHelperSource`.
+- **`Cookie`** (2924): spec.md §11.2a's landing moved its read and write into `cookie.ts` and gave the compiler `emitCookieBinding` and `cookieHelperSource`.
 - **`IndexedDB`** (2946):
   - throws `Jx: IndexedDB entry '<key>' requires database and store` when either is missing;
   - otherwise opens `database` at `version` (destructuring defaults `version = 1`, `keyPath = "id"`, `autoIncrement = true`, `indexes = []`);
@@ -51,7 +50,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 
 - **Client target** (`packages/compiler/src/targets/compile-client.ts`).
   - Storage goes through `emitStorageInit` (line 1019). It pastes the key raw (`state.${key}`, a SyntaxError for `user.name`) and writes the key and storage key into a `//` comment.
-  - `Cookie` goes through `emitCookieInit`, which `plan:spec/compiled-cookie-attributes` replaces.
+  - `Cookie` goes through `emitCookieInit`, which `emitCookieBinding` in `shared.ts` replaced.
   - Every other built-in reaches `stateEntries.push([key, def])` (line 232): the literal definition object.
 - **Element target** (`packages/compiler/src/targets/compile-element.ts`). `extractInitialValue` (line 246) checks `"default" in def` before any prototype. So:
   - a storage, `Cookie`, `Set` or `Map` entry with a `default` becomes that plain value (a `Set`'s array stays an array);
@@ -105,7 +104,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
   - `Set`, `Map`, `FormData` and `Blob` are built from JSON literals, so there is no helper to drift.
   - `URLSearchParams` is a `computed` over every key but `$prototype`, because any name (`name`, `description`) is a legitimate query parameter. This is also schema.md §3.1's wording after `plan:schema/generator-inventory`.
   - `IndexedDB`, the one lowering with logic, calls an inlined helper (`__jxIdbOpen`).
-  - Following `plan:spec/compiled-cookie-attributes`, the helper's source is written in the compiler, not serialized from a runtime function, and a behavioural agreement test holds it to `resolvePrototype`. That is the behavioural form of the spec-wide inlining decision in `plans/spec/README.md`, which the cookie plan also uses.
+  - Following the cookie helper (spec.md §11.2a), the helper's source is written in the compiler, not serialized from a runtime function, and a behavioural agreement test holds it to `resolvePrototype`. That is the behavioural form of the spec-wide inlining decision in `plans/spec/README.md`, which the cookie helper also uses.
 - **Decided:** an `IndexedDB` entry without `database` or `store` is a compile error carrying the runtime's message. The interpreter already refuses that entry wherever it runs, Studio's canvas included, so no working page depends on it. Emitting the throw instead would stop the page module at load.
 
 ## Implementation
@@ -290,7 +289,7 @@ It renders each into a `p`. The file's `beforeAll` copies a fixed list of happy-
 
   If the Open is signed the other way, the first sentence says the stored value wins. The paragraph says nothing about `$src` or `imports` on a built-in name: that rule is §12.5's (`plan:spec/reconcile-built-in-prototypes`).
 
-- **§11.2a's marker** (Implemented since `plan:spec/compiled-cookie-attributes`) ends "The element target lowers no `Cookie` entry yet; that gap is §11.2's.", which this plan makes false. Delete that sentence, and change "the client target (`compile-client.ts`) reads on load" to "both compiled targets read when the entry is created (§11.2)". The marker stays Implemented.
+- **§11.2a's marker** (Implemented) ends "The element target lowers no `Cookie` entry yet; that gap is §11.2's.", which this plan makes false. Delete that sentence, and change "the client target (`compile-client.ts`) reads on load" to "both compiled targets read when the entry is created (§11.2)". The marker stays Implemented.
 
 **compiler.md §4.1**, after the `Request` paragraph:
 

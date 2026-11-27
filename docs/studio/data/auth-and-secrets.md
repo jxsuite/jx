@@ -71,11 +71,7 @@ Auth keeps its users and sessions in ordinary database tables (`user`, `session`
 
 Since a `user` table carries more columns than that job needs, hide the rest and save the arrangement as a named view ("Roles", say), and the table opens that way every time. **[Saved views](/docs/studio/editing/grid)** are per table.
 
-The tables are created for you two ways: `jx dev` creates them the first time anything touches `/_jx/auth`, and **[Push Schema](/docs/studio/data/tables)** plans them as its own steps after the connector's, so a dry run shows them before anything runs.
-
-:::doc-warning
-`jx db push` from a terminal covers your **Data Tables** only. The account tables are not part of the CLI push today. A database that only ever received a CLI push has no `user` table, and sign-in fails against it.
-:::
+The tables are created for you three ways: `jx dev` creates them the first time anything touches `/_jx/auth`, **[Push Schema](/docs/studio/data/tables)** plans them as its own steps after the connector's, so a dry run shows them before anything runs, and `jx db push` creates them on the connection as declared (for D1, the real database).
 
 ### What the rules mean
 

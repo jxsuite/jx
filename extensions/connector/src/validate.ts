@@ -10,7 +10,8 @@
  */
 
 import { isBoolean, isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
-import { parseRefPointer } from "./columns.ts";
+import { foreignKeyTarget, parseRefPointer, typedId } from "./columns.ts";
+import type { RefTarget } from "./columns.ts";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { ColumnFieldSchema, TableDef } from "./types.ts";
 
@@ -34,15 +35,16 @@ const READ_ONLY_FIELDS = new Set(["id", "created_at", "updated_at"]);
  *
  * @param {TableDef} table - The table definition from the `data` section
  * @param {JsonValue} payload - Parsed request body
- * @param {{ partial?: boolean }} [options] - `partial` skips required-field checks (PATCH)
+ * @param {{ partial?: boolean; tables?: Record<string, TableDef> }} [options] - `partial` skips
+ *   required-field checks (PATCH); `tables` (the data section) enables the integer-id shape rule
  * @returns {ValidationResult}
  */
 export function validateRow(
   table: TableDef,
   payload: JsonValue,
-  options: { partial?: boolean } = {},
+  options: { partial?: boolean; tables?: Record<string, TableDef> } = {},
 ): ValidationResult {
-  const { partial = false } = options;
+  const { partial = false, tables } = options;
   const errors: ValidationIssue[] = [];
   const value: JsonObject = {};
 
@@ -61,7 +63,13 @@ export function validateRow(
       errors.push({ field: key, message: "Unknown field" });
       continue;
     }
-    const coerced = coerceField(key, schema, raw, errors);
+    const coerced = coerceField(
+      key,
+      schema,
+      raw,
+      errors,
+      (ref) => foreignKeyTarget(ref, table, tables ?? {})?.idType === "integer",
+    );
     if (coerced !== INVALID) {
       value[key] = coerced;
     }
@@ -88,6 +96,7 @@ const INVALID = Symbol("invalid");
  * @param {ColumnFieldSchema} schema
  * @param {JsonValue} raw
  * @param {ValidationIssue[]} errors
+ * @param {(ref: RefTarget) => boolean} isIntegerTarget - Whether a ref keys an integer-id table
  * @returns {JsonValue | typeof INVALID} The coerced value, or the INVALID sentinel
  */
 function coerceField(
@@ -95,6 +104,7 @@ function coerceField(
   schema: ColumnFieldSchema,
   raw: JsonValue,
   errors: ValidationIssue[],
+  isIntegerTarget: (ref: RefTarget) => boolean,
 ): JsonValue | typeof INVALID {
   if (raw === null) {
     return null;
@@ -106,6 +116,10 @@ function coerceField(
       errors.push({ field, message: "Reference value must be an entry id string" });
       return INVALID;
     }
+    if (isIntegerTarget(toOne) && typedId("integer", raw) === undefined) {
+      errors.push({ field, message: "Reference value must be an integer id" });
+      return INVALID;
+    }
     return raw;
   }
 
@@ -114,6 +128,10 @@ function coerceField(
     const list = parseMaybeJson(raw);
     if (!Array.isArray(list) || list.some((item) => !isString(item) || item === "")) {
       errors.push({ field, message: "Reference list must be an array of entry id strings" });
+      return INVALID;
+    }
+    if (isIntegerTarget(itemsRef) && list.some((item) => typedId("integer", item) === undefined)) {
+      errors.push({ field, message: "Reference list must be an array of integer ids" });
       return INVALID;
     }
     return list;

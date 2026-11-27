@@ -27,6 +27,8 @@ import {
   commentedRuleText,
   declaredDefaults,
   enumeratedAttrNames,
+  COOKIE_HOST_PREFIX,
+  COOKIE_SECURE_PREFIX,
   camelToKebab,
   isSingleExpression,
   mappedListItems,
@@ -59,8 +61,8 @@ import {
   isNonNullObject,
   isNumber,
   isPrototypeDef,
+  isPureTypeDef,
   isRef,
-  isSchemaOnlyDef,
   isServerFnDef,
   isString,
   isTagExpression,
@@ -129,8 +131,13 @@ export function emitFormulaFn(
   def: { parameters?: readonly FormulaParameter[] | undefined },
   compiledBody: string,
 ): string {
+  return `(..._a) => { const _args = ${formulaArgsSource(def.parameters)}; return ${compiledBody}; }`;
+}
+
+/** The `{ "name": _a[i] … }` literal a positional callable binds its `$args/` names from. */
+function formulaArgsSource(parameters: readonly FormulaParameter[] | undefined): string {
   const entries: string[] = [];
-  for (const [i, p] of (def.parameters ?? []).entries()) {
+  for (const [i, p] of (parameters ?? []).entries()) {
     const name = formulaParameterName(p);
     if (!name) {
       continue;
@@ -140,7 +147,35 @@ export function emitFormulaFn(
       : `_a[${i}]`;
     entries.push(`${JSON.stringify(name)}: ${arg}`);
   }
-  return `(..._a) => { const _args = { ${entries.join(", ")} }; return ${compiledBody}; }`;
+  return `{ ${entries.join(", ")} }`;
+}
+
+/**
+ * The positional callable a structured body with `parameters` lowers to (spec.md §20.3): arguments
+ * bind to `$args/` names, and the body runs without an event.
+ */
+export function emitStatementsFn(
+  def: { parameters?: readonly FormulaParameter[] | undefined },
+  compiledStatements: string,
+  eventParam = "e",
+): string {
+  return `(..._a) => {\nconst _args = ${formulaArgsSource(def.parameters)};\nconst ${eventParam} = null;\n${compiledStatements}\n}`;
+}
+
+/** Map positional call arguments onto declared parameter names, applying CEM defaults. */
+function positionalArgs(
+  params: readonly FormulaParameter[],
+  argValues: readonly JxScope[string][],
+): JxScope {
+  const args: JxScope = {};
+  for (const [i, p] of params.entries()) {
+    const name = formulaParameterName(p);
+    if (!name) {
+      continue;
+    }
+    args[name] = argValues[i] === undefined && hasParameterDefault(p) ? p.default : argValues[i];
+  }
+  return args;
 }
 
 /**
@@ -447,11 +482,7 @@ export function pageImportMap(sources: PageImportSources): string {
 // ─── Schema keywords & detection ─────────────────────────────────────────────
 // Centralized in @jxsuite/schema/guards; re-exported here for existing callers.
 
-export {
-  SCHEMA_KEYWORDS,
-  isSchemaOnlyDef as isSchemaOnly,
-  isTemplateString,
-} from "@jxsuite/schema/guards";
+export { SCHEMA_KEYWORDS, isPureTypeDef, isTemplateString } from "@jxsuite/schema/guards";
 
 /**
  * Returns true if a $src path points to a .class.json schema-defined class.
@@ -673,7 +704,7 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
       if ("default" in d) {
         return true;
       }
-      if (isSchemaOnlyDef(d)) {
+      if (isPureTypeDef(d)) {
         continue;
       }
       return true;
@@ -1209,7 +1240,7 @@ export function buildInitialScope(
       runtimeOnly.add(key);
       continue;
     }
-    if (!def.$prototype && !("$expression" in def) && !isSchemaOnlyDef(def)) {
+    if (!def.$prototype && !("$expression" in def) && !isPureTypeDef(def)) {
       setOwnScopeValue(scope, key, cloneValue(def));
     }
   }
@@ -1243,15 +1274,7 @@ export function buildInitialScope(
         // Named formula: callable, positional args mapped onto its declared parameters.
         const params: readonly FormulaParameter[] = def.parameters;
         setOwnScopeValue(scope, key, (...argValues: JxScope[string][]) => {
-          const args: JxScope = {};
-          for (const [i, p] of params.entries()) {
-            const name = formulaParameterName(p);
-            if (!name) {
-              continue;
-            }
-            args[name] =
-              argValues[i] === undefined && hasParameterDefault(p) ? p.default : argValues[i];
-          }
+          const args = positionalArgs(params, argValues);
           return evaluateExpression(node, scope, null, { args });
         });
       } else if (isMutating(node.operator)) {
@@ -1270,9 +1293,18 @@ export function buildInitialScope(
         // Code may call it bare, so the scope it runs against falls back to this one.
         const { body } = def;
         entrySources.push([key, JSON.stringify(body)]);
-        setOwnScopeValue(scope, key, (s?: JxScope, event?: Event) => {
-          void runStatements(body, s ?? scope, event ?? null);
-        });
+        if (Array.isArray(def.parameters) && def.parameters.length > 0) {
+          // A non-empty `parameters` list makes a positional callable (spec.md §20.3). No dispatch
+          // Target: the build has no DOM.
+          const params: readonly FormulaParameter[] = def.parameters;
+          setOwnScopeValue(scope, key, (...argValues: JxScope[string][]) => {
+            void runStatements(body, scope, null, { args: positionalArgs(params, argValues) });
+          });
+        } else {
+          setOwnScopeValue(scope, key, (s?: JxScope, event?: Event) => {
+            void runStatements(body, s ?? scope, event ?? null);
+          });
+        }
       } else if (isString(def.body)) {
         const { body } = def;
         // One parameter list in every tier (spec.md §5.3 4d): `state` first, then the other declared
@@ -2135,6 +2167,91 @@ export function attrHelperSource(): string {
     `  return v ? '' : null;\n` +
     `}`
   );
+}
+
+/** The cookie-reading helper the generated modules call; prefixed like {@link ATTR_HELPER}. */
+export const COOKIE_READ_HELPER = "__jxCookieRead";
+
+/** The cookie-serializing helper the generated modules call. */
+export const COOKIE_WRITE_HELPER = "__jxCookieText";
+
+/**
+ * The source of the two cookie helpers, to be emitted into a module that binds a `Cookie` entry
+ * (spec.md §11.2a).
+ *
+ * Inlined for the reason {@link attrHelperSource} gives: a built module loads without
+ * `@jxsuite/runtime`. The rule is `readCookieValue` and `serializeCookie` from the runtime, with
+ * the two prefixes serialized from the runtime's exports. `cookie-helper.test.ts` compares the
+ * copy's output with the runtime's over every prefix, attribute and value combination, so a changed
+ * branch goes red as well as a changed prefix.
+ *
+ * @returns {string} Two `function` declarations.
+ */
+export function cookieHelperSource(): string {
+  const host = JSON.stringify(COOKIE_HOST_PREFIX);
+  const secure = JSON.stringify(COOKIE_SECURE_PREFIX);
+  return (
+    `function ${COOKIE_READ_HELPER}(h, n) {\n` +
+    `  for (const p of h.split(";")) {\n` +
+    `    const i = p.indexOf("=");\n` +
+    `    if (i === -1 || p.slice(0, i).trim() !== n) continue;\n` +
+    `    const r = p.slice(i + 1);\n` +
+    `    try { return JSON.parse(decodeURIComponent(r)); } catch { return r; }\n` +
+    `  }\n` +
+    `  return null;\n` +
+    `}\n` +
+    `function ${COOKIE_WRITE_HELPER}(n, v, o) {\n` +
+    `  const host = n.startsWith(${host});\n` +
+    `  const parts = [n + "=" + encodeURIComponent(JSON.stringify(v))];\n` +
+    `  if (o.maxAge !== undefined) parts.push("Max-Age=" + o.maxAge);\n` +
+    `  const path = host ? "/" : o.path;\n` +
+    `  if (path) parts.push("Path=" + path);\n` +
+    `  if (o.domain && !host) parts.push("Domain=" + o.domain);\n` +
+    `  if (o.secure === true || host || n.startsWith(${secure}) || o.sameSite?.toLowerCase() === "none") parts.push("Secure");\n` +
+    `  if (o.sameSite) parts.push("SameSite=" + o.sameSite);\n` +
+    `  return parts.join("; ");\n` +
+    `}`
+  );
+}
+
+/**
+ * Emit the binding for one `Cookie` state entry: read the cookie into state on creation, then
+ * persist through an effect whose first run writes it, so a declared `default` reaches the server
+ * from the first load (spec.md §11.2a). The block is self-contained, so two entries in one module
+ * do not redeclare its constants. The name and key appear only as JSON string literals or through
+ * `refAccessor`, never in a comment.
+ *
+ * @param {string} key - State key
+ * @param {JxPrototypeDef} def - The Cookie definition
+ * @param {{ statePrefix?: string; indent?: string; collect?: string }} [opts] - As
+ *   {@link emitRequestFetch}.
+ * @returns {string}
+ */
+export function emitCookieBinding(
+  key: string,
+  def: JxPrototypeDef,
+  opts: { statePrefix?: string; indent?: string; collect?: string } = {},
+) {
+  const { statePrefix = "state", indent = "", collect } = opts;
+  const accessor = refAccessor(statePrefix, escapeToken(key));
+  const options: Record<string, JsonValue> = {};
+  for (const field of ["domain", "maxAge", "path", "sameSite", "secure"] as const) {
+    const declared = def[field];
+    if (declared !== undefined) {
+      options[field] = declared;
+    }
+  }
+  const write = `document.cookie = ${COOKIE_WRITE_HELPER}(_n, ${accessor}, _o);`;
+  const lines = [
+    "// Cookie entry",
+    "{",
+    `  const _n = ${JSON.stringify(def.name ?? key)};`,
+    `  const _o = ${JSON.stringify(options)};`,
+    `  ${accessor} = ${COOKIE_READ_HELPER}(document.cookie, _n) ?? ${JSON.stringify(def.default ?? null)};`,
+    collect ? `  ${collect}.push(effect(() => { ${write} }));` : `  effect(() => { ${write} });`,
+    "}",
+  ];
+  return lines.map((line) => `${indent}${line}`).join("\n");
 }
 
 /** What the mapped arrays of a document need from the module compiled for it. */

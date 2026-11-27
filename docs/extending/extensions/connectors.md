@@ -8,6 +8,7 @@ code:
   - extensions/connector/src/D1.class.json
   - extensions/connector/src/Data.class.json
   - extensions/connector/src/worker.ts
+  - extensions/connector/src/dialects/bun-sqlite.ts
   - extensions/connector/jx-extension.json
 ---
 
@@ -70,7 +71,7 @@ The extension also owns two [project sections](/docs/extending/extensions/projec
 
 ### Schema push
 
-`jx db push` (and Studio's **Push Schema** button) plans DDL through each provider's `deploySchema`. The push is **additive-only**: tables and columns are created, never dropped or retyped. `--dry-run` returns the statements without applying. In dev, `local: "sqlite"` connections are stood in with `.jx/data/<connection>.sqlite`, auto-synced on first touch, so pushes and queries work before any cloud account exists.
+`jx db push` (and Studio's **Push Schema** button) plans DDL through each provider's `deploySchema`. The push is **additive-only**: tables and columns are created, never dropped or retyped. A to-one reference between two tables on one connection is created with a foreign key, and the local SQLite stand-in enforces foreign keys as D1 does. `--dry-run` returns the statements without applying. In dev, `local: "sqlite"` connections are stood in with `.jx/data/<connection>.sqlite`, auto-synced on first touch, so pushes and queries work before any cloud account exists.
 
 ### The data mount
 

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { compileStatements } from "@jxsuite/runtime/statements";
 import {
   buildAttrs,
+  emitStatementsFn,
   buildComponentCSS,
   takeDroppedReactiveStyles,
   buildInitialScope,
@@ -31,7 +33,7 @@ import {
   isLiteralNode,
   markLiteral,
   isRefObject,
-  isSchemaOnly,
+  isPureTypeDef,
   isTemplateString,
   preRenderComponentHtml,
   propertyAttrText,
@@ -43,6 +45,7 @@ import {
   titleToTagName,
 } from "../src/shared";
 import { BUILT_IN_PROTOTYPES } from "@jxsuite/schema/defs";
+import { isPureTypeDef as guardsIsPureTypeDef } from "@jxsuite/schema/guards";
 import type { JsonObject, JxElement, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 
@@ -62,22 +65,26 @@ describe("isClassJsonSrc", () => {
   });
 });
 
-describe("isSchemaOnly", () => {
-  test("returns true for schema-only objects", () => {
-    expect(isSchemaOnly({ type: "string" })).toBe(true);
-    expect(isSchemaOnly({ maximum: 100, minimum: 0, type: "number" })).toBe(true);
-    expect(isSchemaOnly({ items: {}, type: "array" })).toBe(true);
-    expect(isSchemaOnly({ description: "A field" })).toBe(true);
+describe("isPureTypeDef", () => {
+  test("is the schema package's predicate, re-exported", () => {
+    expect(isPureTypeDef).toBe(guardsIsPureTypeDef);
+  });
+
+  test("returns true for schema objects with an assertion", () => {
+    expect(isPureTypeDef({ type: "string" })).toBe(true);
+    expect(isPureTypeDef({ maximum: 100, minimum: 0, type: "number" })).toBe(true);
+    expect(isPureTypeDef({ items: {}, type: "array" })).toBe(true);
   });
 
   test("returns false when non-schema keys present", () => {
-    expect(isSchemaOnly({ default: "", type: "string" })).toBe(false);
-    expect(isSchemaOnly({ $prototype: "Function" })).toBe(false);
-    expect(isSchemaOnly({ body: "state.count++" })).toBe(false);
+    expect(isPureTypeDef({ default: "", type: "string" })).toBe(false);
+    expect(isPureTypeDef({ $prototype: "Function" })).toBe(false);
+    expect(isPureTypeDef({ body: "state.count++" })).toBe(false);
   });
 
-  test("returns true for empty objects", () => {
-    expect(isSchemaOnly({})).toBe(true);
+  test("returns false for an empty object and for annotations alone", () => {
+    expect(isPureTypeDef({})).toBe(false);
+    expect(isPureTypeDef({ description: "A field" })).toBe(false);
   });
 });
 
@@ -2507,5 +2514,54 @@ describe("markLiteral (spec.md §8.4)", () => {
     );
     const inner: JxElement = { $literal: true, innerHTML: "<i>${state.x}</i>", tagName: "p" };
     expect(renderStaticNode(inner, { x: "v" })).toBe("<p><i>${state.x}</i></p>");
+  });
+});
+
+describe("emitStatementsFn", () => {
+  type Body = Parameters<typeof compileStatements>[0];
+  type Def = Parameters<typeof emitStatementsFn>[0];
+  interface Target {
+    cart?: string[];
+    qty?: number;
+  }
+  const build = (def: Def, body: Body) => {
+    const compiled = compileStatements(body, {
+      dispatchTarget: "target",
+      eventParam: "e",
+      statePrefix: "state",
+    });
+    const src = emitStatementsFn(def, compiled);
+    // SAFETY: test-only evaluation of the emitted callable source, an arrow function of
+    // Positional arguments over the `state` and `target` closed over by the wrapper.
+    return new Function("state", "target", `return ${src}`) as (
+      state: Target,
+      target: EventTarget,
+    ) => (...a: number[] | string[]) => void;
+  };
+
+  test("maps positional arguments onto parameter names and applies defaults", () => {
+    const make = build({ parameters: ["item", { name: "qty", default: 2 }] }, [
+      { operator: "push", target: { $ref: "#/state/cart" }, value: { $ref: "$args/item" } },
+      { operator: "=", target: { $ref: "#/state/qty" }, value: { $ref: "$args/qty" } },
+    ]);
+    const state: Target = { cart: [], qty: 0 };
+    make(state, new EventTarget())("apple");
+    expect(state.cart).toEqual(["apple"]);
+    expect(state.qty).toBe(2);
+  });
+
+  test("runs without an event: the event verbs are no-ops and dispatch uses the given target", () => {
+    const make = build({ parameters: ["x"] }, [
+      { stopPropagation: true },
+      { preventDefault: true },
+      { dispatchEvent: "ping", detail: { $ref: "$args/x" } },
+    ]);
+    const target = new EventTarget();
+    const seen: unknown[] = [];
+    target.addEventListener("ping", (ev) => {
+      seen.push(ev instanceof CustomEvent ? ev.detail : undefined);
+    });
+    expect(() => make({}, target)(7)).not.toThrow();
+    expect(seen).toEqual([7]);
   });
 });

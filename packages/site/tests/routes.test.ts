@@ -16,6 +16,7 @@ import {
   matchRoute,
   pageRelativePath,
   routeHref,
+  routePatternProblem,
 } from "../src/routes.ts";
 
 describe("pageRelativePath", () => {
@@ -240,5 +241,73 @@ describe("fillRoutePattern", () => {
 
   test("values are not percent-encoded and no trailing slash is applied", () => {
     expect(fillRoutePattern("/blog/:slug", { slug: "héllo" })).toBe("/blog/héllo");
+  });
+});
+
+describe("routePatternProblem", () => {
+  test("a whole-segment parameter and a final catch-all are sound", () => {
+    for (const path of [
+      "index.json",
+      "about/index.json",
+      "v1.2/index.json",
+      "blog/[slug].json",
+      "[category]/[id].json",
+      "docs/[...path].json",
+      "[...all].json",
+      "pages/blog/[slug]/comments.json",
+      "café.json",
+      String.raw`blog\[slug].json`,
+    ]) {
+      expect(routePatternProblem(path)).toBeNull();
+    }
+  });
+
+  test("URL pattern syntax in a name is named", () => {
+    for (const [path, segment, char] of [
+      ["c++.json", "c++", "+"],
+      ["(marketing)/about.json", "(marketing)", "("],
+      ["faq{old}.json", "faq{old}", "{"],
+      ["foo:bar.json", "foo:bar", ":"],
+      ["what?.json", "what?", "?"],
+      ["a*b.json", "a*b", "*"],
+    ] as const) {
+      const problem = routePatternProblem(path);
+      expect(problem).toContain(segment);
+      expect(problem).toContain(`"${char}"`);
+    }
+  });
+
+  test("a bracket that is not a parameter is refused", () => {
+    for (const path of ["[foo-bar].json", "[1st].json", "[].json", "[...].json"]) {
+      expect(routePatternProblem(path)).toContain("is not a parameter");
+    }
+  });
+
+  test("a parameter is a whole segment", () => {
+    for (const path of ["post-[id].json", "[a]-[b].json", "a]b.json"]) {
+      expect(routePatternProblem(path)).toContain("bracket inside a segment");
+    }
+  });
+
+  test("a catch-all is the last segment", () => {
+    expect(routePatternProblem("[...path]/edit.json")).toContain("must be the last segment");
+  });
+
+  test("a parameter name is used once", () => {
+    expect(routePatternProblem("[id]/[id].json")).toContain("declared twice");
+    expect(routePatternProblem("[id]/[...id].json")).toContain("declared twice");
+  });
+});
+
+describe("matchRoute literal encoding", () => {
+  test("a literal segment matches its percent-encoded spelling", () => {
+    const cafe = [fileToRoute("café.json")];
+    expect(matchRoute(cafe, "/caf%C3%A9")).not.toBeNull();
+    expect(matchRoute(cafe, "/café")).not.toBeNull();
+    expect(matchRoute([fileToRoute("about us.json")], "/about%20us")).not.toBeNull();
+  });
+
+  test("a malformed escape is compared as written", () => {
+    expect(matchRoute([fileToRoute("café.json")], "/caf%E9")).toBeNull();
   });
 });

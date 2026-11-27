@@ -3,8 +3,7 @@ status: drafted
 disposition: reconcile
 claims:
   - ui.md#2
-requires:
-  - ui/behaviour-list-text
+requires: []
 workspaces:
   - packages/ui
   - specs
@@ -41,7 +40,7 @@ Disposition `reconcile`. In all three places the code already does what the rest
 - **Correction to the stub:** no test holds that negative. `grep anchor-name packages/ui/tests` finds nothing, and the Anchor Positioning row's evidence tests assert placement, not absence.
 - **Correction:** the list also omits three id references the kit does write: `interestfor` (`jx-button.json`, `jx-action-button.json`), `aria-describedby` (8 documents), and `jx-tooltip`'s own `for`, which `jx-button.json`, `jx-action-button.json` and `jx-switch.json` write on their tip and which `triggerOf` in `src/behaviors/tooltip.ts` resolves with `getElementById` on the tip's own root.
 
-**Principles 3 and 4** hold as the marker says. Principle 4's Studio half is studio-ui-guidelines.md §12.1 to §12.5, owned there. **Principle 5 does not hold as written**, which the census missed and `plan:ui/behaviour-list-text` found: its allowed set has no `click()`, no write of a child kit element's declared prop and no selection call on the inner control, and the kit's sidecars make all three. That plan widens the set as a ride-along on line 29, which this plan does not touch, and that is why this plan requires it.
+**Principles 3 and 4** hold as the marker says. Principle 4's Studio half is studio-ui-guidelines.md §12.1 to §12.5, owned there. **Principle 5 does not hold as written**, which the census missed: its allowed set had no `click()`, no write of a child kit element's declared prop and no selection call on the inner control, and the kit's sidecars make all three. The set is now widened on line 29 (ui.md §3.3 and §7 landed with it), which this plan does not touch.
 
 **Ride-along, carried here by the audit record** (plans/ui/README.md, spec-wide decisions): §11's CSS Scoping row (line 425) says "the only piece of the module the kit meets is `:host`, which the runtime translates to the tag (spec.md §16.6)", with `packages/runtime/src/runtime.ts` as evidence. It is wrong twice, and the census found only the first:
 
@@ -65,7 +64,6 @@ Disposition `reconcile`. In all three places the code already does what the rest
 - **Open:** where principle 1 draws the line between a surface's own part and a redrawn kit element. Recommendation: by the box and its contract, not by the tag, as §3.1 decides kind. A native `button` that draws a recent-project row is a part. A `role="status"` stack of toast cards with its own timers is a redrawn `jx-toast-host`. A tag rule ("a native control the kit has an element for is drawn with that element") would make 29 button-drawing surfaces defects that no plan owns. §2 would then need a new Partial marker and an `implement` plan behind it.
 - **Open:** does §2 flip to Implemented while the rules principle 1 now cites (§3.1's classes, §5.2's toast stack) and principle 4's Studio half (studio-ui-guidelines.md §12) are still open where they are specified? Recommendation: yes. Each of those is marked and owned in its own section. Holding §2 would give each item a second marker. It would also put this paper fix behind `plan:ui/surface-classes-to-parts` and `plan:ui/studio-toast-host`, both M. The census already took that call for principle 4.
 - **Decided:** principle 2 is rewritten to the cascade that ships rather than moving element rules into `jx-ui`, because spec.md §9.6 (Implemented) rejects a Jx layer on purpose. An unlayered `$head` stylesheet would then beat every element, and the canvas's `@layer jx-canvas-ua` emulation depends on author rules staying unlayered.
-- **Decided:** `requires: ui/behaviour-list-text`. §2 cannot read Implemented while principle 5's allowed set is narrower than what the sidecars do, and the new marker credits principle 5 whole to the conformance scan. That plan's step 6 is the fix. If its Open is decided against the ride-along, the step 6 edit moves here unchanged and the edge stays, because the moved wording cites the §3.3 and §7 text that plan writes.
 - **Decided:** principle 2's "`part` attributes are the only sanctioned style hooks" becomes "an element's only sanctioned style hooks". The sentence is about kit elements (§3.2), and `plan:ui/surface-classes-to-parts` makes §3.1 sanction a host-adopted id on a surface's own box (the shell frame's), which the unqualified wording would contradict.
 - **Decided:** the id list drops `anchor-name` and gains `interestfor`, `aria-describedby` and `jx-tooltip`'s `for`, because the list should name what the kit's documents write. A new sentence says a panel's anchor is its invoker (`popovertarget`, `interestfor` or `showPopover({ source })`), so §6 and principle 2 cannot drift apart again.
 - **Decided:** two conformance cases hold the negatives: no own anchor and no `:host`. The marker's complaint was text that no gate looked at, and §11's Anchor Positioning row makes the same negative claims with no test behind them. A `:host` key in a kit document silently matches nothing under today's interpreter. No source changes, so the plan stays `reconcile`.
@@ -75,7 +73,7 @@ Disposition `reconcile`. In all three places the code already does what the rest
 
 ## Implementation
 
-One pull request, landing with or after `plan:ui/behaviour-list-text`. Both are paper plans, so they may ride the detailing pull request together once their Open decisions are signed off, since this plan's only code is test cases.
+One pull request. The ui.md §3.3 and §7 text it cites has landed. This plan's only code is test cases.
 
 1. **`packages/ui/tests/conformance.test.ts`**, inside `describe("the kit keeps its principles (ui.md §2)")`, after the `$shadow` loop:
    - Add `function* styleEntries(node: unknown, path = "root"): Generator<[string, string, unknown]>`. It walks arrays and objects exactly as `shadowKeys` does. At every `style` key whose value is a plain object, it descends through that object and yields `[path, key, value]` for every key not starting with `$`, recursing into object values (nested selectors and at-rules). `$description` and other `$` keys are skipped, so prose cannot trip it.
@@ -94,7 +92,7 @@ One pull request, landing with or after `plan:ui/behaviour-list-text`. Both are 
 - ui.md §2 principle 2 is the normative cascade rule. An element's rules are unlayered `[data-jx]` rules adopted after linked sheets, and a host overrides one by weight or order. `plan:ui/surface-classes-to-parts` must re-key the dock handles to a part selector heavier than `jx-split`'s hover (0,2,0). It may add that rule to §5.5 as a second example, but it need not edit §2.
 - The principles block refuses an own anchor (`anchor-name`, `position-anchor`, `anchor()`) and `:host` in every component document. `plan:ui/overlay-transitions-and-slot`, `plan:ui/menu-radio-rows` and any new component must keep to it; the four table elements of ui.md §5.4 already do.
 - the landed shadow-DOM parity change (`spec.md` §16.6): if it lands after this plan, its ui.md §11 edit swaps variant A of the CSS Scoping row for variant B (both quoted below). If it wants kit documents to use `:host`, it deletes the `:host` case and the note's "the conformance test refuses one" clause together.
-- `plan:ui/behaviour-list-text` (required) owns the principle 5 ride-along (line 29). If its Open is decided against the ride-along, that plan's step 6 edit moves here unchanged. Either way principle 5 names `click()`, declared-prop writes and the selection API before §2 flips, which is what makes the new marker's principle 5 sentence true.
+- ui.md §3.3 and §7 own the principle 5 allowed set (line 29), which already names `click()`, declared-prop writes and the selection API. That is what makes the new marker's principle 5 sentence true.
 - `plan:ui/studio-toast-host` need not edit §2. Principle 1's "never redraws" clause points at §5.2, whose marker carries the toast stack until that plan lands.
 
 ## Tests
