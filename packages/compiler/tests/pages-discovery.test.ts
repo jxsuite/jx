@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { discoverPages, expandDynamicRoutes, readPageDocument } from "../src/site/pages-discovery";
+import {
+  discoverPages,
+  expandDynamicRoutes,
+  readPageDocument,
+  resolveRouteCollisions,
+} from "../src/site/pages-discovery";
 import { buildProjectExtensionRegistry } from "../src/site/format-host";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -755,5 +760,88 @@ describe("paginate $paths", () => {
     const result = await expandDynamicRoutes([route], FIXTURES);
     expect(result.map((r) => r.urlPattern)).toEqual(["/tags/ok"]);
     cleanup();
+  });
+});
+
+// ─── resolveRouteCollisions ─────────────────────────────────────────────────
+
+describe("resolveRouteCollisions", () => {
+  /** Write pages under the fixtures, then discover, expand and resolve them. */
+  async function resolveFiles(files: Record<string, JxDocument>) {
+    setup();
+    for (const [name, doc] of Object.entries(files)) {
+      const path = join(FIXTURES, name);
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, JSON.stringify(doc));
+    }
+    const discovered = await discoverPages(FIXTURES);
+    const expanded = await expandDynamicRoutes(discovered, FIXTURES);
+    const resolved = resolveRouteCollisions(expanded);
+    cleanup();
+    return { expanded, ...resolved };
+  }
+
+  const page = { tagName: "div" };
+
+  test("the more specific route keeps a URL two pages generate", async () => {
+    const { collisions, routes } = await resolveFiles({
+      "[category]/[id].json": {
+        $paths: [{ category: "blog", id: "x" }],
+        tagName: "div",
+      },
+      "blog/[slug].json": { $paths: { param: "slug", values: ["about", "x"] }, tagName: "div" },
+      "blog/about.json": page,
+    });
+    const urls = routes.map((route) => route.urlPattern).toSorted();
+    expect(urls).toEqual(["/blog/about", "/blog/x"]);
+    expect(collisions.map((c) => c.kind)).toEqual(["outranked", "outranked"]);
+    const about = collisions.find((c) => c.url === "/blog/about")!;
+    expect(about.kept).toBe("pages/blog/about.json");
+    expect(about.dropped).toBe("pages/blog/[slug].json");
+    const x = collisions.find((c) => c.url === "/blog/x")!;
+    expect(x.kept).toBe("pages/blog/[slug].json");
+    expect(x.message).toContain("pages/[category]/[id].json");
+  });
+
+  test("two pages of one shape are a tie", async () => {
+    const tied = await resolveFiles({
+      "blog/[id].json": { $paths: { param: "id", values: ["a"] }, tagName: "div" },
+      "blog/[slug].json": { $paths: { param: "slug", values: ["a"] }, tagName: "div" },
+    });
+    expect(tied.collisions).toHaveLength(1);
+    expect(tied.collisions[0]!.kind).toBe("tie");
+    expect(tied.collisions[0]!.kept).toBe("pages/blog/[id].json");
+
+    const statics = await resolveFiles({ "about.json": page, "about/index.json": page });
+    expect(statics.collisions.map((c) => c.kind)).toEqual(["tie"]);
+    expect(statics.collisions[0]!.message).toContain("neither route is more specific");
+  });
+
+  test("a template that yields one URL twice builds it once", async () => {
+    const { collisions, routes } = await resolveFiles({
+      "blog/[slug].json": { $paths: { param: "slug", values: ["a", "a"] }, tagName: "div" },
+    });
+    expect(routes).toHaveLength(1);
+    expect(collisions.map((c) => c.kind)).toEqual(["repeat"]);
+    expect(collisions[0]!.message).toContain("more than once");
+  });
+
+  test("a trailing slash does not make a second URL", async () => {
+    const { collisions, routes } = await resolveFiles({
+      "docs/[...path].json": { $paths: { param: "path", values: [""] }, tagName: "div" },
+      "docs/index.json": page,
+    });
+    expect(routes).toHaveLength(1);
+    expect(collisions.map((c) => c.kind)).toEqual(["outranked"]);
+    expect(collisions[0]!.kept).toBe("pages/docs/index.json");
+  });
+
+  test("a table without collisions comes back whole", async () => {
+    const { collisions, expanded, routes } = await resolveFiles({
+      "about.json": page,
+      "index.json": page,
+    });
+    expect(collisions).toEqual([]);
+    expect(routes).toEqual(expanded);
   });
 });

@@ -1539,12 +1539,14 @@ describe("compileElement — Request auto-fetch", () => {
 
     const { content } = result.files[0]!;
     expect(content).toContain('const url = "/api/leads";');
-    expect(content).toContain("fetch(url)");
+    expect(content).toContain("fetch(url, { signal: _ac.signal })");
     expect(content).toContain("this.state.leads = d;");
-    expect(content).toContain("this.state.leads = { error: String(e) };");
+    expect(content).toContain(
+      'if (e?.name !== "AbortError") this.state.leads = { error: String(e) };',
+    );
     // Still initialised to null, and the fetch runs after the $props merge.
     expect(content).toContain("leads: null");
-    expect(content.indexOf("data-jx-props")).toBeLessThan(content.indexOf("fetch(url)"));
+    expect(content.indexOf("data-jx-props")).toBeLessThan(content.indexOf("fetch(url,"));
   });
 
   test("rewrites a templated url through this.state without touching literal text", async () => {
@@ -1607,7 +1609,9 @@ describe("compileElement — Request auto-fetch", () => {
 
     const { content } = result.files[0]!;
     // Calling an @vue/reactivity runner re-runs it, so teardown has to use stop().
-    expect(content).toContain("import { reactive, computed, effect, stop } from '@vue/reactivity'");
+    expect(content).toContain(
+      "import { reactive, computed, effect, stop, onEffectCleanup } from '@vue/reactivity'",
+    );
     expect(content).toContain("#effects = [];");
     expect(content).toContain("this.#effects.push(effect(() => {");
     expect(content).toContain("for (const _e of this.#effects) { stop(_e); }");
@@ -1623,6 +1627,24 @@ describe("compileElement — Request auto-fetch", () => {
     const { content } = result.files[0]!;
     expect(content).not.toContain("fetch(url");
     expect(content).not.toContain("auto-fetch");
+    expect(content).toContain(
+      "import { reactive, computed, effect, stop } from '@vue/reactivity';",
+    );
+    expect(content).not.toContain("AbortController");
+  });
+
+  test("a manual-only Request imports no onEffectCleanup", async () => {
+    const result = await compileElement({
+      children: [],
+      state: { d: { $prototype: "Request", manual: true, url: "/api/d" } },
+      tagName: "test-req-manual-only",
+    });
+
+    const { content } = result.files[0]!;
+    expect(content).toContain(
+      "import { reactive, computed, effect, stop } from '@vue/reactivity';",
+    );
+    expect(content).not.toContain("onEffectCleanup");
   });
 });
 

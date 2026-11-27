@@ -208,7 +208,6 @@ Pages are component documents with additional properties:
   "$head": [
     { "tagName": "meta", "attributes": { "name": "description", "content": "About our team" } }
   ],
-  "tagName": "main",
   "children": [ ... ]
 }
 ```
@@ -216,7 +215,7 @@ Pages are component documents with additional properties:
 - `$layout` — path to layout file, or `false` for no layout. Omit to use project default.
 - `$head` — merges with layout and project `$head` (page wins on conflicts).
 - `$paths` — dynamic route generation from content collections.
-- `tagName` is optional on pages that use a layout.
+- A page that uses a layout has no root element of its own: it renders inside the layout's root, so leave `tagName` out. Put landmarks such as `main` in the layout.
 
 ### Dynamic routes (`[param].json`)
 

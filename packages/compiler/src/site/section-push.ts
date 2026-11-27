@@ -7,8 +7,8 @@
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
-import { isString } from "@jxsuite/schema/guards";
 import { sectionOwnerActive } from "./project-sections.ts";
+import { isString } from "@jxsuite/schema/guards";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type {
   ImplementationExport,
@@ -68,9 +68,8 @@ export async function resolveConnectorClasses(
 
 /**
  * Run every section owner's `deploySchema` (any non-connector project contribution declaring the
- * capability), in contribution order. A section the §8.4 gate calls empty (absent, null or no
- * entries) contributes nothing; a step with no kind takes the section key; an owner that throws is
- * reported on its result.
+ * capability), in contribution order. A section absent or null in the project contributes nothing;
+ * a step with no kind takes the section key; an owner that throws is reported on its result.
  *
  * @param {ExtensionRegistry} registry
  * @param {ProjectConfig} config

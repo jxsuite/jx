@@ -383,14 +383,18 @@ A misconfigured source is a build error naming the route, and that route generat
 
 ### 4.4 Route Priority
 
-> **Status: Partial.** Rules 1, 2 and 4 ship (`compareRoutes` in `packages/site/src/routes.ts`, the `_` exclusion in `packages/compiler/src/site/pages-discovery.ts`). Rule 3 holds only against a catch-all: two dynamic routes with no catch-all are ordered alphabetically, so `/:category/:id` sorts ahead of `/blog/:slug` and `matchRoute` answers `/blog/x` with it.
+> **Status: Implemented.** `routePriority` and `compareRoutes` in `packages/site/src/routes.ts` order the build's route table and the live preview's; `resolveRouteCollisions` in `packages/compiler/src/site/pages-discovery.ts` settles two pages generating one URL; the `_` exclusion is in `pages-discovery.ts`.
 
-When multiple routes could match a URL, priority follows Astro's rules:
+When multiple routes could match a URL, priority follows Astro's rules. Two routes are compared segment by segment from the left, and the first segment where they differ decides:
 
-1. Static routes over dynamic routes (`/about` beats `/[slug]`)
-2. Named parameters over rest/catch-all (`/[slug]` beats `/[...path]`)
-3. More specific paths over less specific (`/blog/[slug]` beats `/[...path]`)
+1. Static routes over dynamic routes (`/about` beats `/[slug]`): a literal segment outranks a parameter.
+2. Named parameters over rest/catch-all (`/[slug]` beats `/[...path]`): a `[param]` segment outranks a `[...rest]` segment.
+3. More specific paths over less specific (`/blog/[slug]` beats `/[...path]` and `/[category]/[id]`): because the first difference decides, a literal earlier in the path outranks any parameter after it, so `pages/docs/[...path].json` answers `/docs` and everything under it ahead of `pages/[slug].json`. A route that ends where another continues ranks first, so `/docs` beats `/docs/[...path]`.
 4. Files prefixed with `_` are excluded from routing entirely
+
+Routes that tie at every segment (`/blog/[slug]` and `/blog/[id]`, or `about.json` and `about/index.json`) have no priority between them; they are listed by pattern text, then by file path, so every host builds the same table.
+
+**Two pages, one URL.** A build expands every dynamic route (§4.3) before it writes a page, so it sees when two routes generate the same URL (a trailing slash is not significant). The route with priority builds that URL and the build warns, naming the URL and both page files; the other route's page for that URL is not compiled and has no sitemap entry. When neither route has priority, the build fails, naming both files. A `$paths` that yields one URL twice builds it once, with a warning.
 
 ### 4.5 Route Params at Runtime
 

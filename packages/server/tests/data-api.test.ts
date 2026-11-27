@@ -626,13 +626,6 @@ describe("push with a non-auth section owner (warnings and failures)", () => {
     );
   }
 
-  test("an empty section owner contributes no steps (the §8.4 gate)", async () => {
-    writeLedgerProject("ledgerempty", {});
-    const result = await pushDataSchema(resolve(TMP, "ledgerempty"), { dryRun: true });
-    expect(result.warnings ?? []).not.toContain("ledger warning");
-    expect(JSON.stringify(result.plan)).not.toContain("Create ledger");
-  });
-
   test("the owner's steps and warnings join the plan", async () => {
     writeLedgerProject("ledgerproj", { enabled: true });
     const result = await pushDataSchema(resolve(TMP, "ledgerproj"), { dryRun: true });

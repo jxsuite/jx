@@ -305,13 +305,13 @@ export const STUDIO_ROUTES = {
   codeFormat: route(
     "POST",
     "/__studio/code/format",
-    "Format posted source {code, path?} → {code, errors}",
-    "Code editors skip format-on-open/save (codeService returns null).",
+    "Format a function body {code, args?} → {code, errors}",
+    "The function editor opens a body as stored (codeService returns null).",
   ),
   codeLint: route(
     "POST",
     "/__studio/code/lint",
-    "Lint posted source {code, path?} → {diagnostics}",
+    "Lint a function body {code, args?} → {diagnostics}",
     "Code editors show no lint markers.",
   ),
 

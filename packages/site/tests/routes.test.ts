@@ -16,6 +16,7 @@ import {
   matchRoute,
   pageRelativePath,
   routeHref,
+  routePriority,
   routePatternProblem,
 } from "../src/routes.ts";
 
@@ -131,18 +132,84 @@ describe("isRoutedPageFile", () => {
 });
 
 describe("compareRoutes", () => {
-  test("static beats dynamic beats catch-all", () => {
-    const routes = [
-      fileToRoute("docs/[...rest].json"),
-      fileToRoute("[slug].json"),
-      fileToRoute("about.json"),
-    ].toSorted(compareRoutes);
-    expect(routes.map((route) => route.urlPattern)).toEqual(["/about", "/:slug", "/docs/*"]);
+  const sorted = (files: string[]) =>
+    files
+      .map((file) => fileToRoute(file))
+      .toSorted(compareRoutes)
+      .map((route) => route.urlPattern);
+
+  test("the first segment where two routes differ decides", () => {
+    expect(sorted(["docs/[...rest].json", "[slug].json", "about.json", "[...path].json"])).toEqual([
+      "/about",
+      "/docs/*",
+      "/:slug",
+      "/*",
+    ]);
+  });
+
+  test("a literal earlier in the path outranks a parameter after it", () => {
+    const table = ["[category]/[id].json", "blog/[slug].json"]
+      .map((file) => fileToRoute(file))
+      .toSorted(compareRoutes);
+    expect(table.map((route) => route.urlPattern)).toEqual(["/blog/:slug", "/:category/:id"]);
+    expect(matchRoute(table, "/blog/x")?.route.urlPattern).toBe("/blog/:slug");
+    expect(matchRoute(table, "/news/x")?.route.urlPattern).toBe("/:category/:id");
+  });
+
+  test("a route that ends first outranks the catch-all that continues it", () => {
+    const table = ["docs/[...path].json", "docs/index.json"]
+      .map((file) => fileToRoute(file))
+      .toSorted(compareRoutes);
+    expect(matchRoute(table, "/docs")?.route.urlPattern).toBe("/docs");
+    expect(matchRoute(table, "/docs/a")?.route.urlPattern).toBe("/docs/*");
+  });
+
+  test("a folder owns its subtree", () => {
+    const table = ["[slug].json", "docs/[...path].json"]
+      .map((file) => fileToRoute(file))
+      .toSorted(compareRoutes);
+    expect(matchRoute(table, "/docs")?.route.urlPattern).toBe("/docs/*");
+  });
+
+  test("a catch-all under a folder outranks one at the root", () => {
+    const table = ["[...path].json", "docs/[...path].json"]
+      .map((file) => fileToRoute(file))
+      .toSorted(compareRoutes);
+    expect(matchRoute(table, "/docs/x")?.route.urlPattern).toBe("/docs/*");
+    expect(matchRoute(table, "/about")?.route.urlPattern).toBe("/*");
+  });
+
+  test("the order does not depend on input order", () => {
+    const files = [
+      "index.json",
+      "about.json",
+      "blog/[slug].json",
+      "blog/index.json",
+      "[category]/[id].json",
+      "[slug].json",
+      "docs/[...path].json",
+      "[...path].json",
+    ];
+    expect(sorted(files)).toEqual(sorted(files.toReversed()));
   });
 
   test("peers sort by pattern, so the table is stable across directory walks", () => {
     const routes = [fileToRoute("beta.json"), fileToRoute("alpha.json")].toSorted(compareRoutes);
     expect(routes.map((route) => route.urlPattern)).toEqual(["/alpha", "/beta"]);
+  });
+});
+
+describe("routePriority", () => {
+  test("routes of one shape have no priority", () => {
+    expect(routePriority(fileToRoute("blog/[slug].json"), fileToRoute("blog/[id].json"))).toBe(0);
+    expect(routePriority(fileToRoute("about.json"), fileToRoute("about/index.json"))).toBe(0);
+  });
+
+  test("the more specific route is negative", () => {
+    const specific = fileToRoute("blog/[slug].json");
+    const general = fileToRoute("[category]/[id].json");
+    expect(routePriority(specific, general)).toBeLessThan(0);
+    expect(routePriority(general, specific)).toBeGreaterThan(0);
   });
 });
 

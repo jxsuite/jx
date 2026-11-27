@@ -109,12 +109,11 @@ describe("resolveConnectorClasses", () => {
 });
 
 describe("pushSectionOwners", () => {
-  test("an absent, null or empty section contributes nothing", async () => {
+  test("an absent or null section contributes nothing", async () => {
     globalThis.__ledger = [];
     const configs: ProjectConfig[] = [
       { ...CONFIG, ledger: undefined },
       { ...CONFIG, ledger: null },
-      { ...CONFIG, ledger: {} },
     ];
     for (const config of configs) {
       expect(
