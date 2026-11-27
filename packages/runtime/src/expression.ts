@@ -672,15 +672,10 @@ export function findCallCycles(defs: Record<string, JxStateDefinition>): string[
       }
     }
     if (low.get(v) === index.get(v)) {
-      const component: string[] = [];
-      let w: string | undefined;
-      while (w !== v) {
-        w = stack.pop();
-        if (w === undefined) {
-          break;
-        }
-        onStack.delete(w);
-        component.push(w);
+      // `v` is on the stack until its component closes, so the splice always includes it.
+      const component = stack.splice(stack.lastIndexOf(v));
+      for (const member of component) {
+        onStack.delete(member);
       }
       components.push(component);
     }
@@ -694,10 +689,8 @@ export function findCallCycles(defs: Record<string, JxStateDefinition>): string[
   const cycles: string[][] = [];
   for (const component of components) {
     const members = new Set(component);
-    const first = nodes.find((n) => members.has(n));
-    if (first === undefined) {
-      continue;
-    }
+    /* SAFETY: a component's members are drawn from `nodes`, so the search always finds one. */
+    const first = nodes.find((n) => members.has(n)) as string;
     const selfEdge = (edges.get(first) ?? []).includes(first);
     if (component.length === 1 && !selfEdge) {
       continue;
