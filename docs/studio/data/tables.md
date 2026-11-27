@@ -58,7 +58,7 @@ From the Data Tables section a push covers every connection; from the Connection
 
 Pushes are **additive only**: they create missing tables and columns and never drop, rename, or retype anything that exists. Removing a field from a schema leaves its column (and its data) in place, and the plan notes such drift as a warning instead of destroying data. This makes pushing safe to run repeatedly.
 
-A terminal or CI can push too: `jx db push` applies the same additive rules and takes the same `--dry-run` flag; see the **[CLI reference](/docs/framework/build/cli)**. Two differences matter. The CLI pushes the tables you define here and nothing else, so the auth extension's account tables come only from the button above. And the CLI talks to each connection exactly as declared, while the button goes through Studio's local backend. So for a **Cloudflare D1** connection, which is stood in by a local SQLite file while you develop, `jx db push` is what creates the tables in the real D1 database.
+A terminal or CI can push too: `jx db push` applies the same additive rules and takes the same `--dry-run` flag; see the **[CLI reference](/docs/framework/build/cli)**. The CLI plans the same steps, account tables included, and differs only in where they land: it talks to each connection exactly as declared, while the button goes through Studio's local backend. So for a **Cloudflare D1** connection, which is stood in by a local SQLite file while you develop, `jx db push` is what creates the tables in the real D1 database.
 
 ## Using tables from pages
 

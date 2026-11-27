@@ -582,7 +582,7 @@ DELETE /_jx/data/:table/:id
 
 ### 11.1 Section-owner `deploySchema` (push contributions)
 
-> **Status: Partial.** The studio push composes section-owner steps after the connector plan (`pushDataSchema`, `packages/server/src/data-api.ts`). `jx db push` (`packages/compiler/src/site/db-push.ts`) runs only each connection's connector `deploySchema`, so it never pushes a section owner's steps, the auth extension's Better Auth tables included.
+> **Status: Implemented.** `jx db push` and the studio push both run every section owner's `deploySchema` after the connector plan, through one loop (`pushSectionOwners`, `packages/compiler/src/site/section-push.ts`; `dbPush`, `packages/compiler/src/site/db-push.ts`; `pushDataSchema`, `packages/server/src/data-api.ts`).
 
 A **non-connector** `project` class may also declare a `deploySchema` capability, letting its section contribute steps to the schema push (`jx db push`, the studio push button). The signature differs from the connector variant — there is no single connection def to hand over:
 
@@ -591,7 +591,7 @@ deploySchema(sectionValue, projectConfig, { env, dryRun?, connection?, connector
   → { steps, applied, warnings, connection }
 ```
 
-`steps` are ready push-plan entries (`{ kind, table?, summary, sql?, connection? }`); hosts append them **after** the connector plan and default each step's `kind` to the contributing section key — the auth extension's Better Auth system-table migration lands as `kind: "auth"` steps this way. `connectors` carries the same provider stand-ins the mounts receive, so dev pushes hit the `local:` stand-in databases. When a push is filtered to a `connection` the section does not live on, the capability returns empty steps. Hosts stay extension-agnostic: registry dispatch only, no extension imports, no hardcoded section names.
+`steps` are ready push-plan entries (`{ kind, table?, summary, sql?, connection? }`); hosts append them **after** the connector plan and default each step's `kind` to the contributing section key — the auth extension's Better Auth system-table migration lands as `kind: "auth"` steps this way. `connectors` maps each provider id to the class the push reaches. A dev host (the dev server, and the desktop app behind the studio push button) hands the `local:` stand-ins its mounts receive (§12), so a studio push lands in the stand-in databases; `jx db push` hands each provider's own class, as the generated worker does, so a section's steps land on the connection as declared, the database the connector plan has just written. When a push is filtered to a `connection` the section does not live on, the capability returns empty steps without opening its database. A section owner that throws does not stop the push: the host reports its error beside the plan. Hosts stay extension-agnostic: registry dispatch only, no extension imports, no hardcoded section names.
 
 ---
 
