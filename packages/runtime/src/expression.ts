@@ -13,9 +13,16 @@ import {
   INTL_HELPER_PATHS,
   INTL_LOCALE_PARAM,
 } from "@jxsuite/schema/intl";
-import { isFunction, isNamedFormulaDef, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import {
+  hasStructuredBody,
+  isFunction,
+  isNamedFormulaDef,
+  isNonNullObject,
+  isString,
+} from "@jxsuite/schema/guards";
 import type {
   CemParameter,
+  JsonValue,
   JxDocumentValue,
   JxExpressionDef,
   JxExpressionNode,
@@ -80,11 +87,6 @@ interface RawFormulaDef {
 interface CompileOpts {
   statePrefix?: string;
   eventParam?: string;
-  /**
-   * Parameter-name order per named-formula state key, used by `call` sites to map positional
-   * argument lists onto the emitted formula functions' named-args object.
-   */
-  formulaParams?: Record<string, string[]>;
 }
 
 const MUTATING_OPS = new Set([
@@ -497,12 +499,239 @@ interface IterCtx {
   index?: number;
   /** Named-formula arguments bound for the current `call` body ($args/<name> refs). */
   args?: FormulaArgs;
-  /** Call-nesting depth; capped at MAX_CALL_DEPTH to bound recursive formulas. */
-  callDepth?: number;
 }
 
 /** Recursion bound for `call` chains (formula → formula), mirroring MAX_REPORT_DEPTH. */
 export const MAX_CALL_DEPTH = 64;
+
+/** The error message every tier throws on the invocation past {@link MAX_CALL_DEPTH}. */
+export const CALL_DEPTH_EXCEEDED = `$expression: call depth exceeded (${MAX_CALL_DEPTH})`;
+
+/** In-flight callable invocations; formula evaluation is synchronous, so this is the stack nesting. */
+let activeCalls = 0;
+
+/**
+ * Run one callable invocation under the call-depth bound (spec §19.4c). Throws
+ * {@link CALL_DEPTH_EXCEEDED} when {@link MAX_CALL_DEPTH} invocations are already in flight, and
+ * restores the count when `run` returns or throws.
+ *
+ * @param run The invocation's body
+ * @returns {T} What `run` returned
+ */
+export function withCallDepth<T>(run: () => T): T {
+  if (activeCalls >= MAX_CALL_DEPTH) {
+    throw new Error(CALL_DEPTH_EXCEEDED);
+  }
+  activeCalls += 1;
+  try {
+    return run();
+  } finally {
+    activeCalls -= 1;
+  }
+}
+
+/**
+ * Map a call's positional arguments onto a definition's declared parameter names, as `$args/<name>`
+ * refs read them. A parameter given as an object supplies its `default` for a position the call
+ * left undefined. Parameters come from a document that is not schema-validated at runtime, so an
+ * entry that names nothing (null, or an object without a `name`) binds nothing.
+ *
+ * @param parameters The declared parameters, in call order
+ * @param argValues The values the call passed, in the same order
+ * @returns {Record<string, JxScopeValue>} Name to value, for the body's `$args` refs
+ */
+export function bindFormulaArgs(
+  parameters: readonly (string | CemParameter | null)[],
+  argValues: readonly JxScopeValue[],
+) {
+  const args: FormulaArgs = {};
+  for (const [i, p] of parameters.entries()) {
+    const name = isString(p) ? p : (p?.name ?? "");
+    if (!name) {
+      continue;
+    }
+    args[name] =
+      argValues[i] === undefined && p !== null && !isString(p) && "default" in p
+        ? p.default
+        : argValues[i];
+  }
+  return args;
+}
+
+/**
+ * The scope callable a named formula lowers to: positional arguments are bound onto the declared
+ * parameters, and every invocation counts toward {@link MAX_CALL_DEPTH}.
+ *
+ * @param node The formula's expression body
+ * @param parameters The declared parameters, in call order
+ * @param state The scope the body reads
+ * @returns {Function} The positional callable
+ */
+export function formulaCallable(
+  node: JxExpressionNode,
+  parameters: readonly (string | CemParameter | null)[],
+  state: JxScope,
+): (...argValues: JxScopeValue[]) => JxScopeValue {
+  return (...argValues) =>
+    withCallDepth(() =>
+      evaluateExpression(node, state, null, { args: bindFormulaArgs(parameters, argValues) }),
+    );
+}
+
+/**
+ * Whether a state entry is a callable (spec §19.4c, §20.3): a named formula, or a structured body
+ * with a non-empty `parameters` list.
+ *
+ * @param def A state entry as the document wrote it
+ * @returns {boolean}
+ */
+export function isCallableEntry(def: JxStateDefinition): boolean {
+  return (
+    isNamedFormulaDef(def) ||
+    (hasStructuredBody(def) && Array.isArray(def.parameters) && def.parameters.length > 0)
+  );
+}
+
+const STATE_PREFIX = "#/state/";
+
+/** Every `#/state/<key>` pointer's first segment, anywhere under `value`. */
+function collectStateRefKeys(value: JsonValue | undefined, out: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectStateRefKeys(item, out);
+    }
+    return;
+  }
+  if (!isNonNullObject(value)) {
+    return;
+  }
+  for (const [k, v] of Object.entries(value)) {
+    if (k === "$ref" && isString(v) && v.startsWith(STATE_PREFIX)) {
+      const [first] = refSegments(v.slice(STATE_PREFIX.length));
+      if (first !== undefined) {
+        out.add(first);
+      }
+    } else {
+      collectStateRefKeys(v, out);
+    }
+  }
+}
+
+/**
+ * Find the call cycles among a scope's callable entries (spec §19.4c). Nodes are the entries
+ * {@link isCallableEntry} accepts; an edge runs from a node to every node its body names by a
+ * `#/state/<key>` pointer. Each strongly connected component with a cycle yields one shortest path
+ * from its first key back to itself, and the result is ordered by each path's first key.
+ *
+ * @param defs A scope's state entries
+ * @returns {string[][]} One path per cycle, such as `["b", "a", "b"]`; empty when acyclic
+ * @docs framework/concepts/expressions
+ */
+export function findCallCycles(defs: Record<string, JxStateDefinition>): string[][] {
+  const callables = Object.entries(defs).filter(([, def]) => isCallableEntry(def));
+  if (callables.length === 0) {
+    return [];
+  }
+  const nodes = callables.map(([key]) => key);
+  const edges = new Map<string, string[]>();
+  for (const [key, def] of callables) {
+    const refs = new Set<string>();
+    let source: unknown;
+    if (isNamedFormulaDef(def)) {
+      source = def.$expression;
+    } else if (hasStructuredBody(def)) {
+      source = def.body;
+    }
+    /* SAFETY: a callable entry's `$expression` node or structured `body` is JSON by construction. */
+    collectStateRefKeys(source as JsonValue | undefined, refs);
+    edges.set(
+      key,
+      nodes.filter((n) => refs.has(n)),
+    );
+  }
+
+  // Tarjan's strongly connected components.
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const components: string[][] = [];
+  let counter = 0;
+  const visit = (v: string): void => {
+    index.set(v, counter);
+    low.set(v, counter);
+    counter += 1;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of edges.get(v) ?? []) {
+      if (!index.has(w)) {
+        visit(w);
+        low.set(v, Math.min(low.get(v) ?? 0, low.get(w) ?? 0));
+      } else if (onStack.has(w)) {
+        low.set(v, Math.min(low.get(v) ?? 0, index.get(w) ?? 0));
+      }
+    }
+    if (low.get(v) === index.get(v)) {
+      const component: string[] = [];
+      let w: string | undefined;
+      while (w !== v) {
+        w = stack.pop();
+        if (w === undefined) {
+          break;
+        }
+        onStack.delete(w);
+        component.push(w);
+      }
+      components.push(component);
+    }
+  };
+  for (const key of nodes) {
+    if (!index.has(key)) {
+      visit(key);
+    }
+  }
+
+  const cycles: string[][] = [];
+  for (const component of components) {
+    const members = new Set(component);
+    const first = nodes.find((n) => members.has(n));
+    if (first === undefined) {
+      continue;
+    }
+    const selfEdge = (edges.get(first) ?? []).includes(first);
+    if (component.length === 1 && !selfEdge) {
+      continue;
+    }
+    // Breadth-first, shortest path from `first` back to `first` along in-component edges.
+    const parent = new Map<string, string>();
+    const queue = [first];
+    let closing: string | undefined;
+    for (const v of queue) {
+      for (const w of edges.get(v) ?? []) {
+        if (closing !== undefined || !members.has(w)) {
+          continue;
+        }
+        if (w === first) {
+          closing = v;
+        } else if (!parent.has(w)) {
+          parent.set(w, v);
+          queue.push(w);
+        }
+      }
+      if (closing !== undefined) {
+        break;
+      }
+    }
+    const path = [first];
+    for (let at = closing; at !== undefined && at !== first; at = parent.get(at)) {
+      path.splice(1, 0, at);
+    }
+    path.push(first);
+    cycles.push(path);
+  }
+  const order = new Map(nodes.map((n, i) => [n, i]));
+  return cycles.toSorted((a, b) => (order.get(a[0] ?? "") ?? 0) - (order.get(b[0] ?? "") ?? 0));
+}
 
 /**
  * Editor-mode evaluation trace (spec §19.9). When passed, every node and operand reports its
@@ -827,10 +1056,6 @@ function evaluateNode(
     if (!isString(calleeRef)) {
       throw new TypeError("$expression: call target must be a $ref pointer");
     }
-    const callDepth = (iterCtx?.callDepth ?? 0) + 1;
-    if (callDepth > MAX_CALL_DEPTH) {
-      throw new Error(`$expression: call depth exceeded (${MAX_CALL_DEPTH})`);
-    }
     const argValues = Array.isArray(value)
       ? value.map((o, i) => resolveOperand(o, state, event, iterCtx, subTrace(trace, ["value", i])))
       : [];
@@ -876,19 +1101,12 @@ function evaluateNode(
          unlowered only when the document is evaluated standalone. Its parameters are read as the
          document wrote them, so a malformed `null` entry stays possible and is skipped below. */
       const def = callee as RawFormulaDef;
-      const args: FormulaArgs = {};
-      for (const [i, p] of (def.parameters ?? []).entries()) {
-        const name = isString(p) ? p : (p?.name ?? "");
-        if (!name) {
-          continue;
-        }
-        args[name] =
-          argValues[i] === undefined && isNonNullObject(p) && "default" in p
-            ? p.default
-            : argValues[i];
-      }
       // The callee body's node paths are its own tree, not the call site's — no trace inside.
-      return evaluateExpression(def.$expression, state, event, { args, callDepth });
+      return withCallDepth(() =>
+        evaluateExpression(def.$expression, state, event, {
+          args: bindFormulaArgs(def.parameters ?? [], argValues),
+        }),
+      );
     }
     throw new TypeError(`$expression: call target "${calleeRef}" is not callable`);
   }
@@ -1063,7 +1281,7 @@ function evaluateNode(
           perItem,
           state,
           event,
-          { acc, index, item },
+          { ...iterCtx, acc, index, item },
           index === 0 ? subTrace(trace, "value") : undefined,
         );
       }
@@ -1124,17 +1342,6 @@ function compileOperand(operand: JxExpressionOperand | undefined, opts: CompileO
 
   // Literal
   return JSON.stringify(operand);
-}
-
-/**
- * The module-scope function name a named formula compiles to. Shared by call-site emission here and
- * the declaration emission in the compiler targets.
- *
- * @param {string} key
- * @returns {string}
- */
-export function formulaFnName(key: string) {
-  return `_fx_${key.replaceAll(/[^A-Za-z0-9_$]/g, "_")}`;
 }
 
 /**
@@ -1298,16 +1505,6 @@ export function compileExpression(node: JxExpressionNode, opts: CompileOpts = {}
         return helperJs;
       }
       return `window.${calleeRef.slice("window#/".length).replaceAll("/", ".")}(${args.join(", ")})`;
-    }
-    if (calleeRef.startsWith("#/state/")) {
-      const key = calleeRef.slice("#/state/".length);
-      const params = opts.formulaParams?.[key];
-      if (params) {
-        const named = params
-          .map((p, i) => `${JSON.stringify(p)}: ${args[i] ?? "undefined"}`)
-          .join(", ");
-        return `${formulaFnName(key)}(${opts.statePrefix ?? "state"}, { ${named} })`;
-      }
     }
     // Fallback: the scope member itself is callable.
     return `${compileRef(calleeRef, opts)}(${args.join(", ")})`;

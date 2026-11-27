@@ -590,3 +590,35 @@ describe("buildSite — a runtime subpath the package does have", () => {
     expect(existsSync(resolve(DIR, "dist/assets/lit-html/directives/class-map.js"))).toBe(true);
   });
 });
+
+describe("buildSite — a call cycle through project.json state", () => {
+  const DIR = resolve(import.meta.dir, "__test-site-call-cycle__");
+  const formula = (to: string) => ({
+    $expression: { operator: "call", target: { $ref: `#/state/${to}` }, value: [] },
+    parameters: ["x"],
+  });
+
+  beforeAll(() => {
+    scaffold(DIR, { name: "Cycle", state: { a: formula("b") } });
+    writeFileSync(
+      resolve(DIR, "pages/index.json"),
+      JSON.stringify({ $children: ["Home"], state: { b: formula("a") }, tagName: "main" }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(DIR, "pages/about.json"),
+      JSON.stringify({ $children: ["About"], tagName: "main" }),
+      "utf8",
+    );
+  });
+  afterAll(() => rmSync(DIR, { force: true, recursive: true }));
+
+  it("fails that route and names the path", async () => {
+    const { result } = await captured(() => buildSite(DIR));
+    const failures = result.errors.filter((e) => e.startsWith("Error compiling"));
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("Error compiling /");
+    expect(failures[0]).toContain("b → a → b");
+    expect(existsSync(resolve(DIR, "dist/about/index.html"))).toBe(true);
+  });
+});

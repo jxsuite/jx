@@ -18,7 +18,10 @@ import {
   ATTR_HELPER,
   DEFAULT_LIT_HTML_SRC,
   DEFAULT_REACTIVITY_SRC,
+  assertNoCallCycles,
   attrHelperSource,
+  formulaGuardSource,
+  hasCallableEntries,
   booleanAttrValue,
   definitionHasSlot,
   KEYED_LIST_HELPER,
@@ -467,6 +470,7 @@ export function emitElementModule(
 
   // Collect $src imports from state entries before emitting other imports
   const defs = doc.state ?? {};
+  assertNoCallCycles(defs);
   const roles = classifyFunctionEntries(doc);
   const srcImports = emitSrcImports(collectFunctionImports(defs, roles), rewriteSrc);
   // Bundleable specifiers (npm:…, ./relative) are rewritten to their /assets/ bundle URL;
@@ -508,6 +512,9 @@ export function emitElementModule(
     ...(lists.keyed ? KEYED_LIST_IMPORTS : []),
     attrHelperSource(),
   );
+  if (hasCallableEntries(defs)) {
+    lines.push(formulaGuardSource());
+  }
   if (lists.arranged || lists.keyed) {
     lines.push(listHelperSource());
   }

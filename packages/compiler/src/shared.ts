@@ -35,10 +35,15 @@ import type { CssBuildOptions } from "@jxsuite/runtime/css";
 import { isContentProperty, reflectedAttribute } from "@jxsuite/runtime/dom-properties";
 import type { Reflection } from "@jxsuite/runtime/dom-properties";
 import {
+  CALL_DEPTH_EXCEEDED,
+  MAX_CALL_DEPTH,
   compileOperandSource,
   evaluateExpression,
+  findCallCycles,
+  formulaCallable,
   formulaScopeReads,
   inheritableFormulas,
+  isCallableEntry,
   isMutating,
   isPureNamedFormula,
 } from "@jxsuite/runtime/expression";
@@ -140,7 +145,61 @@ export function emitFormulaFn(
       : `_a[${i}]`;
     entries.push(`${JSON.stringify(name)}: ${arg}`);
   }
-  return `(..._a) => { const _args = { ${entries.join(", ")} }; return ${compiledBody}; }`;
+  return `(..._a) => ${FORMULA_GUARD}(() => { const _args = { ${entries.join(", ")} }; return ${compiledBody}; })`;
+}
+
+/** The inlined call-depth guard's function name in a generated module. */
+export const FORMULA_GUARD = "__jxFormula";
+
+/**
+ * The call-depth bound a generated module inlines (spec.md §19.4c): a copy of the interpreter's
+ * `withCallDepth`, with its limit and message serialized from the runtime's exports rather than
+ * retyped. A module that declares a callable entry carries it once, beside `attrHelperSource()`.
+ *
+ * @returns {string} The guard's source, ready to push into a module's line list.
+ */
+export function formulaGuardSource(): string {
+  return (
+    `let __jxFormulaDepth = 0;\n` +
+    `function ${FORMULA_GUARD}(run) {\n` +
+    `  if (__jxFormulaDepth >= ${MAX_CALL_DEPTH}) throw new Error(${JSON.stringify(CALL_DEPTH_EXCEEDED)});\n` +
+    `  __jxFormulaDepth++;\n` +
+    `  try { return run(); } finally { __jxFormulaDepth--; }\n` +
+    `}`
+  );
+}
+
+/**
+ * The message for one call cycle, from its path (`["a", "b", "a"]`).
+ *
+ * @param cycle The path {@link findCallCycles} returned
+ * @returns {string}
+ */
+export function callCycleMessage(cycle: string[]): string {
+  return `$expression: call cycle ${cycle.join(" → ")}: a named formula may not reach itself (spec.md §19.4c)`;
+}
+
+/**
+ * Refuse a scope whose callable entries reach themselves (spec.md §19.4c).
+ *
+ * @param defs The scope's state entries
+ * @throws {Error} One message per cycle, joined by newlines
+ */
+export function assertNoCallCycles(defs: Record<string, JxStateDefinition>): void {
+  const cycles = findCallCycles(defs);
+  if (cycles.length > 0) {
+    throw new Error(cycles.map((c) => callCycleMessage(c)).join("\n"));
+  }
+}
+
+/**
+ * Whether a scope declares a callable entry, so its module needs {@link formulaGuardSource}.
+ *
+ * @param defs The scope's state entries
+ * @returns {boolean}
+ */
+export function hasCallableEntries(defs: Record<string, JxStateDefinition>): boolean {
+  return Object.values(defs).some((d) => isCallableEntry(d));
 }
 
 /**
@@ -1105,6 +1164,7 @@ export function buildInitialScope(
   parentScope: JxScope | null = null,
   options: BuildScopeOptions = {},
 ) {
+  assertNoCallCycles(defs);
   const scope = emptyScope(parentScope);
   // Keys whose real value only exists after hydration, so prerender must not interpolate them —
   // See `readsRuntimeOnlyState`. Seeded from the parent so nested scopes inherit the marks.
@@ -1192,19 +1252,7 @@ export function buildInitialScope(
       entrySources.push([key, JSON.stringify(node)]);
       if (isNamedFormulaDef(def)) {
         // Named formula: callable, positional args mapped onto its declared parameters.
-        const params: readonly FormulaParameter[] = def.parameters;
-        setOwnScopeValue(scope, key, (...argValues: JxScope[string][]) => {
-          const args: JxScope = {};
-          for (const [i, p] of params.entries()) {
-            const name = formulaParameterName(p);
-            if (!name) {
-              continue;
-            }
-            args[name] =
-              argValues[i] === undefined && hasParameterDefault(p) ? p.default : argValues[i];
-          }
-          return evaluateExpression(node, scope, null, { args });
-        });
+        setOwnScopeValue(scope, key, formulaCallable(node, def.parameters, scope));
       } else if (isMutating(node.operator)) {
         setOwnScopeValue(scope, key, (s: JxScope, event: Event) =>
           evaluateExpression(node, s, event),

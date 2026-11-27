@@ -114,7 +114,7 @@ describe("compileClient — structured statement bodies (spec §20)", () => {
       },
       tagName: "div",
     });
-    expect(js).toContain('state["double"] = (..._a) =>');
+    expect(js).toContain('state["double"] = (..._a) => __jxFormula(');
     expect(js).toContain('"n": _a[0]');
   });
 
@@ -146,7 +146,7 @@ describe("compileClient — structured statement bodies (spec §20)", () => {
       },
       tagName: "div",
     });
-    expect(js).toContain('state["applyStep"] = (..._a) =>');
+    expect(js).toContain('state["applyStep"] = (..._a) => __jxFormula(');
     expect(js).toContain('"step": _a[0]');
   });
 

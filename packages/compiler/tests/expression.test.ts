@@ -1,9 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { compileExpression } from "@jxsuite/runtime/expression";
+import {
+  CALL_DEPTH_EXCEEDED,
+  MAX_CALL_DEPTH,
+  compileExpression,
+  evaluateExpression,
+} from "@jxsuite/runtime/expression";
+import { compileClient } from "../src/targets/compile-client";
 import { compileElement } from "../src/compiler";
-import { buildInitialScope } from "../src/shared";
+import {
+  FORMULA_GUARD,
+  assertNoCallCycles,
+  buildInitialScope,
+  callCycleMessage,
+  emitFormulaFn,
+  formulaGuardSource,
+  hasCallableEntries,
+} from "../src/shared";
 import { isFunction } from "@jxsuite/schema/guards";
-import type { JsonValue } from "@jxsuite/schema/types";
+import type { JsonValue, JxExpressionNode } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 
 /** A lowered state handler, invoked as `(state, event)`; the bodies under test never read the event. */
@@ -427,10 +441,98 @@ describe("named formulas — compiler integration", () => {
       tagName: "test-named-formula",
     });
     const { content } = result.files[0]!;
-    expect(content).toContain("this.state.lineTotal = (..._a) =>");
+    expect(content).toContain("this.state.lineTotal = (..._a) => __jxFormula(() => {");
     expect(content).toContain('"price": _a[0]');
     expect(content).toContain('"qty": _a[1] === undefined ? 1 : _a[1]');
     expect(content).toContain("this.state.total = computed(() => this.state.lineTotal(3, 4));");
+  });
+
+  const cycle = {
+    a: {
+      $expression: { operator: "call", target: { $ref: "#/state/b" }, value: [] },
+      parameters: ["x"],
+    },
+    b: {
+      $expression: { operator: "call", target: { $ref: "#/state/a" }, value: [] },
+      parameters: ["x"],
+    },
+  };
+  const cycleMessage = "$expression: call cycle a → b → a: a named formula may not reach itself";
+
+  test("buildInitialScope rejects a call cycle with its path", () => {
+    expect(() => buildInitialScope(cycle)).toThrow(cycleMessage);
+    expect(callCycleMessage(["a", "b", "a"])).toBe(`${cycleMessage} (spec.md §19.4c)`);
+    expect(() => assertNoCallCycles({ lineTotal })).not.toThrow();
+  });
+
+  test("compileElement rejects a call cycle", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+    await expect(
+      compileElement({ children: [], state: cycle, tagName: "test-cycle" }),
+    ).rejects.toThrow(cycleMessage);
+  });
+
+  test("compile() of a client-target document rejects a call cycle", () => {
+    expect(() =>
+      compileClient({ children: [], state: cycle, tagName: "div" }, { title: "T" }),
+    ).toThrow(cycleMessage);
+  });
+
+  test("a module with a callable entry carries the guard once, and one without carries none", async () => {
+    const withFormula = await compileElement({
+      children: [],
+      state: { lineTotal },
+      tagName: "test-guarded",
+    });
+    const without = await compileElement({
+      children: [],
+      state: { n: 1 },
+      tagName: "test-unguarded",
+    });
+    const guard = (js: string) => js.split("function __jxFormula(").length - 1;
+    expect(guard(withFormula.files[0]!.content)).toBe(1);
+    expect(guard(without.files[0]!.content)).toBe(0);
+    const client = compileClient(
+      { children: [], state: { lineTotal }, tagName: "div" },
+      {
+        title: "T",
+      },
+    ).files[0]!.content;
+    expect(guard(client)).toBe(1);
+    const bare = compileClient({ children: [], state: { n: 1 }, tagName: "div" }, { title: "T" })
+      .files[0]!.content;
+    expect(guard(bare)).toBe(0);
+    expect(hasCallableEntries({ lineTotal })).toBe(true);
+    expect(hasCallableEntries({ n: 1 })).toBe(false);
+  });
+
+  test("the inlined guard agrees with the interpreter", () => {
+    // SAFETY: the source declares `__jxFormula(run)` and returns it, a function of one callback.
+    const guard = new Function(`${formulaGuardSource()}\nreturn ${FORMULA_GUARD};`)() as <T>(
+      run: () => T,
+    ) => T;
+    const nest = (n: number): number => (n === 0 ? 0 : guard(() => nest(n - 1)) + 1);
+    expect(nest(MAX_CALL_DEPTH)).toBe(MAX_CALL_DEPTH);
+    expect(() => nest(MAX_CALL_DEPTH + 1)).toThrow(CALL_DEPTH_EXCEEDED);
+    expect(nest(2)).toBe(2);
+  });
+
+  test("emitFormulaFn's callable round-trips to the interpreted result", () => {
+    const body = compileExpression(lineTotal.$expression);
+    // SAFETY: the source evaluates to the positional callable `emitFormulaFn` wrote.
+    const build = new Function(
+      `${formulaGuardSource()}\nreturn ${emitFormulaFn(lineTotal, body)};`,
+    ) as () => (...args: number[]) => number;
+    const fn = build();
+    for (const args of [[3], [3, 4]]) {
+      const call: JxExpressionNode = {
+        operator: "call",
+        target: { $ref: "#/state/lineTotal" },
+        value: args,
+      };
+      const expected = evaluateExpression(call, { lineTotal }, null);
+      expect(Object.is(fn(...args), expected)).toBe(true);
+    }
   });
 
   test("buildInitialScope lowers a named formula to a callable; call sites evaluate", () => {

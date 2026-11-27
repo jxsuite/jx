@@ -52,8 +52,8 @@ The project file binds itself with `"$schema": "./project.schema.json"`, so an e
 The deterministic gate, run after every edit. It walks the project in five passes:
 
 1. Both committed entry documents, for self-containment. A `$ref` that is a relative path, a URI, or a pointer to nothing means they are stale, and the fix is to re-run `jx schema`. This runs first and stops the walk, because every later pass compiles one of these files.
-2. The project file against the generated entry schema.
-3. Every document under `components/`, `pages/`, and `layouts/` against the bundled document schema.
+2. The project file against the generated entry schema, and its named formulas for a formula that reaches itself through `call`.
+3. Every document under `components/`, `pages/`, and `layouts/` against the bundled document schema, and for a named formula that reaches itself (a page together with `project.json`'s formulas).
 4. Every project-local `*.class.json` against the class schema.
 5. Each enabled extension's schema fragments, compiled standalone.
 

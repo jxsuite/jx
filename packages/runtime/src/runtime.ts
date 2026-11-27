@@ -41,10 +41,13 @@ import type { CssBuildOptions, ShadowSetting } from "./css.ts";
 import { associateForm } from "./form-association.ts";
 import type { FormAssociation, FormStateKeys } from "./form-association.ts";
 import {
+  bindFormulaArgs,
   evaluateExpression,
   evaluateOperand,
+  formulaCallable,
   inheritableFormulas,
   isMutating,
+  withCallDepth,
 } from "./expression.ts";
 import { canonicalMapRef, readPath } from "./pointer.ts";
 import type {
@@ -103,7 +106,6 @@ import {
 
 import { readCookie, serializeCookie } from "./cookie.ts";
 import type {
-  CemParameter,
   JsonObject,
   JsonValue,
   JxAttributeValue,
@@ -1212,9 +1214,7 @@ export async function buildScope(
       const node = def.$expression;
       if (isNamedFormulaDef(def)) {
         // A named formula: callable with positional args mapped onto its declared parameters.
-        const params = def.parameters;
-        state[key] = (...argValues: JxScopeValue[]) =>
-          evaluateExpression(node, state, null, { args: bindPositionalArgs(params, argValues) });
+        state[key] = formulaCallable(node, def.parameters, state);
       } else if (isMutating(node.operator)) {
         const handler: JxEventHandler = (s, event) => evaluateExpression(node, s, event);
         state[key] = handler;
@@ -1240,10 +1240,12 @@ export async function buildScope(
       if (Array.isArray(def.parameters) && def.parameters.length > 0) {
         const params = def.parameters;
         state[key] = (...argValues: JxScopeValue[]) =>
-          runStatements(body, state, null, {
-            args: bindPositionalArgs(params, argValues),
-            target: dispatchRoot,
-          });
+          withCallDepth(() =>
+            runStatements(body, state, null, {
+              args: bindFormulaArgs(params, argValues),
+              target: dispatchRoot,
+            }),
+          );
       } else {
         /* The event is optional in fact: a `call` operator or a host invokes a handler with the
            scope alone, and the body then runs with no event rather than an undefined one. */
@@ -1282,34 +1284,6 @@ export async function buildScope(
   }
 
   return state;
-}
-
-/**
- * Map a call's positional arguments onto a definition's declared parameter names, as `$args/<name>`
- * refs read them. A parameter given as an object supplies its `default` for a position the call
- * left undefined. Parameters come from a document that is not schema-validated at runtime, so an
- * entry that names nothing (null, or an object without a `name`) binds nothing.
- *
- * @param parameters The declared parameters, in call order
- * @param argValues The values the call passed, in the same order
- * @returns {JxScope} Name to value, for the body's `$args` refs
- */
-function bindPositionalArgs(
-  parameters: readonly (string | CemParameter | null)[],
-  argValues: readonly JxScopeValue[],
-): JxScope {
-  const args: JxScope = {};
-  for (const [i, p] of parameters.entries()) {
-    const name = isString(p) ? p : (p?.name ?? "");
-    if (!name) {
-      continue;
-    }
-    args[name] =
-      argValues[i] === undefined && p !== null && !isString(p) && "default" in p
-        ? p.default
-        : argValues[i];
-  }
-  return args;
 }
 
 /**

@@ -25,6 +25,8 @@ import {
   ATTR_HELPER,
   refuseBodyWithSrc,
   attrHelperSource,
+  formulaGuardSource,
+  hasCallableEntries,
   collectClientClasses,
   emitExternalClassResolution,
   externalClassHelperSource,
@@ -127,6 +129,7 @@ interface ClientCounter {
   m: number;
   /** Whether any region is rendered through lit-html. */
   needsLit: boolean;
+  needsFormulaGuard: boolean;
   /** Bound style declarations (`_sN`). */
   s: number;
   /** `$switch` regions (`_swN`). */
@@ -207,6 +210,7 @@ export function compileClient(
     h: 0,
     l: 0,
     m: 0,
+    needsFormulaGuard: hasCallableEntries(raw.state ?? {}),
     needsLit: false,
     s: 0,
     sw: 0,
@@ -1159,6 +1163,9 @@ function emitClientModule(
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
   lines.push(...src.imports, ...clientClasses.imports, ...src.loaders, "", attrHelperSource());
+  if (counter.needsFormulaGuard) {
+    lines.push(formulaGuardSource());
+  }
   /* The list rules (compiler.md §4.7), carried only by a module whose document filters, sorts or
      keys a list. */
   if (lists.arranged || lists.keyed) {

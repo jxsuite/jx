@@ -33,7 +33,7 @@ size: S
 
 **Related, no edge**
 
-- `plan:spec/named-formula-recursion` (§19.4c) may add a compiled call-depth bound; after this plan both compiled callables build `_args` through one helper.
+- spec.md §19.4c's call-cycle check (landed) (§19.4c) may add a compiled call-depth bound; after this plan both compiled callables build `_args` through one helper.
 - the shared classifier in `@jxsuite/schema/function-role` (landed) classifies every structured body as `callable` and leaves its lowering to each tier, naming this plan as the owner of the element target's.
 - `plan:spec/expression-build-checks` (§19.5) owns the build error for an `event#/` read outside a handler; whether a callable counts as outside is its Open (recommended: yes).
 - For the lifecycle hooks (`spec.md` §16.4): both tiers call `onMount(state, host)`, so a structured-body `onMount` receives the host as its `event`, and a `{ "stopPropagation": true }` statement in it calls a method an element does not have. That is a §16.4 hook question, not this item.
@@ -49,7 +49,7 @@ size: S
 - **Decided:** the callable declares its event parameter as `null` (`const e = null;`) rather than compiling the statements against a literal `null`, so the body reads like a handler's and the `e?.stopPropagation()`, `e?.preventDefault()` and `(e && e.currentTarget)` forms `compileStatements` already emits stay valid no-ops, as §20.2 requires. An `event#/` read inside a callable is not made null-safe here: it reads `undefined` in the interpreter and throws `TypeError` compiled (`e.key` on `null`). `plan:spec/expression-build-checks` has an Open recommending that §19.5 refuse it at build in every tier, which removes the divergence; no committed document has such a read (Context 3), so this plan does not wait on it.
 - **Decided:** in the element target a callable dispatches from the component instance (`dispatchTarget: "this"`, as the handler form does), which is the interpreter's mount root for a custom element.
 - **Decided:** the compiled callable stays synchronous and returns `undefined`. The interpreter's returns the `Promise` from `runStatements`; aligning the two is `async`, which is §20.2's work.
-- **Decided:** the build-time positional mapping is one private `positionalArgs(params, argValues)` in `shared.ts`, shared by the named-formula callable and the new one. The runtime keeps its own two copies: `plan:spec/named-formula-recursion` rewrites both to carry `callDepth`, and that is the place to fold them into one export.
+- **Decided:** the build-time positional mapping is one private `positionalArgs(params, argValues)` in `shared.ts`, shared by the named-formula callable and the new one. The runtime keeps its own two copies: spec.md §19.4c's call-cycle check (landed) rewrites both to carry `callDepth`, and that is the place to fold them into one export.
 - **Open:** which element does a callable on a compiled page (the client target) dispatch from, having no event? Recommendation: the page's root element, read at dispatch time as `document.body.firstElementChild` (`compileClient` writes the root node as the body's only content), because that is the interpreter's mount root for a page, so a listener on the root, on `document` or on `window` hears the same events in both tiers. The alternative, `document`, is simpler but a listener on the root element would hear the interpreted page and not the compiled one.
 
 ## Implementation

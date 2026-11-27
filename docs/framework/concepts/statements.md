@@ -135,6 +135,8 @@ A structured body follows the named-formula pattern. Without `parameters`, the e
 }
 ```
 
+Like a named formula, a callable body may not reach itself through `call`. See [Expressions](/docs/framework/concepts/expressions).
+
 ## Statements, expressions, or a body string?
 
 The escalation ladder continues inside Shape 4. Prefer the least powerful form:
