@@ -5,12 +5,15 @@ import { join, resolve } from "node:path";
 import {
   ADDON_DIR,
   addonFiles,
+  BACKEND_CODE_TOOLS,
   BACKEND_DATA,
   BACKEND_MODULES,
   BACKEND_NATIVES,
   bundleBackend,
   moduleClosure,
+  napiTriple,
   stageAddon,
+  stageCodeTools,
   stageModuleClosure,
   WORKSPACE_MODULES,
 } from "../scripts/lib/backend-bundle";
@@ -166,6 +169,57 @@ describe("staging and failure", () => {
       );
     } finally {
       build.mockRestore();
+    }
+  });
+});
+
+describe("the code services' tools", () => {
+  test("a triple is napi-rs's name for the target", () => {
+    expect(napiTriple("darwin", "arm64")).toBe("darwin-arm64");
+    expect(napiTriple("linux", "x64")).toBe("linux-x64-gnu");
+    expect(napiTriple("linux", "arm64")).toBe("linux-arm64-gnu");
+    expect(napiTriple("win32", "x64")).toBe("win32-x64-msvc");
+    expect(napiTriple("freebsd", "x64")).toBe("freebsd-x64");
+  });
+
+  test("the staged paths are the ones each tool's loader probes first", () => {
+    expect(BACKEND_CODE_TOOLS("linux-x64-gnu")).toEqual([
+      {
+        from: "../../node_modules/@oxfmt/binding-linux-x64-gnu/oxfmt.linux-x64-gnu.node",
+        to: "oxfmt.linux-x64-gnu.node",
+      },
+      { from: "../../node_modules/oxlint/package.json", to: "oxlint/package.json" },
+      { from: "../../node_modules/oxlint/bin/oxlint", to: "oxlint/bin/oxlint" },
+      { from: "../../node_modules/oxlint/dist", to: "oxlint/dist" },
+      {
+        from: "../../node_modules/@oxlint/binding-linux-x64-gnu/oxlint.linux-x64-gnu.node",
+        to: "oxlint/dist/oxlint.linux-x64-gnu.node",
+      },
+    ]);
+  });
+
+  test("no destination sits under node_modules", () => {
+    expect(BACKEND_CODE_TOOLS().filter(({ to }) => to.includes("node_modules"))).toEqual([]);
+  });
+
+  test("every source for this host's triple exists on disk", () => {
+    expect(BACKEND_CODE_TOOLS().filter(({ from }) => !existsSync(resolve(DESKTOP, from)))).toEqual(
+      [],
+    );
+  });
+
+  test("staging copies each row, and names a source that is not installed", () => {
+    const outdir = mkdtempSync(join(tmpdir(), "jx-code-tools-"));
+    try {
+      stageCodeTools(outdir);
+      for (const { to } of BACKEND_CODE_TOOLS()) {
+        expect(existsSync(join(outdir, to))).toBe(true);
+      }
+      expect(() => stageCodeTools(outdir, BACKEND_CODE_TOOLS("plan9-mips"))).toThrow(
+        "binding-plan9-mips",
+      );
+    } finally {
+      rmSync(outdir, { force: true, recursive: true });
     }
   });
 });
