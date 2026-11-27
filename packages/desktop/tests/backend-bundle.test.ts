@@ -156,6 +156,21 @@ describe("staging and failure", () => {
     expect(addonFiles(ADDON_DIR).length).toBeGreaterThan(0);
   });
 
+  test("bundling with stageModules stages the code tools and the module closure beside it", async () => {
+    const outdir = mkdtempSync(join(tmpdir(), "jx-backend-staged-"));
+    try {
+      await bundleBackend(outdir, { stageModules: true });
+      for (const { to } of BACKEND_CODE_TOOLS()) {
+        expect(existsSync(join(outdir, to))).toBe(true);
+      }
+      for (const name of [...BACKEND_NATIVES, ...BACKEND_MODULES]) {
+        expect(existsSync(join(outdir, "node_modules", name, "package.json"))).toBe(true);
+      }
+    } finally {
+      rmSync(outdir, { force: true, recursive: true });
+    }
+  }, 120_000);
+
   test("a failed build is an error carrying the bundler's messages", async () => {
     const build = spyOn(Bun, "build").mockResolvedValueOnce({
       logs: [],
