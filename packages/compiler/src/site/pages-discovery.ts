@@ -21,7 +21,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { compareRoutes, fileToRoute as routeFromFileName } from "@jxsuite/site/routes";
+import {
+  compareRoutes,
+  fileToRoute as routeFromFileName,
+  pageRelativePath,
+  routePriority,
+} from "@jxsuite/site/routes";
 import { pageCount, pageSlice, pageUrl, pagedSource, pagination } from "@jxsuite/site/pagination";
 import type { PagePagination, PagedSource } from "@jxsuite/site/pagination";
 import { extname, join, relative, resolve } from "node:path";
@@ -199,7 +204,7 @@ async function declaredTranslationKey(
  *
  * @param {string} pagesDir - Absolute path to the pages/ directory
  * @param {FormatRegistry} [registry] - Format registry; its "page"-kind extensions are routable
- * @returns {Promise<Route[]>} Sorted route table (static routes first, then dynamic)
+ * @returns {Promise<Route[]>} Route table in match order (spec §4.4)
  */
 export async function discoverPages(pagesDir: string, registry?: FormatRegistry) {
   const routes: Route[] = [];
@@ -210,10 +215,82 @@ export async function discoverPages(pagesDir: string, registry?: FormatRegistry)
   ]);
   await walkDir(pagesDir, pagesDir, routes, pageExtensions, registry);
 
-  // Static routes first, then dynamic, then catch-all (spec §4.4) — the shared ordering.
-  routes.sort(compareRoutes);
+  // Segment-by-segment priority (spec §4.4), ties broken by file path so every host agrees.
+  routes.sort(
+    (a, b) =>
+      compareRoutes(a, b) ||
+      pageRelativePath(a.relativePath).localeCompare(pageRelativePath(b.relativePath)),
+  );
 
   return routes;
+}
+
+/** Two pages that generate one concrete URL, and which of them builds it. */
+export interface RouteCollision {
+  url: string;
+  kind: "outranked" | "tie" | "repeat";
+  /** Page path (`pages/…`) of the route that builds the URL. */
+  kept: string;
+  /** Page path (`pages/…`) of the route that does not. */
+  dropped: string;
+  message: string;
+}
+
+/** The routes {@link resolveRouteCollisions} keeps, and one collision per route it drops. */
+export interface RouteResolution {
+  routes: Route[];
+  collisions: RouteCollision[];
+}
+
+/** The page path of a route, as authors write it. */
+function pagePath(route: Route): string {
+  return `pages/${pageRelativePath(route.relativePath)}`;
+}
+
+/**
+ * Leave one route per concrete URL (spec §4.4, "Two pages, one URL").
+ *
+ * Precondition: `routes` is {@link expandDynamicRoutes}' output, which keeps {@link discoverPages}'
+ * order with each template's expansions contiguous, so the first route for a URL is the one with
+ * priority. A trailing slash is not significant, so a catch-all expanded with an empty rest meets
+ * the index page.
+ *
+ * @param {Route[]} routes - Expanded routes, in priority order
+ * @returns {{ routes: Route[]; collisions: RouteCollision[] }} The routes kept, and one collision
+ *   per route dropped
+ */
+export function resolveRouteCollisions(routes: Route[]): RouteResolution {
+  const seen = new Map<string, Route>();
+  const kept: Route[] = [];
+  const collisions: RouteCollision[] = [];
+  for (const route of routes) {
+    const url =
+      route.urlPattern.length > 1 ? route.urlPattern.replace(/\/+$/, "") : route.urlPattern;
+    const first = seen.get(url);
+    if (first === undefined) {
+      seen.set(url, route);
+      kept.push(route);
+      continue;
+    }
+    const keptPath = pagePath(first);
+    const droppedPath = pagePath(route);
+    let kind: RouteCollision["kind"] = "outranked";
+    let message = `${keptPath} and ${droppedPath} both generate ${url}. ${keptPath} is the more specific route, so it builds ${url} and ${droppedPath} does not.`;
+    if (first.sourcePath === route.sourcePath) {
+      kind = "repeat";
+      message = `The $paths of ${keptPath} yields ${url} more than once; it is built once.`;
+    } else if (
+      routePriority(
+        routeFromFileName(first.relativePath),
+        routeFromFileName(route.relativePath),
+      ) === 0
+    ) {
+      kind = "tie";
+      message = `${keptPath} and ${droppedPath} both generate ${url}, and neither route is more specific than the other. Rename or remove one of them.`;
+    }
+    collisions.push({ dropped: droppedPath, kept: keptPath, kind, message, url });
+  }
+  return { collisions, routes: kept };
 }
 
 /**

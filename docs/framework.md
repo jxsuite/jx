@@ -52,14 +52,14 @@ A Jx component is a single `.json` file that can be fully self-describing:
 
 Every Jx document has these top-level fields:
 
-| Field      | Required    | Description                                          |
-| ---------- | ----------- | ---------------------------------------------------- |
-| `$schema`  | Recommended | URI identifying the Jx dialect version               |
-| `$id`      | Recommended | Component identifier                                 |
-| `$defs`    | Optional    | Pure JSON Schema type definitions (tooling only)     |
-| `state`    | Optional    | Reactive state: signals, computed values, functions  |
-| `tagName`  | Required    | HTML tag name for the root element                   |
-| `children` | Optional    | Array of child element definitions and/or text nodes |
+| Field      | Required    | Description                                           |
+| ---------- | ----------- | ----------------------------------------------------- |
+| `$schema`  | Recommended | URI identifying the Jx dialect version                |
+| `$id`      | Recommended | Component identifier                                  |
+| `$defs`    | Optional    | Pure JSON Schema type definitions (tooling only)      |
+| `state`    | Optional    | Reactive state: signals, computed values, functions   |
+| `tagName`  | Optional    | HTML tag name for the root element; `div` when absent |
+| `children` | Optional    | Array of child element definitions and/or text nodes  |
 
 ## Reserved keywords
 

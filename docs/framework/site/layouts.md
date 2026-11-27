@@ -46,7 +46,7 @@ Pages opt in with a top-level `$layout`, resolved from the **project root** (not
 - If a page omits `$layout`, the site default from the project file `defaults.layout` applies.
 - `"$layout": false` renders the page with no layout at all, which suits standalone landing pages and embeds.
 
-The page's `children` are distributed into the layout's `<slot>` positions when the page compiles.
+The page's `children` are distributed into the layout's `<slot>` positions when the page compiles. The layout's root element is the page's root: the page's `state`, `style` and `attributes` extend it, and a `tagName` at the top of the page is not used.
 
 ## Named slots
 

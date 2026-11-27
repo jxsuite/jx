@@ -26,6 +26,7 @@ let sitemap = "";
 /** Distinct, in the past, and not "now" — so a passing assertion cannot be a coincidence. */
 const FIRST_EDITED = new Date("2024-03-04T05:06:07.000Z");
 const SECOND_EDITED = new Date("2021-11-12T13:14:15.000Z");
+const ITEMS_EDITED = new Date("2019-07-08T09:10:11.000Z");
 
 /** The `<lastmod>` the sitemap gives one URL. */
 function lastmodOf(url: string): string | null {
@@ -38,12 +39,15 @@ beforeAll(async () => {
   installWorkspaceExtension(root, "@jxsuite/parser");
   mkdirSync(join(root, "pages/posts"), { recursive: true });
   mkdirSync(join(root, "content/posts"), { recursive: true });
+  mkdirSync(join(root, "pages/items"), { recursive: true });
+  mkdirSync(join(root, "content/items"), { recursive: true });
 
   writeFileSync(
     join(root, "project.json"),
     JSON.stringify({
       build: { outDir: "./dist" },
       content: {
+        items: { format: "json", source: "./content/items/" },
         posts: {
           format: "Markdown",
           schema: { properties: { title: { type: "string" } }, type: "object" },
@@ -68,6 +72,16 @@ beforeAll(async () => {
       tagName: "article",
     }),
   );
+  writeFileSync(
+    join(root, "pages/items/[slug].json"),
+    JSON.stringify({
+      $paths: { contentType: "items", field: "id", param: "slug" },
+      children: [{ children: ["item"], tagName: "h1" }],
+      tagName: "article",
+    }),
+  );
+  writeFileSync(join(root, "content/items/list.json"), JSON.stringify([{ id: "a" }, { id: "b" }]));
+  utimesSync(join(root, "content/items/list.json"), ITEMS_EDITED, ITEMS_EDITED);
   writeFileSync(join(root, "content/posts/first.md"), "---\ntitle: First\n---\nA.\n");
   writeFileSync(join(root, "content/posts/second.md"), "---\ntitle: Second\n---\nB.\n");
 
@@ -97,6 +111,11 @@ describe("sitemap <lastmod> for generated routes", () => {
     const first = lastmodOf("https://lastmod.example/posts/first/");
     const second = lastmodOf("https://lastmod.example/posts/second/");
     expect(first).not.toBe(second);
+  });
+
+  it("dates a route generated from a JSON entry by that entry's file", () => {
+    expect(lastmodOf("https://lastmod.example/items/a/")).toBe("2019-07-08T09:10:11Z");
+    expect(lastmodOf("https://lastmod.example/items/b/")).toBe("2019-07-08T09:10:11Z");
   });
 
   // An authored page has no entry behind it, so its own file is still the right answer.

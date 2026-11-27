@@ -257,9 +257,9 @@ Because the rewrite happens in the loader, every consumer of `projectData` — s
 
 ### 9.3 Date coercion
 
-> **Status: Partial.** `coerceEntryDates` (`extensions/parser/src/dates.ts`) runs in `loadContentType` between a format class's `load` and `validateEntries`, but only on the local format-class branch: native JSON collections and remote http(s) sources reach `validateEntries` uncoerced, so a declared date there is left as authored. An offset, fractional-second or zone-less date-time passes silently and is never normalized to UTC, because `isCoercedDate` accepts every RFC 3339 form; only a value that is not RFC 3339 at all draws the "was not coerced" warning. `_meta.mtime` is stamped by `Markdown.load` alone; `Csv.load` and `loadJSONEntries` set no `_meta`, so CSV and JSON entries carry no modification time.
+> **Status: Implemented.**
 
-A field the content-type schema declares as `format: "date"` or `format: "date-time"` is normalized to RFC 3339:
+A field the content-type schema declares as `format: "date"` or `format: "date-time"` is normalized to RFC 3339 by the content loader, once, after a format class's `load` and before validation, whichever source produced the entry: a format class's local files, a native JSON collection or a remote `http(s)` source:
 
 | Declared    | Stored                                                  |
 | ----------- | ------------------------------------------------------- |
@@ -270,13 +270,13 @@ A field the content-type schema declares as `format: "date"` or `format: "date-t
 
 **Why UTC.** Mixed offsets do not sort lexicographically: `2025-03-04T01:00:00+02:00` sorts _after_ `2025-03-04T00:00:00Z` as text and is _earlier_ in fact. Normalizing makes the sort correct by construction rather than correct by accident for ISO 8601.
 
-**Accepted**, in order: a `Date` instance, an RFC 3339 string, a bare `YYYY-MM-DD`. **Everything else is refused**, left exactly as authored, and reported naming the collection, entry, field and value. `03/04/2025` is March 4th or April 3rd depending on the reader and `new Date()` resolves it by implementation-defined rules, so guessing is the failure this pass exists to prevent — refusing is the feature.
+**Accepted**, in order: a `Date` instance, an RFC 3339 string, a bare `YYYY-MM-DD`. **Everything else is refused**, left exactly as authored, and reported once, naming the collection, entry, field and value. `03/04/2025` is March 4th or April 3rd depending on the reader and `new Date()` resolves it by implementation-defined rules, so guessing is the failure this pass exists to prevent — refusing is the feature.
 
 When coercion rewrote a value the authored text is kept at `_meta.rawDates[field]`, because a collection that genuinely means "7pm local" has had that thrown away by the normalized instant.
 
-**`_meta.mtime`.** Every loaded entry carries its source file's modification time as RFC 3339. It is the only date a file always has, so it is the fallback a feed uses when the frontmatter carries none (`site-architecture.md` §6.7) — and it is what would let the sitemap stop giving every page generated from one template that template's `<lastmod>`.
+**`_meta.mtime`.** Every entry loaded from a local file carries that file's modification time as a UTC RFC 3339 timestamp without fractional seconds. The loader stamps it after `load`, so every format class's entries carry it, and keeps a value the class set itself. A file holding many entries (a CSV, a JSON array) gives each the file's time, so editing one row re-dates them all. An entry from a remote source has no file and carries none: `Last-Modified` is optional, and a generated export's is often the time of the request, which would re-date every entry on every build. The modification time is the only date a file always has, so it is the fallback a feed uses when the frontmatter carries none (`site-architecture.md` §6.7), and it dates a route generated from an entry by that entry rather than by its template (`site-architecture.md` §8.4.1); a route whose entry carries none is dated by its template.
 
-**A schemaless collection is not covered.** `MarkdownCollection` (§6) globs and sorts without a content-type schema, so nothing can know which of its frontmatter fields is a date. Its default `sortBy: "frontmatter.date"` compares text, which is correct for `YYYY-MM-DD` and wrong for an offset date-time. Declaring the field in a content type is what fixes it; inferring would mean guessing, which §9.3 refuses everywhere else.
+**A schemaless collection is not covered.** `MarkdownCollection` (§6) globs and sorts without a content-type schema, so nothing can know which of its frontmatter fields is a date. Its default `sortBy: "frontmatter.date"` compares text, which is correct for `YYYY-MM-DD` and wrong for an offset date-time. Declaring the field in a content type is what fixes it; inferring would mean guessing, which §9.3 refuses everywhere else. Nor is a format class resolved at runtime through `$prototype` (§3.1, §4's `resolve`): it reads its source without the loader, so its dates are as authored.
 
 ### 9.4 Source filtering: `exclude` and `where`
 

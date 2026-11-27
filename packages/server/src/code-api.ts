@@ -5,12 +5,16 @@
  * CLI) a function body. A body may be TypeScript (`spec.md` §23.1), so both read it as `.ts`.
  */
 
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
+import { format } from "oxfmt";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import type { JsonValue } from "@jxsuite/schema/types";
-import { dirname, join } from "node:path";
-import { existsSync } from "node:fs";
-import { unlink } from "node:fs/promises";
+import type { CodeServiceResult } from "@jxsuite/protocol";
 import { formatBody } from "./code-format.ts";
 import { problem } from "./problem.ts";
 
@@ -32,36 +36,82 @@ interface OxcDiagnostic {
   [key: string]: JsonValue | undefined;
 }
 
+/** The actions the code services answer, in the order the editor asks for them. */
+export const CODE_SERVICE_ACTIONS = ["format", "lint"] as const;
+
+/** What a request body carries, once narrowed: anything else is dropped. */
 interface CodeApiBody {
   code?: string;
   args?: string[];
 }
 
-const OXLINT_NAME = process.platform === "win32" ? "oxlint.exe" : "oxlint";
+/**
+ * Run oxlint's CLI the way the host runs JavaScript: a script is started as `[process.execPath,
+ * script]`, which is Bun on the dev server and Electron's own Node in the packaged application, and
+ * `ELECTRON_RUN_AS_NODE` makes the second behave as plain Node. No host needs a `node` on its
+ * PATH.
+ */
+const RUN_AS_NODE = { ELECTRON_RUN_AS_NODE: "1" };
+
+/** The first file named `name` on `PATH`, or null. */
+function onPath(name: string): string | null {
+  const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`] : [name];
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    for (const candidate of names) {
+      const path = join(dir, candidate);
+      if (dir && existsSync(path)) {
+        return path;
+      }
+    }
+  }
+  return null;
+}
 
 /**
- * Locate the oxlint CLI: explicit JX_OXLINT_BIN override (empty value = disable lint outright),
- * then a walk up from this module probing node_modules/.bin (finds the workspace root in the
- * monorepo and the hoisted bin for npm consumers), then PATH. Null when oxlint is unavailable —
- * e.g. the packaged desktop app, where the lint endpoint quietly returns no diagnostics.
+ * Locate the oxlint CLI as a command to spawn. In order: an explicit JX_OXLINT_BIN override (empty
+ * means lint is disabled outright); the copy a packaged application stages beside its bundled
+ * module (`oxlint/bin/oxlint`); a walk up from this module for `node_modules/oxlint/bin/oxlint`,
+ * which is the monorepo's and the hoisted install's; and `oxlint` on PATH. Null when none exists,
+ * and lint then answers no diagnostics.
+ *
+ * @param startDir Where the search starts, the directory of this module unless a test says so.
  */
-export function resolveOxlintBin(startDir: string = import.meta.dir): string | null {
+export function resolveOxlintCommand(startDir: string = import.meta.dirname): string[] | null {
   const override = process.env.JX_OXLINT_BIN;
   if (override !== undefined) {
-    return override || null;
+    return override ? [override] : null;
+  }
+  const staged = join(startDir, "oxlint", "bin", "oxlint");
+  if (existsSync(staged)) {
+    return [process.execPath, staged];
   }
   let dir = startDir;
   for (;;) {
-    const candidate = join(dir, "node_modules", ".bin", OXLINT_NAME);
+    const candidate = join(dir, "node_modules", "oxlint", "bin", "oxlint");
     if (existsSync(candidate)) {
-      return candidate;
+      return [process.execPath, candidate];
     }
     const parent = dirname(dir);
     if (parent === dir) {
-      return Bun.which("oxlint", { PATH: process.env.PATH ?? "" });
+      const found = onPath("oxlint");
+      return found === null ? null : [found];
     }
     dir = parent;
   }
+}
+
+let formatterProbe: Promise<boolean> | undefined;
+
+/**
+ * Whether the formatter's native binding loads on this host. Settled once: the editor asks to
+ * format and to lint together when it opens, and a binding that is missing is missing every time.
+ */
+export function formatterLoads(): Promise<boolean> {
+  formatterProbe ??= format("probe.js", "0", {}).then(
+    () => true,
+    () => false,
+  );
+  return formatterProbe;
 }
 
 // ─── Wrapper utilities ───────────────────────────────────────────────────────
@@ -99,9 +149,131 @@ function adjustDiagnostics(diagnostics: OxcDiagnostic[], headerLen: number) {
   });
 }
 
+// ─── Services ────────────────────────────────────────────────────────────────
+
+/** Format a body; null when the formatter cannot load. A body it cannot parse comes back as sent. */
+async function formatCode({ code }: CodeApiBody): Promise<CodeServiceResult | null> {
+  if (!(await formatterLoads())) {
+    return null;
+  }
+  if (!code?.trim()) {
+    return { code: "", errors: [] };
+  }
+  try {
+    const result = await formatBody(code);
+    return { code: result.code, errors: result.errors.map((message) => ({ message })) };
+  } catch (error) {
+    return { code, errors: [{ message: errorMessage(error) }] };
+  }
+}
+
+/** Run a command to its end and read what it printed. */
+function output(command: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const [file = "", ...args] = command;
+    const child = spawn(file, args, {
+      cwd,
+      env: { ...process.env, ...RUN_AS_NODE },
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let text = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      text += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", () => resolve(text));
+  });
+}
+
+/**
+ * Lint a body with oxlint's default rules. The body is written into a private directory beside an
+ * empty configuration given with `-c`, which is also the working directory: oxlint otherwise uses
+ * the nearest `.oxlintrc.json` above where it runs, and a world-writable temp directory is a place
+ * another user could plant one.
+ */
+async function lintCode({ code, args }: CodeApiBody): Promise<CodeServiceResult> {
+  if (!code?.trim()) {
+    return { diagnostics: [] };
+  }
+  const command = resolveOxlintCommand();
+  if (!command) {
+    // No oxlint anywhere: lint quietly disables.
+    return { diagnostics: [] };
+  }
+  const wrapped = wrapBody(code, args);
+  const headerLen = wrapped.indexOf("\n") + 1;
+  const dir = await mkdtemp(join(tmpdir(), "jx-lint-"));
+  try {
+    const config = join(dir, ".oxlintrc.json");
+    const file = join(dir, "fn.ts");
+    await writeFile(config, "{}");
+    await writeFile(file, wrapped);
+    const text = await output(
+      [...command, "-c", config, "--format=json", "-A", "no-unused-vars", file],
+      dir,
+    );
+    /* SAFETY: `oxlint --format=json` prints `{ diagnostics: [...] }` whose labels each carry a
+       numeric `span.line`/`span.offset`; output that is not JSON throws into the catch below. */
+    const parsed = JSON.parse(text) as { diagnostics?: OxcDiagnostic[] };
+    const adjusted = adjustDiagnostics(parsed.diagnostics ?? [], headerLen);
+    /* SAFETY: every member was just parsed from JSON, so each diagnostic is a JSON value; the
+       interface leaves its optional `labels` open to `undefined`, which a parse never produces. */
+    return { diagnostics: adjusted as JsonValue[] };
+  } catch (error) {
+    return { diagnostics: [], error: errorMessage(error) };
+  } finally {
+    await rm(dir, { force: true, recursive: true });
+  }
+}
+
+/* oxlint-disable deslop/no-unknown-parameters, deslop/no-runtime-typeof -- A code-service payload is
+   the editor's JSON body at the host boundary, and narrowing it member by member is the parse. */
+
+/** Keep `code` when it is a string and `args` when it is a list of them; drop everything else. */
+function narrow(payload: unknown): CodeApiBody {
+  const body: CodeApiBody = {};
+  if (!isJsonObject(payload)) {
+    return body;
+  }
+  const { code, args } = payload;
+  if (typeof code === "string") {
+    body.code = code;
+  }
+  if (Array.isArray(args) && args.every((arg) => typeof arg === "string")) {
+    body.args = args;
+  }
+  return body;
+}
+
+/**
+ * Answer one code-service request, with no HTTP in between: the dev server's route and the desktop
+ * backend's `codeService` request both call it.
+ *
+ * @param action One of {@link CODE_SERVICE_ACTIONS}.
+ * @param payload The request body, `{ code, args? }`; anything else is read as an empty body.
+ * @returns The result, or null for an unknown action and for `format` where the formatter cannot
+ *   load.
+ */
+export async function runCodeService(
+  action: string,
+  payload: unknown,
+): Promise<CodeServiceResult | null> {
+  if (action === "format") {
+    return formatCode(narrow(payload));
+  }
+  if (action === "lint") {
+    return lintCode(narrow(payload));
+  }
+  return null;
+}
+/* oxlint-enable deslop/no-unknown-parameters, deslop/no-runtime-typeof */
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 /**
+ * The HTTP adapter of {@link runCodeService}.
+ *
  * @param {Request} req
  * @param {URL} url
  */
@@ -110,89 +282,20 @@ export async function handleCodeApi(req: Request, url: URL) {
   if (!path.startsWith("/__studio/code/") || req.method !== "POST") {
     return null;
   }
+  const action = path.slice("/__studio/code/".length);
+  if (!CODE_SERVICE_ACTIONS.some((known) => known === action)) {
+    return null;
+  }
 
-  let body: CodeApiBody;
+  let body: unknown;
   try {
-    /* SAFETY: the Studio function editor is this route's only client, and it posts `{ code, args }`
-       with a string body and string parameter names; malformed JSON is refused just below. */
-    body = (await req.json()) as CodeApiBody;
+    body = await req.json();
   } catch {
     return problem("invalidRequest", "Invalid JSON");
   }
 
-  const action = path.slice("/__studio/code/".length);
-
-  // ── Format ─────────────────────────────────────────────────────────────────
-
-  if (action === "format") {
-    const { code } = body;
-    if (!code?.trim()) {
-      return Response.json({ code: "", errors: [] });
-    }
-
-    try {
-      const result = await formatBody(code);
-      return Response.json({
-        code: result.code,
-        errors: result.errors.map((message) => ({ message })),
-      });
-    } catch (error) {
-      return Response.json({
-        code,
-        errors: [{ message: errorMessage(error) }],
-      });
-    }
-  }
-
-  // ── Lint ───────────────────────────────────────────────────────────────────
-
-  if (action === "lint") {
-    const { code, args } = body;
-    if (!code?.trim()) {
-      return Response.json({ diagnostics: [] });
-    }
-
-    const oxlintBin = resolveOxlintBin();
-    if (!oxlintBin) {
-      // No oxlint anywhere (packaged desktop app) — lint quietly disables.
-      return Response.json({ diagnostics: [] });
-    }
-
-    const wrapped = wrapBody(code, args);
-    const headerLen = wrapped.indexOf("\n") + 1;
-    const tmpFile = join(
-      tmpdir(),
-      `__jx_lint_${Date.now()}_${Math.random().toString(36).slice(2)}.ts`,
-    );
-
-    try {
-      await Bun.write(tmpFile, wrapped);
-      // Run from the temp directory, so the body gets oxlint's defaults and not the rules of
-      // The repository the server happens to be started in.
-      const proc = Bun.spawn([oxlintBin, "--format=json", "-A", "no-unused-vars", tmpFile], {
-        cwd: tmpdir(),
-        stderr: "pipe",
-        stdout: "pipe",
-      });
-      const output = await new Response(proc.stdout).text();
-      await proc.exited;
-
-      /* SAFETY: `oxlint --format=json` prints `{ diagnostics: [...] }` whose labels each carry a
-         numeric `span.line`/`span.offset`; output that is not JSON throws into the catch below. */
-      const parsed = JSON.parse(output) as { diagnostics?: OxcDiagnostic[] };
-      const adjusted = adjustDiagnostics(parsed.diagnostics ?? [], headerLen);
-      return Response.json({ diagnostics: adjusted });
-    } catch (error) {
-      return Response.json({
-        diagnostics: [],
-        error: errorMessage(error),
-      });
-    } finally {
-      try {
-        await unlink(tmpFile);
-      } catch {}
-    }
-  }
-
-  return null;
+  const result = await runCodeService(action, body);
+  return result === null
+    ? problem("capabilityUnavailable", "The formatter did not load, so format is unavailable")
+    : Response.json(result);
 }

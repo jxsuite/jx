@@ -57,11 +57,12 @@ All file operations are constrained to the project root (path traversal is rejec
 
 OXC-powered tools for the Studio function body editor:
 
-| Endpoint                     | Tool             | Description         |
-| ---------------------------- | ---------------- | ------------------- |
-| `POST /__studio/code/format` | oxfmt            | Format a JS snippet |
-| `POST /__studio/code/minify` | `Bun.Transpiler` | Minify a JS snippet |
-| `POST /__studio/code/lint`   | oxlint           | Lint a JS snippet   |
+| Endpoint                     | Tool   | Description         |
+| ---------------------------- | ------ | ------------------- |
+| `POST /__studio/code/format` | oxfmt  | Format a JS snippet |
+| `POST /__studio/code/lint`   | oxlint | Lint a JS snippet   |
+
+`@jxsuite/server/code-api` exports `runCodeService`, the same dispatch without HTTP, which the desktop backend answers its `codeService` request with.
 
 ## Build pipeline
 
@@ -69,9 +70,11 @@ OXC-powered tools for the Studio function body editor:
 
 ## Dependencies
 
-| Package    | Purpose                       |
-| ---------- | ----------------------------- |
-| `chokidar` | File watching for live reload |
+| Package    | Purpose                                                       |
+| ---------- | ------------------------------------------------------------- |
+| `chokidar` | File watching for live reload                                 |
+| `oxfmt`    | Formats function bodies for the code services                 |
+| `oxlint`   | Lints function bodies, run as a CLI by the host's own runtime |
 
 | `@npmcli/arborist` | Package operations (npm's installer) | | `npm-package-arg` | Validating a package spec before anything is installed | | `ws` | WebSockets for `serve()` on Node |
 
