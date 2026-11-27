@@ -49,7 +49,7 @@ function toDateOnly(d: Date): string {
 }
 
 /** A `Date` to RFC 3339 in UTC, without fractional seconds. */
-function toInstant(d: Date): string {
+export function toInstant(d: Date): string {
   return `${toDateOnly(d)}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}Z`;
 }
 
