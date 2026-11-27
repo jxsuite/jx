@@ -24,7 +24,7 @@ Ship compiled output to production and the eval requirement disappears, which is
 
 ## The interpreter needs `'unsafe-eval'`
 
-The interpreting runtime, meaning the dev server, the Studio canvas, and `@jxsuite/runtime` used directly as a library, compiles `${}` templates and inline `body` functions with `new Function` on the fly. Any page that hosts the interpreter must allow `'unsafe-eval'` in its CSP.
+The interpreting runtime, meaning the Studio canvas and live preview and `@jxsuite/runtime` loaded by a page of your own (through `mount()`, for example), compiles `${}` templates and inline `body` functions with `new Function` on the fly. Any page that hosts the interpreter must allow `'unsafe-eval'` in its CSP. `jx dev` on a site project serves compiled pages, which need none.
 
 :::doc-warning
 `${}` templates are **full JavaScript**, not a sandbox. A template has the component's `state` in scope, but also the entire global environment, and it can assign or call side effects. Do not render a template built from untrusted input in the interpreting runtime.

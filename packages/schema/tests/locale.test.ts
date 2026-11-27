@@ -8,6 +8,7 @@ import {
   localeOfPath,
   localeOfRoute,
   localeUrlPrefix,
+  malformedLocaleError,
   servedLocaleOfPath,
   primaryLanguage,
   resolveI18n,
@@ -24,7 +25,35 @@ function project(i18n?: ProjectConfig["i18n"]): ProjectConfig {
   return config;
 }
 
+describe("malformedLocaleError", () => {
+  test("names the whitespace when that is the only defect", () => {
+    const message = malformedLocaleError("i18n.locales", "en ");
+    expect(message).toContain("has whitespace around it");
+    expect(message).toContain('Write "en"');
+  });
+
+  test("keeps the grammar sentence for anything else", () => {
+    const grammar = (tag: string) =>
+      `i18n.locales: "${tag}" is not a well-formed BCP 47 language tag.`;
+    expect(malformedLocaleError("i18n.locales", "en_US")).toBe(grammar("en_US"));
+    expect(malformedLocaleError("i18n.locales", " en_US")).toBe(grammar(" en_US"));
+    expect(malformedLocaleError("i18n.locales", 42)).toBe(grammar("42"));
+  });
+});
+
 describe("resolveI18n", () => {
+  test("a padded tag is a build error, not a silent trim", () => {
+    const { errors, i18n } = resolveI18n(
+      project({ defaultLocale: "en ", locales: ["en ", " fr"] }),
+    );
+    expect(i18n).toBeNull();
+    expect(errors.filter((e) => e.includes("whitespace"))).toHaveLength(3);
+    expect(errors.some((e) => e.startsWith("i18n.defaultLocale"))).toBe(true);
+    const partial = resolveI18n(project({ defaultLocale: "en", locales: ["en", " fr"] }));
+    expect(partial.i18n?.locales).toEqual(["en"]);
+    expect(partial.errors).toHaveLength(1);
+  });
+
   test("a project without i18n resolves to null, not to a default", () => {
     expect(resolveI18n(project())).toEqual({ errors: [], i18n: null });
   });
@@ -268,7 +297,12 @@ describe("canonicalizeLocale", () => {
   test("applies BCP 47 case conventions", () => {
     expect(canonicalizeLocale("EN-us")).toBe("en-US");
     expect(canonicalizeLocale("zh-hant-tw")).toBe("zh-Hant-TW");
-    expect(canonicalizeLocale("  fr-ca  ")).toBe("fr-CA");
+  });
+
+  test("refuses surrounding whitespace rather than trimming it", () => {
+    for (const tag of ["en ", " en", "\tde", "fr-CA\n", " ar", "\uFEFFes-419"]) {
+      expect(canonicalizeLocale(tag)).toBeNull();
+    }
   });
 
   test("rejects tags that break the grammar", () => {
@@ -375,7 +409,17 @@ describe("LANGUAGE_TAG_PATTERN", () => {
   const pattern = new RegExp(LANGUAGE_TAG_PATTERN);
 
   test("rejects the shape errors an author actually makes", () => {
-    for (const tag of ["en_US", "en--US", "en-US-", "-en", "e", "en-verylongsubtag", ""]) {
+    for (const tag of [
+      "en_US",
+      "en--US",
+      "en-US-",
+      "-en",
+      "e",
+      "en-verylongsubtag",
+      "",
+      "en ",
+      " en",
+    ]) {
       expect(pattern.test(tag)).toBe(false);
     }
   });
@@ -424,10 +468,15 @@ describe("LANGUAGE_TAG_PATTERN", () => {
       "x-private",
       "i-klingon",
       "e",
+      "en ",
+      " fr-CA",
+      "\tde",
+      "es-419\n",
+      " ar",
     ];
     for (const tag of corpus) {
       if (canonicalizeLocale(tag) !== null) {
-        expect({ matches: pattern.test(tag.trim()), tag }).toEqual({ matches: true, tag });
+        expect({ matches: pattern.test(tag), tag }).toEqual({ matches: true, tag });
       }
     }
   });

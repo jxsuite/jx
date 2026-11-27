@@ -31,7 +31,7 @@ Commands:
   validate [root]  Validate the whole project: project.json, documents, classes, and fragments
   convert <paths…> Move documents and the project file between .json and .jxn, repairing references
   format [paths…]  Format .jxn files and the code they hold (requires @jxsuite/server and Bun)
-  db push [root]   Sync the data section's tables to their connections (additive-only)
+  db push [root]   Sync data tables, then section owners' steps, to their connections (additive-only)
 
 Options:
   --verbose      Print detailed build progress
@@ -102,13 +102,17 @@ Options:
       process.exit(1);
     }
     const dryRun = flags.has("--dry-run");
+    let sectionFailed = false;
     try {
       const { dbPush } = await import("./site/db-push.ts");
       const pushOptions: DbPushOptions = { dryRun };
       if (connectionArg !== undefined) {
         pushOptions.connection = connectionArg;
       }
-      const { results, bindingsPatched, wranglerPath } = await dbPush(projectRoot, pushOptions);
+      const { results, sections, bindingsPatched, wranglerPath } = await dbPush(
+        projectRoot,
+        pushOptions,
+      );
       for (const result of results) {
         const mode = result.applied ? "applied" : "dry-run";
         console.log(
@@ -122,11 +126,29 @@ Options:
           console.warn(`  warning: ${warning}`);
         }
       }
+      for (const section of sections) {
+        const mode = section.applied ? "applied" : "dry-run";
+        console.log(`${section.section} (section) — ${section.steps.length} step(s) [${mode}]`);
+        for (const step of section.steps) {
+          console.log(`  ${step.sql ?? step.summary}`);
+        }
+        for (const warning of section.warnings) {
+          console.warn(`  warning: ${warning}`);
+        }
+        if (section.error !== undefined) {
+          console.error(`  error: ${section.error}`);
+        }
+      }
       if (bindingsPatched && wranglerPath) {
         console.log(`Updated bindings in ${relative(projectRoot, wranglerPath)}`);
       }
+      sectionFailed = sections.some((section) => section.error !== undefined);
     } catch (error) {
       console.error(`db push failed: ${errorMessage(error)}`);
+      process.exit(1);
+    }
+    // A section owner's failure prints with the whole push, then fails the command.
+    if (sectionFailed) {
       process.exit(1);
     }
     return;

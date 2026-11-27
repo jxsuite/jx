@@ -22,6 +22,7 @@ import type {
 } from "@jxsuite/connector/types";
 import type { AuthConnectorProvider, JxAuthInstance } from "./server.ts";
 import type { AuthProjectConfig, AuthSection } from "./config.ts";
+import { resolveAuthConnectionName } from "./config.ts";
 
 export interface AuthMountOptions {
   /** Route subtree this mount owns. Defaults to "/_jx/auth". */
@@ -189,13 +190,15 @@ export const Auth = {
     const section = sectionValue ?? {};
     const config = projectConfig ?? {};
     const dryRun = options.dryRun === true;
+    const connection = resolveAuthConnectionName(section, config);
+    if (options.connection !== undefined && options.connection !== connection) {
+      // The push targets a different connection: nothing to contribute, and the auth database is
+      // Never opened for a connection the user did not ask to push.
+      return { applied: false, connection, steps: [], warnings: [] };
+    }
     const migrations = await getAuthMigrations(section, config, options.env, {
       connectors: options.connectors,
     });
-    if (options.connection !== undefined && options.connection !== migrations.connection) {
-      // The push targets a different connection — nothing to contribute.
-      return { applied: false, connection: migrations.connection, steps: [], warnings: [] };
-    }
     if (!dryRun) {
       await migrations.apply();
     }

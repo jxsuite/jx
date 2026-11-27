@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  SCHEMA_ANNOTATIONS,
   SCHEMA_KEYWORDS,
   bodyReturnsValue,
   isFunctionEntry,
@@ -12,7 +13,6 @@ import {
   isPrivateStateKey,
   getEventBinding,
   getNestedStyle,
-  hasSchemaKeywords,
   hasStructuredBody,
   isClassDef,
   isEventBinding,
@@ -26,7 +26,7 @@ import {
   isNodeObject,
   isPrototypeDef,
   isRef,
-  isSchemaOnlyDef,
+  isPureTypeDef,
   isServerFnDef,
   isTagExpression,
   isTemplateString,
@@ -215,39 +215,50 @@ describe("SCHEMA_KEYWORDS", () => {
     expect(SCHEMA_KEYWORDS.has("type")).toBe(true);
     expect(SCHEMA_KEYWORDS.has("enum")).toBe(true);
     expect(SCHEMA_KEYWORDS.has("$comment")).toBe(true);
+    expect(SCHEMA_KEYWORDS.has("const")).toBe(true);
+    expect(SCHEMA_KEYWORDS.has("anyOf")).toBe(true);
     expect(SCHEMA_KEYWORDS.has("default")).toBe(false);
     expect(SCHEMA_KEYWORDS.has("$prototype")).toBe(false);
   });
-});
 
-describe("isSchemaOnlyDef", () => {
-  test("accepts objects whose keys are all schema keywords", () => {
-    expect(isSchemaOnlyDef({ type: "string" })).toBe(true);
-    expect(isSchemaOnlyDef({ description: "n", maximum: 10, minimum: 0, type: "number" })).toBe(
-      true,
-    );
-    expect(isSchemaOnlyDef({})).toBe(true);
-  });
-
-  test("rejects objects with any non-keyword key and non-objects", () => {
-    expect(isSchemaOnlyDef({ default: 1, type: "number" })).toBe(false);
-    expect(isSchemaOnlyDef({ tagName: "div" })).toBe(false);
-    expect(isSchemaOnlyDef([])).toBe(false);
-    expect(isSchemaOnlyDef("type")).toBe(false);
+  test("every annotation is a keyword", () => {
+    for (const annotation of SCHEMA_ANNOTATIONS) {
+      expect(SCHEMA_KEYWORDS.has(annotation), annotation).toBe(true);
+    }
   });
 });
 
-describe("hasSchemaKeywords", () => {
-  test("true when at least one key is a schema keyword", () => {
-    expect(hasSchemaKeywords({ default: 1, type: "number" })).toBe(true);
-    expect(hasSchemaKeywords({ pattern: "^a" })).toBe(true);
+describe("isPureTypeDef (spec.md §5.7)", () => {
+  test("a schema with an assertion is a pure type definition", () => {
+    expect(isPureTypeDef({ type: "string" })).toBe(true);
+    expect(isPureTypeDef({ description: "n", maximum: 10, minimum: 0, type: "number" })).toBe(true);
+    expect(isPureTypeDef({ enum: ["a"] })).toBe(true);
+    expect(isPureTypeDef({ $ref: "#/$defs/Count" })).toBe(true);
   });
 
-  test("false for keyword-free objects and non-objects", () => {
-    expect(hasSchemaKeywords({ default: 1 })).toBe(false);
-    expect(hasSchemaKeywords({})).toBe(false);
-    expect(hasSchemaKeywords(null)).toBe(false);
-    expect(hasSchemaKeywords(["type"])).toBe(false);
+  test("an object with a non-keyword key is a value", () => {
+    expect(isPureTypeDef({ name: "x", type: "admin" })).toBe(false);
+    expect(isPureTypeDef({ label: "x", type: "string" })).toBe(false);
+    expect(isPureTypeDef({ tagName: "div" })).toBe(false);
+  });
+
+  test("annotations alone are a value", () => {
+    expect(isPureTypeDef({})).toBe(false);
+    expect(isPureTypeDef({ description: "x" })).toBe(false);
+    expect(isPureTypeDef({ title: "Hello" })).toBe(false);
+    expect(isPureTypeDef({ examples: [1] })).toBe(false);
+  });
+
+  test("a default, a prototype or an expression is never a pure type definition", () => {
+    expect(isPureTypeDef({ default: 1, type: "number" })).toBe(false);
+    expect(isPureTypeDef({ $prototype: "Function", type: "string" })).toBe(false);
+    expect(isPureTypeDef({ $expression: {}, type: "string" })).toBe(false);
+  });
+
+  test("non-objects are not pure type definitions", () => {
+    expect(isPureTypeDef([])).toBe(false);
+    expect(isPureTypeDef("type")).toBe(false);
+    expect(isPureTypeDef(null)).toBe(false);
   });
 });
 

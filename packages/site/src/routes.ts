@@ -12,6 +12,8 @@
  * the compiler's dependency graph carries a native addon and `esbuild`, so neither a browser bundle
  * nor a Cloudflare Worker can import it. This module is pure string math with no imports at all, so
  * every host that has to know what `/blog/:slug` means can share one answer.
+ *
+ * @docs framework/site/routing
  */
 
 /** Bracket route segments: `[param]` (named) and `[...param]` (catch-all). */
@@ -53,6 +55,30 @@ export function pageRelativePath(documentPath: string): string {
  * enabled extension claims, and its route is a property of the NAME, not of the parser.
  */
 export function fileToRoute(relativePath: string): FileRoute {
+  const urlPath = routePath(relativePath);
+
+  const params: string[] = [];
+  let isDynamic = false;
+  let isCatchAll = false;
+  const urlPattern = urlPath.replaceAll(
+    PARAM_SEGMENT,
+    (_match: string, spread: string | undefined, named: string | undefined) => {
+      isDynamic = true;
+      if (spread) {
+        isCatchAll = true;
+        params.push(spread);
+        return "*";
+      }
+      params.push(named!);
+      return `:${named}`;
+    },
+  );
+
+  return { isCatchAll, isDynamic, params, urlPattern };
+}
+
+/** A page path's URL path with its brackets still in place: extension dropped, index folded. */
+function routePath(relativePath: string): string {
   let urlPath = pageRelativePath(relativePath);
 
   /* Drop the extension, but only a real one. `.` is legal inside a route segment, and slicing at
@@ -74,24 +100,62 @@ export function fileToRoute(relativePath: string): FileRoute {
     urlPath = `/${urlPath}`;
   }
 
-  const params: string[] = [];
-  let isDynamic = false;
-  let isCatchAll = false;
-  const urlPattern = urlPath.replaceAll(
-    PARAM_SEGMENT,
-    (_match: string, spread: string | undefined, named: string | undefined) => {
-      isDynamic = true;
-      if (spread) {
-        isCatchAll = true;
-        params.push(spread);
-        return "*";
-      }
-      params.push(named!);
-      return `:${named}`;
-    },
-  );
+  return urlPath;
+}
 
-  return { isCatchAll, isDynamic, params, urlPattern };
+/** A whole segment written as a bracket: `[name]` or `[...name]`, whatever is inside. */
+const WHOLE_BRACKET = /^\[(\.\.\.)?([^\]]*)\]$/;
+
+/** A parameter name URLPattern accepts: letters, digits and `_`, not starting with a digit. */
+const PARAM_NAME = /^[A-Za-z_]\w*$/;
+
+/**
+ * The characters URLPattern's tokenizer reads as syntax. The ninth, `\`, never reaches a segment
+ * because {@link pageRelativePath} turns it into `/`.
+ */
+const PATTERN_SYNTAX = /[:*?+(){}]/;
+
+/**
+ * Why a page file's name cannot be a route, or null when it can (spec `site-architecture.md` §4 and
+ * §4.2).
+ *
+ * When this returns null, {@link fileToRoute}`(relativePath).urlPattern` is a URLPattern pathname
+ * with no regexp group whose groups are exactly the declared parameters (a catch-all as group `0`),
+ * built only from literal segments free of URLPattern syntax, whole-segment `:name`s and at most
+ * one `*`, which is last; and {@link matchRoute} answers a request path exactly when `new
+ * URLPattern({ pathname })` does. The check is string rules rather than a `URLPattern` call because
+ * the hosts that run it (Node releases among them) do not all ship one.
+ *
+ * @param relativePath A page path, accepting the same forms as {@link fileToRoute}.
+ */
+export function routePatternProblem(relativePath: string): string | null {
+  const segments = routePath(relativePath).split("/").filter(Boolean);
+  const names = new Set<string>();
+  for (const [index, segment] of segments.entries()) {
+    const bracket = WHOLE_BRACKET.exec(segment);
+    if (bracket) {
+      const name = bracket[2]!;
+      if (!PARAM_NAME.test(name)) {
+        return `\`${segment}\` is not a parameter: a parameter name is letters, digits and _, and does not start with a digit`;
+      }
+      if (names.has(name)) {
+        return `\`[${name}]\` is declared twice in one path`;
+      }
+      if (bracket[1] && index !== segments.length - 1) {
+        return `\`${segment}\` is a catch-all, so it must be the last segment`;
+      }
+      names.add(name);
+      continue;
+    }
+    if (segment.includes("[") || segment.includes("]")) {
+      return `\`${segment}\` has a bracket inside a segment: a parameter is a whole segment, like [id]`;
+    }
+    const syntax = PATTERN_SYNTAX.exec(segment);
+    if (syntax) {
+      return `\`${segment}\` contains "${syntax[0]}", which URL pattern syntax reads as an operator`;
+    }
+  }
+  return null;
 }
 
 /**
@@ -216,12 +280,23 @@ function matchPattern(pattern: string, parts: string[]): Record<string, string> 
       params[expected.slice(1)] = decodeURIComponent(actual);
       continue;
     }
-    if (expected !== actual) {
+    /* A URL percent-encodes a non-ASCII or space-bearing name and URLPattern matches that spelling,
+       so a literal answers the segment as sent or as decoded. */
+    if (expected !== actual && expected !== decodeSegment(actual)) {
       return null;
     }
   }
 
   return patternParts.length === parts.length ? params : null;
+}
+
+/** A request segment percent-decoded, or as sent when it is not valid percent-encoding. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
 }
 
 /** How a site writes its URLs — `project.json`'s `build.trailingSlash`. */

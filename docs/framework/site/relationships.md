@@ -73,7 +73,7 @@ An id that matches no entry in the target type is left untouched, and the raw st
 
 ## Beyond content
 
-The same reference form generalizes: a pointer targets any project section whose extension declares it referenceable, as `#/<sectionKey>/<name>`. File-based content resolves at load time as described above; connection-backed table sections (from the connector extension) store the id in a column and resolve at request time instead. One direction is disallowed outright: a **content** schema cannot reference a **table** section, because content is loaded once at build time while table rows are live, so model that association from the table side.
+The same reference form generalizes: a pointer targets any project section whose extension declares it referenceable, as `#/<sectionKey>/<name>`. File-based content resolves at load time as described above; connection-backed table sections (from the connector extension) store the id in a column and resolve at request time instead. The id is written as a string even for a table that numbers its rows (`"1"`). Between two tables on the same connection that column is a real foreign key, so deleting the referenced row clears the reference in every row that pointed at it. One direction is disallowed outright: a **content** schema cannot reference a **table** section, because content is loaded once at build time while table rows are live, so model that association from the table side.
 
 ## Related
 
