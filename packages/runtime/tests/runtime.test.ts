@@ -515,6 +515,35 @@ describe("buildScope", () => {
     expect(state.doubled).toBe(10);
   });
 
+  test("Shape 4: a value-returning body bound to an event stays a handler", async () => {
+    const doc = {
+      children: [{ onclick: { $ref: "#/state/toggle" }, tagName: "button" }],
+      state: {
+        open: false,
+        toggle: { $prototype: "Function", body: "state.open = !state.open; return state.open" },
+      },
+    };
+    const state = await buildScope(doc, {}, BASE);
+    expect(state.toggle).toBeTypeOf("function");
+    renderNode({ onclick: { $ref: "#/state/toggle" }, tagName: "button" }, state).click();
+    expect(state.open).toBe(true);
+  });
+
+  test("Shape 4: a value-returning body called from a template stays a function", async () => {
+    const state = await buildScope(
+      {
+        children: [{ tagName: "p", textContent: "${state.fmt(state)}" }],
+        state: { fmt: { $prototype: "Function", body: "return 'hi'" } },
+      },
+      {},
+      BASE,
+    );
+    expect(state.fmt).toBeTypeOf("function");
+    expect(
+      renderNode({ tagName: "p", textContent: "${state.fmt(state)}" }, state).textContent,
+    ).toBe("hi");
+  });
+
   test("Shape 4: Function with return + parameters → callable (not computed)", async () => {
     const state = await buildScope(
       {

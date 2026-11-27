@@ -1419,6 +1419,18 @@ describe("compileElement — bodyless $src classification", () => {
     expect(result.files[0]!.content).toContain("rows");
   });
 
+  test("a value-returning onMount compiles to a function", async () => {
+    const result = await compileElement({
+      children: [],
+      state: { onMount: { $prototype: "Function", body: "state.ran = true; return state.ran" } },
+      tagName: "test-body-lifecycle",
+    });
+
+    const { content } = result.files[0]!;
+    expect(content).toContain("this.state.onMount = (state) => {");
+    expect(content).not.toContain("this.state.onMount = computed(");
+  });
+
   test("a bodyless $src lifecycle hook stays callable", async () => {
     const result = await compileElement({
       children: [],

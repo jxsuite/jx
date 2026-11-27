@@ -840,9 +840,9 @@ Helpers that `packages/compiler/src/shared.ts` exports for the compilation targe
 
 ### `isSchemaOnly(value)` — Pure type definition detection (every key a JSON Schema keyword)
 
-### `buildInitialScope(defs?, parentScope?)` — Static scope for compile-time pre-rendering
+### `buildInitialScope(defs?, parentScope?, options?)` — Static scope for compile-time pre-rendering
 
-A third argument, `{ holdMutable, document }`, marks every entry a handler writes as runtime-only: the handlers in `defs`, and those written inline on an element of `document`. Only the site build's page-document scope sets it (§8.1).
+A third argument, `{ holdMutable, document, roles }`, marks every entry a handler writes as runtime-only: the handlers in `defs`, and those written inline on an element of `document`. Only the site build's page-document scope sets it (§8.1).
 
 ### `listHelperSource()` — the list rules, inlined for a generated module
 

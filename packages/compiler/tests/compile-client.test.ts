@@ -618,6 +618,48 @@ describe("compileClient — module structure", () => {
     expect(js).toContain("import { compute, transform } from './helpers.js'");
   });
 
+  test("a value-returning body bound to an event compiles to a handler", () => {
+    const doc: JxDocument = {
+      children: [{ onclick: { $ref: "#/state/toggle" }, tagName: "button" }],
+      state: {
+        open: false,
+        toggle: { $prototype: "Function", body: "state.open = !state.open; return state.open" },
+      },
+      tagName: "div",
+    };
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).not.toContain("state.toggle = computed(");
+    expect(js).toContain("state.toggle = (state) =>");
+    expect(js).toContain("toggle: (e) => state.toggle(state, e)");
+  });
+
+  test("a string-body handler is reachable as state.key(…)", () => {
+    const doc: JxDocument = {
+      children: [{ onclick: { $ref: "#/state/go" }, tagName: "button" }],
+      state: {
+        feed: { $prototype: "Request", url: "/api/feed" },
+        bump: { $prototype: "Function", body: "state.n = state.n + 1" },
+        go: { $prototype: "Function", body: "state.bump(state)" },
+        n: 0,
+      },
+      tagName: "div",
+    };
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).toContain("state.bump = (state) => { state.n = state.n + 1");
+    expect(js.indexOf("state.bump =")).toBeLessThan(js.indexOf("effect("));
+    expect(js).toContain("state.bump(state)");
+  });
+
+  test("an inline on* handler is not put on state", () => {
+    const doc: JxDocument = {
+      children: [{ onclick: { $prototype: "Function", body: "state.n = 1" }, tagName: "button" }],
+      state: { n: 0 },
+      tagName: "div",
+    };
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).not.toContain("state._h0");
+  });
+
   test("includes computed import when computed entries present", () => {
     const doc = {
       children: [],
@@ -1081,8 +1123,8 @@ describe("compileClient — $src function handlers", () => {
       tagName: "div",
     };
     const js = compileClient(doc, { title: "Test" }).files[0]!.content;
-    expect(js).toContain("const fn = (state, event) => { state.n = event.detail");
-    expect(js).toContain("fn(state, e);");
+    expect(js).toContain("state.go = (state, event) => { state.n = event.detail");
+    expect(js).toContain("go: (e) => state.go(state, e)");
   });
 
   test("a parameterised string body that returns a value is a handler", () => {
