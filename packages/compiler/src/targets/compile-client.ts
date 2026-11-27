@@ -664,16 +664,10 @@ function buildClientNode(
     const discriminant = isRefObject(source.$switch)
       ? stateRead(source.$switch.$ref)
       : `\`${String(source.$switch)}\``;
-    const cases = source.cases ?? {};
-    // Parsed JSON, so a case slot can hold `null` or a bare value the declared type leaves out.
-    const caseEntries = Object.entries<JxMutableNode | JsonPrimitive>(cases)
-      // An external `$ref` case cannot be fetched at compile time, exactly as in the static target.
-      .filter(([, caseDef]) => caseDef && !isRefObject(caseDef))
-      .map(
-        ([key, caseDef]) =>
-          `${JSON.stringify(key)}: html\`${emitChildLit(caseDef, nextContext.preformatted)}\``,
-      );
-    bindings.set(swKey, `() => ({${caseEntries.join(", ")}})[String(${discriminant})] ?? html\`\``);
+    bindings.set(
+      swKey,
+      `() => ${emitSwitchLookup(source, discriminant, nextContext.preformatted)}`,
+    );
     bindAttrs.push(`:render="${swKey}"`);
     const bindAttrStrSwitch = ` ${bindAttrs.join(" ")}`;
     return `<${tag}${staticAttrs} data-bind${bindAttrStrSwitch}></${tag}>`;
@@ -758,6 +752,32 @@ function buildClientNode(
   }
 
   return `<${tag}${staticAttrs}${dataBindAttr}${bindAttrStr}>${inner}</${tag}>`;
+}
+
+/**
+ * The lookup a `$switch` renders as: an object of lit templates keyed by case, indexed by the
+ * discriminant's string, with the empty template for a key no case holds (spec.md §14.1). The one
+ * emitter of it: the container's `:render` binding and a switch inside a lit region (a mapped row,
+ * another switch's case) both call it.
+ *
+ * @param {JxMutableNode} node - The element holding `$switch` and `cases`
+ * @param {string} discriminant - The expression the key is read from
+ * @param {boolean} preformatted - Whether the switch sits inside a `<pre>`
+ * @returns {string}
+ */
+function emitSwitchLookup(
+  node: JxMutableNode,
+  discriminant: string,
+  preformatted: boolean,
+): string {
+  // Parsed JSON, so a case slot can hold `null` or a bare value the declared type leaves out.
+  const caseEntries = Object.entries<JxMutableNode | JsonPrimitive>(node.cases ?? {})
+    // An external `$ref` case cannot be fetched at compile time, exactly as in the static target.
+    .filter(([, caseDef]) => caseDef && !isRefObject(caseDef))
+    .map(
+      ([key, caseDef]) => `${JSON.stringify(key)}: html\`${emitChildLit(caseDef, preformatted)}\``,
+    );
+  return `({${caseEntries.join(", ")}})[String(${discriminant})] ?? html\`\``;
 }
 
 // ─── Lit-html map template generation ─────────────────────────────────────────
@@ -959,7 +979,13 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
 
   // Inner content
   let inner = "";
-  if (def.textContent !== undefined) {
+  if (def.$switch) {
+    // A switch in a lit region renders its lookup as the element's content, a template hole.
+    const discriminant = isRefObject(def.$switch)
+      ? mapRefToClientExpr(def.$switch.$ref)
+      : `\`${mapRefsToLit(String(def.$switch))}\``;
+    inner = `\${${emitSwitchLookup(def, discriminant, inPre)}}`;
+  } else if (def.textContent !== undefined) {
     const tc = String(def.textContent);
     if (isTemplateString(tc)) {
       inner = `${mapRefsToLit(tc)}${guard}`;

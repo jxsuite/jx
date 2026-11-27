@@ -1657,7 +1657,7 @@ The interpreter is told the project's `state` once per realm (`setProjectFormula
 - **An external component `$ref`** (`"./views/home.json"`) — the referenced document is fetched and rendered asynchronously; a stale load (the discriminant changed again before it resolved) is discarded.
 - **An inline element definition** — any element object (§8), rendered synchronously.
 
-**Scope.** The two forms differ in scope, mirroring §13/§15: an inline case renders in the parent component's scope, so parent `state` is directly visible to its bindings. An external case builds an isolated scope from the referenced document — a component boundary with no `$props` pass-through, so parent state is not visible inside it.
+**Scope.** The two forms differ in scope, mirroring §13/§15: an inline case renders in the parent component's scope, so parent `state` is directly visible to its bindings. An external case builds an isolated scope from the referenced document — a component boundary with no `$props` pass-through, so parent state is not visible inside it. An external case registers the `$elements` its document declares before it renders (§16.3), and runs the two hooks a mounted document runs (§16.4): `onMount(state)` once it is in the container, and `onUnmount(state)` when the switch leaves it or is itself disposed. A stale load runs neither.
 
 **Discriminant.** `$switch` holds a `$ref` to a state entry — or, inside a mapped array's template, to the row's `$map/item` or `$map/index` — so a per-row conditional is a switch on the row: a divider above the row that starts a group, a chord only where one is bound. The container carries the `slot` a slotted child needs, because the case content renders inside it.
 
@@ -1665,7 +1665,7 @@ The interpreter is told the project's `state` once per realm (`setProjectFormula
 
 **Matching.** The resolved discriminant is matched against `cases` keys by its string form (JSON object keys are strings — the same normalization the expression-level `switch` operator applies, §19.4b). No matching case leaves the container empty.
 
-> **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope resolved against the mount's base. Each case renders in an effect scope of its own, stopped before the next case renders, so a switch never accumulates the effects of the cases it has left; a stale external load — one that resolves after the discriminant moved on, to an inline case included — is discarded.
+> **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope resolved against the mount's base. Each case renders in an effect scope of its own, stopped before the next case renders, so a switch never accumulates the effects of the cases it has left; a stale external load — one that resolves after the discriminant moved on, to an inline case included — is discarded. It registers an external case's `$elements` before rendering it and runs its `onMount` and `onUnmount`.
 
 ---
 

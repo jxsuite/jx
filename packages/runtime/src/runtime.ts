@@ -4191,9 +4191,18 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
      survive. Without this a mapped row whose item was replaced by an equal one (a host rebuilding
      its projection) rebuilt every switch inside it, and the popover the case rendered closed. */
   let renderedKey: string | null = null;
+  /* The scope of the external case on screen, for the hooks a mounted document runs (spec.md
+     §16.4). Set only once the case is in the container, so a stale load runs neither. */
+  let liveCase: JxScope | null = null;
   const retire = (): void => {
     live?.stop();
     live = null;
+    const left = liveCase;
+    liveCase = null;
+    // Called as a method, so a hook that reads `this` sees the scope, as `mount()`'s does.
+    if (left && isScopeHook(left.onUnmount)) {
+      left.onUnmount(left);
+    }
   };
 
   effect(() => {
@@ -4235,7 +4244,15 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
           if (gen !== generation) {
             return;
           }
-          // An external case is a component boundary, so it inherits what a component does (§13.4).
+          /* An external case is a component boundary, so it registers the `$elements` its document
+             declares (§16.3) before it renders, as a mounted document does. */
+          if (doc.$elements) {
+            await registerElements(doc.$elements, href, options?._ctx);
+            if (gen !== generation) {
+              return;
+            }
+          }
+          // It inherits what a component does (§13.4).
           const childScope = await buildScope(withProjectFormulas(doc), {}, href, options?._ctx);
           if (gen !== generation) {
             return;
@@ -4246,6 +4263,10 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
               scope.run(() => container.append(renderNode(doc, childScope, childOpts))),
             ),
           );
+          liveCase = childScope;
+          if (isScopeHook(childScope.onMount)) {
+            childScope.onMount(childScope);
+          }
         })
         .catch((error) =>
           console.error("Jx $switch: failed to load external case", caseDef.$ref, error),
