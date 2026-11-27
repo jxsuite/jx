@@ -123,7 +123,7 @@ export const HEADER_CELLS = ["Standard", "Class", "Binds", "Evidence", "Note"] a
 export const EMPTY_CELL = "—";
 
 export const STANDARD_ID =
-  /^(?:RFC \d{3,5}|BCP \d{1,3}|STD \d{1,3}|UAX #\d{1,3}|UTS #\d{1,3}|UTR #\d{1,3}|ECMA-\d{2,3}|ISO(?:\/IEC)? \d{4,5}(?::\d{4})?|[A-Z][A-Za-z0-9-]*(?:[ /][A-Za-z0-9.#+-]+)*)$/;
+  /^(?:RFC \d{3,5}|BCP \d{1,3}|STD \d{1,3}|UAX #\d{1,3}|UTS #\d{1,3}|UTR #\d{1,3}|ECMA-\d{2,3}|ISO(?:\/IEC)? \d{4,5}(?::\d{4})?|[A-Z][A-Za-z0-9.-]*(?:[ /][A-Za-z0-9.#+-]+)*)$/;
 
 /** Legacy / near-miss forms the checker rejects, in spec-status.ts's `badForms` idiom. */
 const LEGACY = [
@@ -216,16 +216,23 @@ export interface SpecStandards {
   badForms: { line: number; text: string; reason: string }[];
 }
 
-export type Org =
-  | "IETF"
-  | "W3C"
-  | "WHATWG"
-  | "Unicode"
-  | "Ecma"
-  | "IANA"
-  | "ISO"
-  | "JSON Schema"
-  | "Other";
+export const ORGS = [
+  "IETF",
+  "W3C",
+  "WHATWG",
+  "Unicode",
+  "Ecma",
+  "IANA",
+  "ISO",
+  "JSON Schema",
+  "Other",
+] as const;
+export type Org = (typeof ORGS)[number];
+
+/** Whether `value` is an issuing body the catalog admits (the catalog is untyped JSON). */
+export function isOrg(value: string): value is Org {
+  return ORGS.some((org) => org === value);
+}
 
 export interface CatalogEntry {
   id: string;
@@ -277,24 +284,95 @@ export function compareIds(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** The bodies that number their documents: identifier pattern, and where the URL repeats it. */
+const NUMBERED_ID: Partial<Record<Org, { id: RegExp; url?: RegExp; form: string }>> = {
+  IETF: {
+    id: /^(RFC|BCP|STD) (\d+)$/,
+    url: /\/(rfc|bcp|std)(\d+)$/,
+    form: "RFC NNNN, BCP NN or STD NN",
+  },
+  Unicode: {
+    id: /^(?:UAX|UTS|UTR) #(\d+)$/,
+    url: /\/tr(\d+)\/$/,
+    form: "UAX #NN, UTS #NN or UTR #NN",
+  },
+  Ecma: { id: /^ECMA-(\d+)$/, url: /\/ecma-(\d+)\/$/, form: "ECMA-NNN" },
+  ISO: { id: /^ISO(?:\/IEC)? \d+/, form: "ISO NNNN or ISO/IEC NNNN" },
+};
+
 /** Infer the issuing body from the identifier alone, so a mislabelled catalog entry fails. */
 export function orgOfId(id: string): Org | null {
-  if (/^RFC \d+$/.test(id) || /^(BCP|STD) \d+$/.test(id)) {
-    return "IETF";
+  return ORGS.find((org) => NUMBERED_ID[org]?.id.test(id)) ?? null;
+}
+
+/** The identifier form of a body that numbers its documents, or null for the rest. */
+export function numberedIdForm(org: Org): string | null {
+  return NUMBERED_ID[org]?.form ?? null;
+}
+
+/** A problem when the number in `id` is not the number `url` names, else null. */
+export function urlNumberProblem(org: Org, id: string, url: string): string | null {
+  const rule = NUMBERED_ID[org];
+  if (!rule?.url) {
+    return null;
   }
-  if (/^(UAX|UTS|UTR) #\d+$/.test(id)) {
-    return "Unicode";
+  const fromId = rule.id.exec(id);
+  const fromUrl = rule.url.exec(url);
+  if (!fromId || !fromUrl) {
+    return null;
   }
-  if (/^ECMA-\d+$/.test(id)) {
-    return "Ecma";
+  const idKey = fromId.slice(1).join("").toLowerCase();
+  const urlKeyText = fromUrl.slice(1).join("").toLowerCase();
+  return idKey === urlKeyText ? null : `"${id}" names ${idKey} but the URL names ${urlKeyText}`;
+}
+
+/** Registrable domains of the recognized bodies. `Other` may not sit on any of them. */
+const BODY_DOMAINS: readonly (readonly [string, Org])[] = [
+  ["rfc-editor.org", "IETF"],
+  ["ietf.org", "IETF"],
+  ["w3.org", "W3C"],
+  ["whatwg.org", "WHATWG"],
+  ["unicode.org", "Unicode"],
+  ["ecma-international.org", "Ecma"],
+  ["iana.org", "IANA"],
+  ["iso.org", "ISO"],
+  ["json-schema.org", "JSON Schema"],
+];
+
+/** Infer the issuing body from the URL's host, matched on a dot boundary. */
+export function orgOfUrl(url: string): Org | null {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
   }
-  if (/^ISO(\/IEC)? \d+/.test(id)) {
-    return "ISO";
+  for (const [domain, org] of BODY_DOMAINS) {
+    if (host === domain || host.endsWith(`.${domain}`)) {
+      return org;
+    }
   }
   return null;
 }
 
-const CANONICAL: Record<Org, { test: RegExp; form: string } | null> = {
+/** Two URLs are one document when their keys agree: case folded, one trailing `/` dropped. */
+export function urlKey(url: string): string {
+  let href: string;
+  try {
+    ({ href } = new URL(url));
+  } catch {
+    return url;
+  }
+  const lower = href.toLowerCase();
+  return lower.endsWith("/") ? lower.slice(0, -1) : lower;
+}
+
+interface CanonicalRule {
+  test: RegExp;
+  form: string;
+}
+
+const CANONICAL: Record<Org, CanonicalRule> = {
   IETF: {
     test: /^https:\/\/www\.rfc-editor\.org\/(rfc\/rfc\d+|info\/(bcp|std)\d+)$/,
     form: "https://www.rfc-editor.org/rfc/rfcNNNN (or /info/bcpNN)",
@@ -304,7 +382,7 @@ const CANONICAL: Record<Org, { test: RegExp; form: string } | null> = {
     form: "https://www.w3.org/TR/<shortname>/",
   },
   WHATWG: {
-    test: /^https:\/\/[a-z]+\.spec\.whatwg\.org\/(#[A-Za-z0-9-]+)?$/,
+    test: /^https:\/\/[a-z]+\.spec\.whatwg\.org\/$/,
     form: "https://<spec>.spec.whatwg.org/",
   },
   Unicode: {
@@ -316,7 +394,7 @@ const CANONICAL: Record<Org, { test: RegExp; form: string } | null> = {
     form: "https://ecma-international.org/publications-and-standards/standards/ecma-NNN/",
   },
   IANA: {
-    test: /^https:\/\/www\.iana\.org\/assignments\/[A-Za-z0-9-]+\/?$/,
+    test: /^https:\/\/www\.iana\.org\/assignments\/[A-Za-z0-9-]+$/,
     form: "https://www.iana.org/assignments/<registry>",
   },
   ISO: {
@@ -324,17 +402,20 @@ const CANONICAL: Record<Org, { test: RegExp; form: string } | null> = {
     form: "https://www.iso.org/standard/NNNNN.html",
   },
   "JSON Schema": {
-    test: /^https:\/\/json-schema\.org\/[A-Za-z0-9/-]+$/,
-    form: "https://json-schema.org/…",
+    test: /^https:\/\/json-schema\.org\/draft\/\d{4}-\d{2}\/schema$/,
+    form: "https://json-schema.org/draft/YYYY-MM/schema",
   },
-  Other: null,
+  Other: {
+    test: /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s?#]*$/,
+    form: "https://<host>/<path>, with no port, query or fragment",
+  },
 };
 
 /** Returns a human-readable problem string, or null when the URL is canonical for its body. */
 export function canonicalUrlProblem(org: Org, url: string): string | null {
-  const rule = CANONICAL[org];
+  const rule = Object.hasOwn(CANONICAL, org) ? CANONICAL[org] : undefined;
   if (!rule) {
-    return null;
+    return `"${org}" is not a declared issuing body`;
   }
   return rule.test.test(url) ? null : `expected the form ${rule.form}`;
 }
