@@ -19,6 +19,25 @@ describe("compileStaticPage", () => {
     title: "Test Page",
   };
 
+  test("a literal node emits its templates as text", () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          $literal: true,
+          attributes: { title: "${state.a}" },
+          children: [{ $literal: true, tagName: "code", textContent: "x ${state.a} y" }],
+          style: { color: "${state.a}" },
+          tagName: "p",
+        },
+      ],
+      state: { a: { default: "hi" } },
+    };
+    const { html } = compileStaticPage(doc, baseOpts);
+    expect(html).toContain("<code>x ${state.a} y</code>");
+    expect(html).toContain('title="${state.a}"');
+    expect(html).toContain("color: ${state.a}");
+  });
+
   test("generates valid HTML document", () => {
     const doc = {
       children: [{ tagName: "p", textContent: "Hello" }],

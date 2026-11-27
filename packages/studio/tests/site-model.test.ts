@@ -84,8 +84,8 @@ describe("pageRows — routes come from the router", () => {
       ["page", "/visit"],
       ["collection", "9 entries"],
       ["entry-page", "/ar/exhibitions/:slug"],
-      ["entry-page", "/exhibitions/:slug"],
       ["entry-page", "/fr-ca/expositions/:slug"],
+      ["entry-page", "/exhibitions/:slug"],
       ["collection", "1 entry"],
       ["entry-page", "/events/:slug"],
     ]);

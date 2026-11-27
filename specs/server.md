@@ -320,15 +320,17 @@ OXC-powered code quality services for Studio's function-body editors.
 | `POST /__studio/code/format` | `oxfmt`  | Format a TypeScript body                  | **Implemented** |
 | `POST /__studio/code/lint`   | `oxlint` | Lint a TypeScript body (JSON diagnostics) | **Implemented** |
 
-A body is TypeScript (`spec.md` §23.1), and plain JavaScript is TypeScript already, so both endpoints read it as a `.ts` file. Lint runs from the system temp directory, so a body gets oxlint's default rules rather than the configuration of the directory the server was started in. There is no minify endpoint: Studio stores a body as written, because minifying deletes its types.
+A body is TypeScript (`spec.md` §23.1), and plain JavaScript is TypeScript already, so both endpoints read it as a `.ts` file. Lint runs oxlint under the server's own runtime (`process.execPath`, so no host needs `node`), in a private temporary directory with an explicit empty configuration, so a body gets oxlint's default rules rather than the configuration of whichever directory sits above the server's working directory. There is no minify endpoint: Studio stores a body as written, because minifying deletes its types.
 
 Snippets are function _bodies_: each is wrapped in a synthetic function before formatting or linting, a formatted body is taken back out, and a diagnostic's line and column are remapped to the snippet.
 
 **Formatting is one module** (`src/code-format.ts`), which this endpoint and `jx format` (`compiler.md` §2.3) both call, so the two agree on every body. It formats at oxfmt's defaults, with a two-space indent and a 100-column line counted from where the body starts and not from the wrapper, and it reads no `.oxfmtrc.json`: a body is in a document, and no file a configuration could be scoped to. Taking a body out of its wrapper is unindenting it, and a line the formatter did not write must not be unindented, since the lines of a template literal are the string's own text. So a body is formatted at two depths of nesting, and a line loses its indent only where the deeper reading moved it one level; a line both readings give alike is kept as it is, and a body the two readings disagree on is returned as written with no error. A body that does not parse is returned as written with one `{ message }` per error, each ending `(line N)` counted in the body. The formatting wrapper is `async`, so a body that awaits is formatted, as a class method that awaits must be; the lint wrapper is not, as the function a document's body becomes is not, so lint reports the `await`. `formatScript` formats a document's script (`spec.md` §23.2) as the module it is, with no wrapper; `jx format` calls it and the endpoint does not.
 
+A formatter whose native binding cannot load makes `format` answer `501` `capability-unavailable`, because the backend lacks the capability. Without oxlint, `lint` answers `{ diagnostics: [] }`. `runCodeService` is the same dispatch without HTTP, and is what the desktop backend calls (`desktop.md` §5.3). It uses no Bun API, because the desktop backend bundles it for Node.
+
 The remapping is a constant: the wrapper is one synthetic header line, so a diagnostic loses one line and a fixed byte count (`adjustDiagnostics`). It is named here because it is the kind of thing that invites a source map, and a source map for a constant offset is more machinery than the thing it maps — see §8.
 
-> **Status: Implemented.** `src/code-api.ts` and `src/code-format.ts` (oxfmt via its Node API, oxlint via its CLI binary); `src/format.ts` is `jx format`.
+> **Status: Implemented.** `src/code-api.ts` and `src/code-format.ts` (oxfmt via its Node API, oxlint's CLI run under the host's own runtime with an explicit empty configuration); `src/format.ts` is `jx format`.
 
 ---
 
@@ -364,7 +366,7 @@ Incremental rebuild triggered by the file watcher: only entries whose `match` (R
 | `@npmcli/arborist` / `npm-package-arg`  | Package operations (npm's installer) and spec validation         |
 | `ws`                                    | WebSockets for the Node implementation of `#serve`               |
 
-`oxfmt` and `oxlint` are resolved from the workspace for the code services. Bun built-ins, in the dev server and the code services only (the modules the desktop backend reaches use the `node:` APIs both runtimes share): `Bun.serve`, `Bun.build`, `Bun.Transpiler`, `Bun.file`, `Bun.Glob`, `Bun.spawn`.
+`oxfmt` and `oxlint` are dependencies, for the code services (§5): `oxfmt` is imported, and `oxlint`'s CLI runs under the server's own runtime. Bun built-ins, in the dev server only (the modules the desktop backend reaches use the `node:` APIs both runtimes share): `Bun.serve`, `Bun.build`, `Bun.Transpiler`, `Bun.file`, `Bun.Glob`, `Bun.spawn`.
 
 ## 8. Standards Alignment
 

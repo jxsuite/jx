@@ -105,7 +105,7 @@ export interface PageRoute extends FileRoute {
   sourcePath: string;
 }
 
-/** The route table, in match order. Static beats dynamic beats catch-all. */
+/** The route table, in match order (`site-architecture.md` §4.4). */
 export function routeTable(paths: readonly string[]): PageRoute[] {
   return paths
     .flatMap((path) =>
@@ -113,7 +113,7 @@ export function routeTable(paths: readonly string[]): PageRoute[] {
         ? [Object.assign(fileToRoute(path), { sourcePath: path })]
         : [],
     )
-    .toSorted(compareRoutes);
+    .toSorted((a, b) => compareRoutes(a, b) || a.sourcePath.localeCompare(b.sourcePath));
 }
 
 /**
