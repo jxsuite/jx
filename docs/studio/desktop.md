@@ -55,6 +55,8 @@ To see where you stand, click **About** at the foot of the Navigator rail. The d
 
 Where an update comes from depends on how you installed. The macOS app, the Windows installer and the Linux AppImage update themselves as described above. A Microsoft Store or Mac App Store install is updated by its store, the Ubuntu snap by the Snap Store, and the NixOS build by your package manager.
 
+The Mac App Store build runs inside the App Sandbox, which hides your SSH keys and Git configuration from Studio. Its source-control panel works with HTTPS remotes only, and adding or syncing an SSH remote fails with a message that says so. The downloadable build has no such limit.
+
 ## Open a project
 
 A fresh window greets you with the **[welcome screen](/docs/studio/interface/welcome-screen)**: create a **[new project](/docs/studio/projects/create)**, open an existing one, or pick from your recent projects, a list shared across all windows.
