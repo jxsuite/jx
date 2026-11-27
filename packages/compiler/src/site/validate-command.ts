@@ -9,11 +9,12 @@
  *    compile those documents;
  * 2. `project.json` against the generated entry schema (validateProjectFile), and every
  *    `#/$defs/<Name>` type reference in its own `$defs` against those definitions alone
- *    (site-architecture.md §3.1);
+ *    (site-architecture.md §3.1), and its `state` for a named formula that reaches itself;
  * 3. Every document under `components/`, `pages/`, and `layouts/` against the bundled document schema
  *    (core + extension `$paths` union — the same schema the studio consumes), and every type
  *    reference a well-formed one carries against its own `$defs` and then the project's
- *    (site-architecture.md §3.1);
+ *    (site-architecture.md §3.1), and that no named formula reaches itself through `call` (spec.md
+ *    §19.4c), a page judged together with `project.json`'s `state` as the build merges them;
  * 4. Every project-local `*.class.json` against the generated class schema;
  * 5. Every enabled extension's schema fragments compile standalone against the shipped default union
  *    resources.
@@ -24,6 +25,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { isJxnPath, isNativeDocumentPath, lintJxn, parseJxn } from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { findCallCycles } from "@jxsuite/runtime/expression";
+import { callCycleMessage } from "../shared.ts";
 import { eraseDocument } from "@jxsuite/erase";
 import type { EraseWarning } from "@jxsuite/erase";
 import { createRequire } from "node:module";
@@ -41,7 +44,13 @@ import { findScriptAdvice } from "@jxsuite/schema/document-scripts";
 import { findPopoverDefects, overlayScopeFor } from "@jxsuite/schema/overlays";
 import type { OverlayScope } from "@jxsuite/schema/overlays";
 import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
-import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
+import type {
+  JsonObject,
+  JsonValue,
+  JxElement,
+  JxStateDefinition,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import { readBundledProjectSchemas } from "./schema-command.ts";
@@ -217,6 +226,16 @@ export async function validateProjectTree(
     }
   }
 
+  const projectFile = readProjectFile(root);
+  const projectState = projectFile?.state ?? {};
+  const projectCycles = findCallCycles(projectState).map((cycle) => ({
+    instancePath: `/state/${cycle[0]}`,
+    message: callCycleMessage(cycle),
+  }));
+  if (projectCycles.length > 0) {
+    issues.push({ errors: projectCycles, file: projectResult.file });
+  }
+
   const { addFormats, Ajv } = await loadAjv();
 
   // 3. Documents against the bundled document schema (the same schema the studio consumes).
@@ -272,6 +291,16 @@ export async function validateProjectTree(
          */
         const wellFormed = doc as JxElement;
         lint.push(...lintDocument(wellFormed, relative(root, file), scope));
+        const cycles = documentCallCycles(wellFormed, dir === "pages", projectState);
+        if (cycles.length > 0) {
+          issues.push({
+            errors: cycles.map((cycle) => ({
+              instancePath: `/state/${cycle[0]}`,
+              message: callCycleMessage(cycle),
+            })),
+            file: relative(root, file),
+          });
+        }
         const dangling = findDanglingTypeRefs(wellFormed, projectDefs);
         if (dangling.length > 0) {
           issues.push({
@@ -334,6 +363,42 @@ export async function validateProjectTree(
 
   const fatalLint = options.strict === true && lint.some((finding) => finding.severity === "error");
   return { checked, issues, lint, valid: issues.length === 0 && !fatalLint };
+}
+
+/**
+ * `project.json` as a config, or `undefined` when it is absent or does not parse: walk 2 reports
+ * the file, so this hides nothing.
+ */
+function readProjectFile(root: string): ProjectConfig | undefined {
+  try {
+    return loadProjectConfig(root).config;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The call cycles a document's `state` carries (spec.md §19.4c). A page is judged as the build
+ * merges it, in `injectContext`'s order: its own entries, then each project entry it does not
+ * declare, `$site` and `$page` excluded. Only a cycle through a key the page declares is the page's
+ * to report, so a cycle made of project entries alone is reported once, on `project.json`.
+ */
+function documentCallCycles(
+  doc: JxElement,
+  isPage: boolean,
+  projectState: Record<string, JxStateDefinition>,
+): string[][] {
+  const own = doc.state ?? {};
+  if (!isPage) {
+    return findCallCycles(own);
+  }
+  const merged = { ...own };
+  for (const [key, value] of Object.entries(projectState)) {
+    if (key !== "$site" && key !== "$page" && !(key in own)) {
+      merged[key] = value;
+    }
+  }
+  return findCallCycles(merged).filter((cycle) => cycle.some((key) => key in own));
 }
 
 /**

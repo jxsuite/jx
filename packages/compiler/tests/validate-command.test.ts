@@ -599,3 +599,79 @@ describe("validateProjectTree: type references", () => {
     }
   });
 });
+
+describe("validateProjectTree: call cycles (spec.md §19.4c)", () => {
+  const ROOT = resolve(import.meta.dir, "__test-validate-call-cycles__");
+  const formula = (to: string) => ({
+    $expression: { operator: "call", target: { $ref: `#/state/${to}` }, value: [] },
+    parameters: ["x"],
+  });
+  const leaf = {
+    $expression: { operator: "+", target: { $ref: "$args/x" }, value: 1 },
+    parameters: ["x"],
+  };
+
+  function put(relPath: string, content: JsonValue) {
+    const abs = resolve(ROOT, relPath);
+    mkdirSync(resolve(abs, ".."), { recursive: true });
+    writeFileSync(abs, JSON.stringify(content, null, 2), "utf8");
+  }
+
+  function project(state: JsonObject) {
+    put("project.json", { extensions: ["@jxsuite/parser"], name: "Cycles", state });
+  }
+
+  beforeAll(async () => {
+    rmSync(ROOT, { force: true, recursive: true });
+    project({ a: formula("b") });
+    put("pages/index.json", { children: [], state: { b: formula("a") }, tagName: "main" });
+    await writeProjectSchemas(ROOT);
+  });
+
+  afterAll(() => {
+    rmSync(ROOT, { force: true, recursive: true });
+  });
+
+  it("a page formula cycling through project.json state is an issue on the page", async () => {
+    const result = await validateProjectTree(ROOT);
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.file)).toEqual(["pages/index.json"]);
+    expect(formatProjectTreeIssues(result)).toEqual([
+      "pages/index.json:",
+      "  - /state/b: $expression: call cycle b → a → b: a named formula may not reach itself (spec.md §19.4c)",
+    ]);
+  });
+
+  it("a cycle inside project.json state is one issue on project.json, not one per page", async () => {
+    project({ a: formula("b"), b: formula("a") });
+    put("pages/index.json", { children: [], state: { n: 1 }, tagName: "main" });
+    put("pages/about.json", { children: [], tagName: "main" });
+    const result = await validateProjectTree(ROOT);
+    expect(result.issues.map((issue) => issue.file)).toEqual(["project.json"]);
+    expect(formatProjectTreeIssues(result)[1]).toContain(
+      "/state/a: $expression: call cycle a → b → a",
+    );
+  });
+
+  it("a component's own cycle is an issue on the component", async () => {
+    project({});
+    put("components/x-loop.json", {
+      children: [],
+      state: { loop: formula("loop") },
+      tagName: "x-loop",
+    });
+    const result = await validateProjectTree(ROOT);
+    expect(result.issues.map((issue) => issue.file)).toEqual(["components/x-loop.json"]);
+    expect(formatProjectTreeIssues(result)[1]).toContain(
+      "/state/loop: $expression: call cycle loop → loop",
+    );
+    rmSync(resolve(ROOT, "components"), { force: true, recursive: true });
+  });
+
+  it("an acyclic formula chain stays valid", async () => {
+    project({ a: formula("b"), b: leaf });
+    const result = await validateProjectTree(ROOT);
+    expect(result.issues).toEqual([]);
+    expect(result.valid).toBe(true);
+  });
+});

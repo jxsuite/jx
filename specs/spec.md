@@ -2239,7 +2239,7 @@ In production evaluation `?:` and `switch` evaluate only the taken branch. Under
 
 ### 19.4c Named Formulas and the `call` Operator
 
-> **Status: Partial.** Named formulas, `$args/`, `call`, `BLESSED_GLOBALS` and `BLESSED_HELPERS` ship (`packages/runtime/src/expression.ts`). Recursion is not bounded as stated: no compiler check rejects a call cycle, the callable `buildScope` builds does not carry `callDepth`, so `MAX_CALL_DEPTH` bounds only the raw-definition path, and compiled formulas (`emitFormulaFn` in `packages/compiler/src/shared.ts`) have no bound. The helper table is stale: eight helpers ship (`packages/schema/src/intl.ts`, site-architecture.md §13.7), not three.
+> **Status: Implemented.** Named formulas, `$args/`, `call`, `BLESSED_GLOBALS` and `BLESSED_HELPERS` ship in the interpreter and every compiled target (`packages/runtime/src/expression.ts`, `emitFormulaFn` in `packages/compiler/src/shared.ts`). The build and `jx validate` reject a call cycle (`findCallCycles`), and `MAX_CALL_DEPTH` bounds every invocation in both tiers (`packages/runtime/tests/expression.test.ts`, `packages/compiler/tests/expression.test.ts`, `packages/compiler/tests/compile-element-render.test.ts`).
 
 A **named formula** is a Shape 5 expression entry with `parameters` (the same convention as Function entries, §5.3 4d — bare names or CEM parameter objects): a pure, reusable computation. Parameterless pure entries remain computed values exactly as before; the presence of `parameters` makes the entry **callable** instead.
 
@@ -2261,7 +2261,7 @@ A **named formula** is a Shape 5 expression entry with `parameters` (the same co
 }
 ```
 
-Inside a formula body, parameters resolve via the **`$args/` scheme** — a context binding like `$map/` and `$reduce/acc`, inserted into the §7.4 resolution order above `event#/`. Deep paths (`$args/user/name`) navigate the argument value.
+Inside a formula body, parameters resolve via the **`$args/` scheme** — a context binding like `$map/` and `$reduce/acc`, inserted into the §7.4 resolution order above `event#/`. Deep paths (`$args/user/name`) navigate the argument value. The binding holds throughout the body, including an aggregate's per-item expression (§19.4a).
 
 **`call`** (a genuine `Function.prototype` name) invokes a callable: `target` is the callee pointer and `value` is the positional argument list — the `splice` args-in-value precedent. Argument order follows the callee's declared `parameters`; omitted arguments take their CEM `default`.
 
@@ -2283,13 +2283,18 @@ Inside a formula body, parameters resolve via the **`$args/` scheme** — a cont
 }
 ```
 
-**Intl helpers.** The `Intl` formatters are constructors, not plain functions, so they cannot join the allowlist directly. Three **synthetic helpers** wrap construct-then-format as pure calls:
+**Intl helpers.** The `Intl` formatters are constructors, not plain functions, so they cannot join the allowlist directly. Eight **synthetic helpers** wrap construct-then-format as pure calls. site-architecture.md §13.7 is their contract: what each wraps, and the defaults a call may omit (the page's locale, then `en-US`; `UTC` for `Intl/formatDate`). `packages/schema/src/intl.ts` is the one list the interpreter, the compiler and the schema read. Their positional signatures:
 
-| Helper                    | Signature                          | Wraps                                                              |
-| ------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
-| `Intl/formatNumber`       | `(value, locale?, options?)`       | `new Intl.NumberFormat(locale, options).format(value)`             |
-| `Intl/formatDate`         | `(value, locale?, options?)`       | `new Intl.DateTimeFormat(locale, options).format(new Date(value))` |
-| `Intl/formatRelativeTime` | `(value, unit, locale?, options?)` | `new Intl.RelativeTimeFormat(locale, options).format(value, unit)` |
+| Helper                    | Signature                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `Intl/formatNumber`       | `(value, locale?, options?)`                                                                                 |
+| `Intl/formatDate`         | `(value, locale?, options?)`                                                                                 |
+| `Intl/formatRelativeTime` | `(value, unit, locale?, options?)`                                                                           |
+| `Intl/formatList`         | `(values, locale?, options?)`                                                                                |
+| `Intl/plural`             | `(value, locale?, options?)`                                                                                 |
+| `Intl/compare`            | `(a, b, locale?, options?)`                                                                                  |
+| `Intl/displayName`        | `(code, type?, locale?, options?)` (`type` defaults to `"language"`)                                         |
+| `Intl/segment`            | `(value, granularity?, locale?)` (`granularity` defaults to `"grapheme"`, the result is an array of strings) |
 
 The interpreter dispatches these through a helpers table (`BLESSED_HELPERS`); the compiler emits the equivalent inline construct-then-format expression. An `options` argument is a plain-object literal operand (§19.2):
 
@@ -2301,7 +2306,9 @@ The interpreter dispatches these through a helpers table (`BLESSED_HELPERS`); th
 }
 ```
 
-**Semantics and lowering.** Project-global formulas live in `project.json` `state` and reach every page through the standard project-state merge — there is no separate formulas section. The pure ones that read no project data also reach every component of the project (§13.4), which no other project `state` does. `buildScope` lowers a named formula to a scope callable that maps positional arguments onto parameter names; call sites therefore compile to plain positional calls (`state.lineTotal(3, 4)`), identical in the interpreter and every compiled target. `call` chains are bounded by `MAX_CALL_DEPTH` (64) against unbounded recursion; the compiler must additionally reject statically detectable call cycles. Reads inside a formula body are tracked reactively as usual — a computed that calls a formula recomputes when the formula's inputs change.
+**Semantics and lowering.** Project-global formulas live in `project.json` `state` and reach every page through the standard project-state merge — there is no separate formulas section. The pure ones that read no project data also reach every component of the project (§13.4), which no other project `state` does. `buildScope` lowers a named formula to a scope callable that maps positional arguments onto parameter names; call sites therefore compile to plain positional calls (`state.lineTotal(3, 4)`), identical in the interpreter and every compiled target. Reads inside a formula body are tracked reactively as usual — a computed that calls a formula recomputes when the formula's inputs change.
+
+**Recursion.** A named formula may not reach itself. The build forms a call graph over each compiled scope's callable entries (named formulas and parameterised structured bodies, §20.3), where the scope is a page's state after the layout and project-state merge, or a component's own state. An entry has an edge to every callable entry its body names by a `#/state/` pointer, as a `call` target or as an argument. A cycle in that graph, a self-call included, fails the build with its path (`a → b → a`), and `jx validate` reports it as an error. Recursion the graph cannot see, such as a callee passed in through `$args/` or a Function entry's JavaScript calling back, is bounded at run time: the interpreter, build-time evaluation and every compiled target count nested invocations of callable entries, and the 65th throws `$expression: call depth exceeded (64)` (`MAX_CALL_DEPTH`) instead of exhausting the stack.
 
 **A formula is callable from a template.** Because a named formula lowers to a scope callable, a template string calls it like any function of state: `${state.lineTotal($map.item.price, 2)}`. A site build resolves such a call where it resolves the template, and the formula's own declaration does not make the page dynamic (compiler.md §3).
 

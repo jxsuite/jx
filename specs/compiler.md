@@ -869,6 +869,10 @@ The `__jxKeyed` directive of §4.7 and the `__jxLiteral` holder, emitted after `
 
 The element and client targets emit modules that load with `lit-html` and `@vue/reactivity` and nothing else, so they cannot call `booleanAttrValue` — they carry a copy whose enumerated-name list is serialized from `@jxsuite/runtime`'s `enumeratedAttrNames()`. A test asserts the emitted literal still equals that export, which is what keeps the four writers of the rule one decision (spec.md §8.3).
 
+### `formulaGuardSource()` — the call-depth bound, inlined for a generated module
+
+A module that declares a callable entry (a named formula or a parameterised structured body, spec.md §19.4c) wraps each callable in `__jxFormula`, a copy of the interpreter's `withCallDepth` whose limit and message are serialized from `@jxsuite/runtime/expression`'s `MAX_CALL_DEPTH` and `CALL_DEPTH_EXCEEDED`. A test runs the emitted copy and asserts it admits 64 nested calls and throws the interpreter's message on the 65th.
+
 ### `externalClassHelperSource()` — the external class contract, inlined for a generated module
 
 A module holding a `timing: "client"` external class (§3) carries `__jxInstantiate`, for the reason `attrHelperSource()` gives: it constructs the class with its config and takes `resolve()`, else `value`, else the instance, the order `instantiateAndResolve` (`packages/compiler/src/site/external-class.ts`) applies during the build, and a test runs both over one matrix of class shapes. `emitExternalClassResolution(entries, opts)` writes the `Promise.all` that calls it once per entry, and `collectClientClasses(defs, resolveClass?)` finds the entries and the import each distinct class module needs.

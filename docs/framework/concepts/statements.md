@@ -139,6 +139,8 @@ A structured body follows the named-formula pattern. Without `parameters`, the e
 
 Call it with a `call` node, or as `state.addToCart(item)` from another body. Only a non-empty `parameters` list makes a callable; a body written on an `on*` property is always a handler. A callable runs without an event, so `stopPropagation` and `preventDefault` do nothing inside it, and `dispatchEvent` fires from the component itself: the custom element in a component, the page's root element on a page.
 
+Like a named formula, a callable body may not reach itself through `call`. See [Expressions](/docs/framework/concepts/expressions).
+
 ## Statements, expressions, or a body string?
 
 The escalation ladder continues inside Shape 4. Prefer the least powerful form:

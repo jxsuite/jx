@@ -202,6 +202,52 @@ describe("compiled element — one calling convention (spec.md §5.3 4d)", () =>
   });
 });
 
+describe("compiled element — named-formula depth bound", () => {
+  test("a callee handed to itself throws the interpreter's message, not a RangeError", async () => {
+    const { files } = await compileElement({
+      children: [{ id: "go", onclick: { $ref: "#/state/probe" }, tagName: "button" }],
+      state: {
+        err: "",
+        lineTotal: {
+          $expression: {
+            operator: "*",
+            target: { $ref: "$args/price" },
+            value: { $ref: "$args/qty" },
+          },
+          parameters: ["price", "qty"],
+        },
+        omega: {
+          $expression: {
+            operator: "call",
+            target: { $ref: "$args/f" },
+            value: [{ $ref: "$args/f" }],
+          },
+          parameters: ["f"],
+        },
+        probe: {
+          $prototype: "Function",
+          body: "try { state.omega(state.omega); } catch (e) { state.err = e.message; } state.total = state.lineTotal(3, 4);",
+        },
+        total: 0,
+      },
+      tagName: "ls-depth",
+    });
+    writeFileSync(resolve(TMP, "depth.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "depth.js"));
+    win.document.body.innerHTML = "<ls-depth></ls-depth>";
+    const el = rendered(win.document.querySelector("ls-depth"), "ls-depth");
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+    rendered(el.querySelector("#go"), "#go").dispatchEvent(
+      new win.Event("click", { bubbles: true }),
+    );
+    const state = stateOf(el);
+    expect(state.err).toBe("$expression: call depth exceeded (64)");
+    expect(state.total).toBe(12);
+  });
+});
+
 describe("compiled element — $props delivery", () => {
   let propsHost: Element;
 

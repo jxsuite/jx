@@ -3,6 +3,7 @@ import { compileStatements } from "@jxsuite/runtime/statements";
 import {
   buildAttrs,
   emitStatementsFn,
+  formulaGuardSource,
   buildComponentCSS,
   takeDroppedReactiveStyles,
   buildInitialScope,
@@ -2577,7 +2578,7 @@ describe("emitStatementsFn", () => {
     const src = emitStatementsFn(def, compiled);
     // SAFETY: test-only evaluation of the emitted callable source, an arrow function of
     // Positional arguments over the `state` and `target` closed over by the wrapper.
-    return new Function("state", "target", `return ${src}`) as (
+    return new Function("state", "target", `${formulaGuardSource()}\nreturn ${src}`) as (
       state: Target,
       target: EventTarget,
     ) => (...a: number[] | string[]) => void;

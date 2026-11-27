@@ -5,6 +5,7 @@ spec:
   - spec.md#19
   - spec.md#19.4c # named formulas, call, calling one from a template, the packaged formulas
 code:
+  - packages/runtime/src/expression.ts
   - packages/schema/src/dynamic-tag.ts
 ---
 
@@ -193,6 +194,8 @@ A callee may also be a pure standard-library global through `window#/`, gated by
 
 Formulas declared in the project file `state` are available on every page. The pure ones that read no project data are also available inside every component of the project (see [Project formulas](/docs/framework/concepts/props-and-scope#project-formulas)). A catalog of ready-made composite formulas ships with Studio's palette. See the [formula catalog](/docs/framework/reference/formulas).
 
+A formula may not call itself, directly or through other formulas. The build fails and names the chain (`subtotal → lineTotal → subtotal`), and `jx validate` reports the same chain. A chain the build cannot see, such as a formula handed to another as an argument and called there, stops with an error after 64 nested calls. Inside a formula, `$args/` also resolves within `reduce`, `map` and `filter`.
+
 ### Calling a formula from a template
 
 A named formula is an ordinary function of state, so a template string calls it directly, with any further arguments written as literals:
@@ -362,7 +365,7 @@ In production, `?:` and `switch` evaluate only the taken branch. In Studio's edi
 - `reduce` requires `initial`; `map` and `filter` must not declare it. `?:` requires `target`, `value`, and `initial`.
 - `switch` matches on the discriminant's string form, because JSON keys are strings.
 - `event#/` resolves only in handler position; referencing it from a non-handler entry is a compile-time error.
-- `call` targets a named formula or a blessed global; call depth is capped at 64, and statically detectable call cycles are rejected.
+- `call` targets a named formula or a blessed global. A formula that reaches itself is a build error, and any chain deeper than 64 calls stops with an error.
 
 ## Related
 

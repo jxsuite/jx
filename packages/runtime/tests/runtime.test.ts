@@ -27,7 +27,7 @@ import {
   releaseElementStyles,
   resetDocumentStyles,
 } from "../src/runtime";
-import { evaluateExpression, isMutating } from "../src/expression";
+import { CALL_DEPTH_EXCEEDED, evaluateExpression, isMutating } from "../src/expression";
 import { BASE } from "./base-url.ts";
 import { adoptedCSS, elementCSS } from "./style-text.ts";
 import { isFunction } from "@jxsuite/schema/guards";
@@ -2693,6 +2693,43 @@ describe("buildScope — $expression (Shape 5)", () => {
 // ─── Named formulas (call operator, spec §19.4c) ─────────────────────────────
 
 describe("buildScope — named formulas", () => {
+  test("a self-recursive formula stops at MAX_CALL_DEPTH instead of overflowing the stack", async () => {
+    const state = await buildScope(
+      {
+        state: {
+          loop: {
+            $expression: { operator: "call", target: { $ref: "#/state/loop" }, value: [1] },
+            parameters: ["x"],
+          },
+        },
+      },
+      {},
+      BASE,
+    );
+    expect(() => fnOf(state, "loop")(1)).toThrow(CALL_DEPTH_EXCEEDED);
+  });
+
+  test("recursion through a Function entry calling back is bounded", async () => {
+    const state = await buildScope(
+      {
+        state: {
+          f: {
+            $expression: {
+              operator: "call",
+              target: { $ref: "#/state/g" },
+              value: [{ $ref: "$args/x" }],
+            },
+            parameters: ["x"],
+          },
+          g: { $prototype: "Function", parameters: ["n"], body: "return this.f(1)" },
+        },
+      },
+      {},
+      BASE,
+    );
+    expect(() => fnOf(state, "f")(1)).toThrow(CALL_DEPTH_EXCEEDED);
+  });
+
   test("parameterized pure entry becomes a callable, not a computed", async () => {
     const state = await buildScope(
       {
@@ -2750,6 +2787,24 @@ describe("buildScope — named formulas", () => {
 // ─── Structured function bodies (spec §20) ───────────────────────────────────
 
 describe("buildScope — structured function bodies", () => {
+  test("a parameterised body that calls itself rejects at MAX_CALL_DEPTH", async () => {
+    const state = await buildScope(
+      {
+        state: {
+          f: {
+            $prototype: "Function",
+            parameters: ["n"],
+            body: [{ operator: "call", target: { $ref: "#/state/f" }, value: [1] }],
+          },
+        },
+      },
+      {},
+      BASE,
+    );
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+    await expect(statementsFnOf(state, "f")(1)).rejects.toThrow(CALL_DEPTH_EXCEEDED);
+  });
+
   test("parameterless structured body becomes an event handler", async () => {
     const state = await buildScope(
       {

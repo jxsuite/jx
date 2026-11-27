@@ -3,11 +3,17 @@ import { describe, expect, test } from "bun:test";
 import {
   BLESSED_GLOBALS,
   BLESSED_OPERATORS,
+  CALL_DEPTH_EXCEEDED,
+  MAX_CALL_DEPTH,
+  bindFormulaArgs,
   compileExpression,
   evaluateExpression,
-  formulaFnName,
+  findCallCycles,
+  formulaCallable,
   isBlessedGlobal,
+  isCallableEntry,
   isMutating,
+  withCallDepth,
 } from "../src/expression.ts";
 import type { ExpressionTrace } from "../src/expression.ts";
 import type { JxScope } from "../src/types.ts";
@@ -16,6 +22,7 @@ import type {
   JsonValue,
   JxExpressionNode,
   JxExpressionOperand,
+  JxStateDefinition,
 } from "@jxsuite/schema/types";
 
 // Expression.ts has no import-time DOM side effects, so registering after import is safe.
@@ -1367,7 +1374,81 @@ describe("call operator — named formulas and blessed globals", () => {
     };
     expect(() =>
       evaluateExpression({ operator: "call", target: ref("#/state/loop"), value: [] }, state, null),
-    ).toThrow("call depth exceeded");
+    ).toThrow(CALL_DEPTH_EXCEEDED);
+  });
+
+  test("withCallDepth admits 64 nested invocations and refuses the 65th", () => {
+    const nest = (n: number): number => (n === 0 ? 0 : withCallDepth(() => nest(n - 1)) + 1);
+    expect(nest(MAX_CALL_DEPTH)).toBe(MAX_CALL_DEPTH);
+    expect(() => nest(MAX_CALL_DEPTH + 1)).toThrow(CALL_DEPTH_EXCEEDED);
+  });
+
+  test("withCallDepth restores the count when its callee throws", () => {
+    const nest = (n: number): number => (n === 0 ? 0 : withCallDepth(() => nest(n - 1)) + 1);
+    expect(() => nest(MAX_CALL_DEPTH + 1)).toThrow(CALL_DEPTH_EXCEEDED);
+    expect(nest(MAX_CALL_DEPTH)).toBe(MAX_CALL_DEPTH);
+  });
+
+  test("a callee passed in through $args/ is bounded", () => {
+    const state: JxScope = {
+      omega: {
+        $expression: {
+          operator: "call",
+          target: ref("$args/f"),
+          value: [ref("$args/f")],
+        },
+        parameters: ["f"],
+      },
+    };
+    expect(() =>
+      evaluateExpression(
+        { operator: "call", target: ref("#/state/omega"), value: [ref("#/state/omega")] },
+        state,
+        null,
+      ),
+    ).toThrow(CALL_DEPTH_EXCEEDED);
+  });
+
+  test("$args/ resolves inside a reduce body, and compiled === interpreted", () => {
+    const sum: JxExpressionNode = {
+      operator: "reduce",
+      target: ref("$args/items"),
+      initial: 0,
+      value: {
+        operator: "+",
+        target: ref("$reduce/acc"),
+        value: { operator: "*", target: ref("$args/k"), value: ref("$map/item") },
+      },
+    };
+    const state: JxScope = { sum: { $expression: sum, parameters: ["items", "k"] } };
+    const call: JxExpressionNode = {
+      operator: "call",
+      target: ref("#/state/sum"),
+      value: [ref("#/state/xs"), 3],
+    };
+    state.xs = [1, 2, 3];
+    expect(evaluateExpression(call, state, null)).toBe(18);
+    const compiled = new Function(
+      "state",
+      `const _args = { items: state.xs, k: 3 }; return ${compileExpression(sum)};`,
+    );
+    expect(compiled(state)).toBe(18);
+  });
+
+  test("bindFormulaArgs binds names and defaults and skips nameless entries", () => {
+    expect(
+      bindFormulaArgs(["a", null, { name: "c", default: 5 }, { name: "" }, { name: "e" }], [1, 2]),
+    ).toEqual({ a: 1, c: 5, e: undefined });
+    expect(bindFormulaArgs([{ name: "c", default: 5 }], [9])).toEqual({ c: 9 });
+  });
+
+  test("formulaCallable binds positionals and counts depth", () => {
+    const fn = formulaCallable(
+      { operator: "+", target: ref("$args/a"), value: ref("$args/b") },
+      ["a", "b"],
+      {},
+    );
+    expect(fn(1, 2)).toBe(3);
   });
 
   test("compiles blessed global calls; compiled === interpreted", () => {
@@ -1388,37 +1469,7 @@ describe("call operator — named formulas and blessed globals", () => {
     ).toThrow("not a blessed pure global");
   });
 
-  test("compiles named-formula call sites against formulaParams", () => {
-    const node: JxExpressionNode = {
-      operator: "call",
-      target: ref("#/state/lineTotal"),
-      value: [ref("$map/item/price"), 2],
-    };
-    const source = compileExpression(node, { formulaParams: { lineTotal: ["price", "qty"] } });
-    expect(source).toBe('_fx_lineTotal(state, { "price": _item.price, "qty": 2 })');
-  });
-
-  test("emitted formula fn + call site round-trips to the interpreted result", () => {
-    const bodySource = compileExpression(lineTotal.$expression, {
-      formulaParams: { lineTotal: ["price", "qty"] },
-    });
-    const decl = `const ${formulaFnName("lineTotal")} = (state, _args) => ${bodySource};`;
-    const callSource = compileExpression(
-      { operator: "call", target: ref("#/state/lineTotal"), value: [3, 4] },
-      { formulaParams: { lineTotal: ["price", "qty"] } },
-    );
-    const fn = new Function("state", `${decl} return ${callSource};`);
-    expect(fn({})).toBe(12);
-    expect(
-      evaluateExpression(
-        { operator: "call", target: ref("#/state/lineTotal"), value: [3, 4] },
-        { lineTotal },
-        null,
-      ),
-    ).toBe(12);
-  });
-
-  test("callee without formulaParams compiles to a direct scope call", () => {
+  test("a state callee compiles to a direct scope call", () => {
     const source = compileExpression({
       operator: "call",
       target: ref("#/state/sum"),
@@ -1546,5 +1597,84 @@ describe("pure standard-library method operators (spec §19.4d)", () => {
     expect(
       compileExpression({ operator: "padStart", target: ref("#/state/s"), value: [5, "0"] }),
     ).toBe('(state.s)?.padStart?.(5, "0")');
+  });
+});
+
+describe("findCallCycles (spec §19.4c)", () => {
+  const callNode = (target: string, ...args: string[]): JxExpressionNode => ({
+    operator: "call",
+    target: ref(target),
+    value: args.map((a) => ref(a)),
+  });
+  const named = (expression: JxExpressionNode): JxStateDefinition => ({
+    $expression: expression,
+    parameters: ["x"],
+  });
+  const callTo = (key: string, ...args: string[]) =>
+    named(callNode(`#/state/${key}`, ...args.map((a) => `#/state/${a}`)));
+  const leaf = named({ operator: "+", target: 1, value: 2 });
+
+  test("a self-call is a cycle", () => {
+    expect(findCallCycles({ loop: callTo("loop") })).toEqual([["loop", "loop"]]);
+  });
+
+  test("mutual recursion reports the shortest path from the first key", () => {
+    const defs = { a: callTo("b"), b: callTo("c", "a"), c: callTo("a") };
+    expect(findCallCycles(defs)).toEqual([["a", "b", "a"]]);
+  });
+
+  test("a longer cycle reports its path", () => {
+    expect(findCallCycles({ a: callTo("b"), b: callTo("c"), c: callTo("a") })).toEqual([
+      ["a", "b", "c", "a"],
+    ]);
+  });
+
+  test("a callable named as an argument is an edge", () => {
+    expect(findCallCycles({ a: callTo("window#/Math/max", "a"), b: leaf })).toEqual([["a", "a"]]);
+  });
+
+  test("a string operand is not an edge", () => {
+    const text = named({ operator: "+", target: "${state.loop(1)}", value: "" });
+    expect(findCallCycles({ loop: text })).toEqual([]);
+  });
+
+  test("a parameterised structured body is a node, and a handler body or a computed is not", () => {
+    const withParams: JxStateDefinition = {
+      $prototype: "Function",
+      body: [callNode("#/state/f")],
+      parameters: ["x"],
+    };
+    const handler: JxStateDefinition = { $prototype: "Function", body: [callNode("#/state/f")] };
+    const computed: JxStateDefinition = { $expression: callNode("#/state/f") };
+    expect(findCallCycles({ f: withParams })).toEqual([["f", "f"]]);
+    expect(findCallCycles({ f: handler })).toEqual([]);
+    expect(findCallCycles({ f: computed })).toEqual([]);
+    expect(isCallableEntry(withParams)).toBe(true);
+    expect(isCallableEntry({ $prototype: "Function", body: "return 1", parameters: ["x"] })).toBe(
+      false,
+    );
+  });
+
+  test("$args/, $map/, parent#/ and window#/ callees are not edges", () => {
+    const refs = ["$args/x", "$map/item/f", "parent#/f", "window#/Math/max"];
+    const entries = refs.map((r, i) => [`f${i}`, named(callNode(r))] as const);
+    const defs = Object.fromEntries(entries);
+    expect(findCallCycles(defs)).toEqual([]);
+  });
+
+  test("an escaped pointer segment names its entry", () => {
+    const self = named(callNode("#/state/a~1b"));
+    expect(findCallCycles({ "a/b": self })).toEqual([["a/b", "a/b"]]);
+  });
+
+  test("two disjoint cycles are both reported, and an acyclic graph reports nothing", () => {
+    expect(
+      findCallCycles({ a: callTo("b"), b: callTo("a"), c: callTo("d"), d: callTo("c") }),
+    ).toEqual([
+      ["a", "b", "a"],
+      ["c", "d", "c"],
+    ]);
+    expect(findCallCycles({ a: callTo("b"), b: leaf })).toEqual([]);
+    expect(findCallCycles({ n: 5 })).toEqual([]);
   });
 });
