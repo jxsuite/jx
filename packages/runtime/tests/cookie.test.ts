@@ -5,7 +5,43 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readCookie, serializeCookie } from "../src/cookie.ts";
+import {
+  COOKIE_HOST_PREFIX,
+  COOKIE_SECURE_PREFIX,
+  readCookie,
+  readCookieValue,
+  serializeCookie,
+} from "../src/cookie.ts";
+
+describe("readCookieValue", () => {
+  test("decodes a JSON value", () => {
+    const header = `a=${encodeURIComponent(JSON.stringify({ a: 1 }))}`;
+    expect(readCookieValue(header, "a")).toEqual({ a: 1 });
+  });
+
+  test("returns a non-JSON value raw", () => {
+    expect(readCookieValue("theme=dark", "theme")).toBe("dark");
+  });
+
+  test("returns null for an absent name and for a stored JSON null", () => {
+    expect(readCookieValue("a=1", "b")).toBeNull();
+    expect(readCookieValue("a=null", "a")).toBeNull();
+  });
+
+  test("falls back to the raw text when percent-decoding throws", () => {
+    expect(readCookieValue("a=%E0%A4%A", "a")).toBe("%E0%A4%A");
+  });
+
+  test("a name is data", () => {
+    expect(readCookieValue("axb=1", "a.b")).toBeNull();
+    expect(readCookieValue("a.b=2", "a.b")).toBe(2);
+  });
+
+  test("the prefixes are the RFC 6265bis spellings", () => {
+    expect(COOKIE_HOST_PREFIX).toBe("__Host-");
+    expect(COOKIE_SECURE_PREFIX).toBe("__Secure-");
+  });
+});
 
 describe("readCookie", () => {
   test("finds a value among several pairs", () => {

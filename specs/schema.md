@@ -113,7 +113,7 @@ All 13 built-in prototypes with their specific configuration properties:
 
 ### 3.2 Project Schema (`project-schema.json`)
 
-> **Status: Partial.** The top-level keys of `projectConfigSchema` (`packages/schema/defs/project-config.schema.ts`) are described and the three language-tag keys carry `LANGUAGE_TAG_PATTERN`, but the list below names a `collections` key the core schema does not declare (content collections are the parser extension's `content` section, `extensions/parser/schemas/project.fragment.schema.json`) and omits the declared `$defs`, `$schema`, `extensions`, `manifest`, `serviceWorker`, `securityTxt`, `images` and `copy`. The pattern does not accept every tag the build accepts: `canonicalizeLocale` (`packages/schema/src/locale.ts`) trims a tag before `Intl.Locale` parses it, so a padded `"en "` builds as `en` and fails `jx validate`. The compiler checks redirect statuses against its own `REDIRECT_HTML_POLICY` (`packages/compiler/src/site/site-build.ts`) rather than importing `REDIRECT_STATUSES`, as §7's RFC 9110 row says it does.
+> **Status: Partial.** The top-level keys of `projectConfigSchema` (`packages/schema/defs/project-config.schema.ts`) are described and the three language-tag keys carry `LANGUAGE_TAG_PATTERN`, but the list below names a `collections` key the core schema does not declare (content collections are the parser extension's `content` section, `extensions/parser/schemas/project.fragment.schema.json`) and omits the declared `$defs`, `$schema`, `extensions`, `manifest`, `serviceWorker`, `securityTxt`, `images` and `copy`.
 
 **`$id`:** `https://jxsuite.com/schema/project/v1`
 
@@ -134,7 +134,7 @@ Validates `project.json` files with:
 
 **Language-tag keys carry a `pattern`.** `i18n.defaultLocale`, `i18n.locales[]` and `securityTxt.preferredLanguages[]` are all BCP 47 tags, and all three are validated at author time against `LANGUAGE_TAG_PATTERN` — one exported constant in `packages/schema/src/locale.ts`, so the schema and the build read the same source.
 
-The pattern is deliberately looser than the build's `Intl.Locale` parse, and the direction of that inequality is the contract: **the pattern accepts every tag the build accepts**, so a project that compiles can never fail `jx validate`. It catches the class of mistake an author makes — an underscore for a hyphen, an empty subtag, a one-letter primary language — and leaves subtag ordering and registry membership to the build, which is where a full RFC 5646 parse already lives. A test asserts the inequality against a corpus rather than restating it as prose.
+The pattern is deliberately looser than the build's `Intl.Locale` parse, and the direction of that inequality is the contract: **the pattern accepts every tag the build accepts**, so a project that compiles can never fail `jx validate`. It catches the class of mistake an author makes — an underscore for a hyphen, an empty subtag, a one-letter primary language — and leaves subtag ordering and registry membership to the build, which is where a full RFC 5646 parse already lives. Neither side trims: surrounding whitespace is outside the pattern and the grammar alike, so `"en "` fails `jx validate` and the build rather than building as `en`. A test asserts the inequality against a corpus rather than restating it as prose.
 
 ### 3.3 Class Schema (`class-schema.json`)
 

@@ -3,6 +3,9 @@ title: "Dynamic switching"
 description: "Swap whole components in and out of the page from state with $switch and cases: client-side views, wizards, and routing in pure JSON."
 spec:
   - spec.md#14
+code:
+  - packages/runtime/src/runtime.ts
+  - packages/compiler/src/targets/compile-client.ts
 ---
 
 # Dynamic switching
@@ -93,6 +96,7 @@ On the canvas, **Edit** and **Design** draw the case the selector picks right no
 - `$switch` must be a `$ref`, typically `#/state/...`. A literal value is meaningless and does not render.
 - Case keys are matched against the resolved value as strings; there is no default case, and an unmatched value renders an empty container.
 - External cases have isolated scope; to share data with a case, make it an inline element, or lift shared state to `window#/` globals.
+- An external case registers the components its own `$elements` names, and runs its `onMount` and `onUnmount` hooks when it is shown and when it is left.
 - Switching fully tears down the outgoing case: its DOM and reactive bindings are disposed, and per-component state re-initializes on the next visit.
 - For URL-driven pages prefer file-based [routing](/docs/framework/site/routing); `$switch` is for switching _within_ a page.
 

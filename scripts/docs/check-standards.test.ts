@@ -360,6 +360,88 @@ describe("identity and citation", () => {
     ];
     expectViolation(check(fixtureSpec(OK_ROW), { catalog: bad }), "catalog-url-noncanonical");
   });
+
+  /** A fixture whose rows cite exactly these catalog entries, so only the rule under test fires. */
+  function citing(entries: CatalogEntry[]) {
+    const rows = entries
+      .map((e) => `| [${e.id}](${e.url}) | **Adopted** | §1 | package.json | — |`)
+      .join("\n");
+    return check(fixtureSpec(rows), { catalog: entries });
+  }
+
+  test("catalog-org-unknown: a body outside the declared set", () => {
+    const out = citing([
+      {
+        id: "Gitignore",
+        // SAFETY: the catalog is untyped JSON, so a body outside the union is what this rule exists to catch.
+        org: "Git" as CatalogEntry["org"],
+        title: "x",
+        url: "https://git-scm.com/docs/gitignore",
+      },
+    ]);
+    expectViolation(out, "catalog-org-unknown");
+    expectNoViolation(out, "catalog-url-noncanonical");
+  });
+
+  test("an Other entry at its own canonical URL is clean", () => {
+    expect(
+      citing([
+        { id: "CommonMark", org: "Other", title: "x", url: "https://spec.commonmark.org/current/" },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("catalog-org-mismatch: a recognized body's URL filed under Other", () => {
+    expectViolation(
+      citing([
+        {
+          id: "HTTP Semantics",
+          org: "Other",
+          title: "x",
+          url: "https://www.rfc-editor.org/rfc/rfc9110",
+        },
+      ]),
+      "catalog-org-mismatch",
+    );
+  });
+
+  test("catalog-id-unnumbered: a title-cased name under a body that numbers its documents", () => {
+    const out = citing([
+      {
+        id: "HTTP Semantics",
+        org: "IETF",
+        title: "x",
+        url: "https://www.rfc-editor.org/rfc/rfc9110",
+      },
+    ]);
+    expectViolation(out, "catalog-id-unnumbered");
+    expectNoViolation(out, "catalog-url-noncanonical");
+  });
+
+  test("catalog-url-number-mismatch: the identifier and its URL name different documents", () => {
+    expectViolation(
+      citing([
+        { id: "RFC 6901", org: "IETF", title: "x", url: "https://www.rfc-editor.org/rfc/rfc6902" },
+      ]),
+      "catalog-url-number-mismatch",
+    );
+  });
+
+  test("catalog-duplicate-url: two identifiers for one document", () => {
+    const out = citing([
+      { id: "CommonMark", org: "Other", title: "x", url: "https://spec.commonmark.org/current/" },
+      {
+        id: "CommonMark Spec",
+        org: "Other",
+        title: "x",
+        url: "https://spec.commonmark.org/current",
+      },
+    ]);
+    expectViolation(out, "catalog-duplicate-url");
+    const hit = out.find((x) => x.code === "catalog-duplicate-url");
+    expect(hit?.message).toContain('"CommonMark"');
+    expect(hit?.message).toContain('"CommonMark Spec"');
+  });
 });
 
 /* ── Binding ────────────────────────────────────────────────────────────────── */
