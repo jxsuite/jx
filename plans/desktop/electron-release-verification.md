@@ -1,5 +1,5 @@
 ---
-status: drafted
+status: ready
 disposition: implement
 claims:
   - desktop.md#7.6
@@ -32,7 +32,7 @@ Installed ElectroBun builds cannot update into this application: their updater a
 - **Decided:** electron-builder is the packager, because it covers macOS notarization, the Store appx and the update feed in one tool, and its updater reads the same GitHub releases feed.
 - **Decided:** the Windows installer is NSIS and the WiX `.msi` is gone, because NSIS is what electron-updater replaces in place. If an MSI is wanted for managed deployment it is a new `electron-builder.yml` target, not a lane.
 - **Decided:** Linux ships an AppImage per architecture and no `.deb`: the snap and the Nix package already cover the package-manager channels, and the tool electron-builder needs for a deb does not ship for arm64.
-- **Open:** whether the AppImage should pass `--no-sandbox`. Ubuntu 24.04 and later restrict the unprivileged user namespaces Electron's sandbox falls back on for an app that is not installed from a package, so an AppImage fails to start there unless the sandbox is disabled or the user relaxes the AppArmor policy. The docs currently send Ubuntu users to the snap. The trade is a renderer sandbox against a first run that works; the snap already runs `--no-sandbox` for its own reason.
+- **Decided:** the AppImage does not pass `--no-sandbox`; the renderer sandbox stays on, and Ubuntu 24.04 users are sent to the snap (or to relaxing the AppArmor policy), as `docs/start/install.md` already says. The sandbox is the default and the safer failure, the snap covers the Ubuntu case, and a flag can still be added if the arm64 run on a real Ubuntu host shows the docs' route is not enough. The question was: Ubuntu 24.04 and later restrict the unprivileged user namespaces Electron's sandbox falls back on for an app that is not installed from a package, so an AppImage fails to start there unless the sandbox is disabled or the user relaxes the AppArmor policy. The docs currently send Ubuntu users to the snap. The trade is a renderer sandbox against a first run that works; the snap already runs `--no-sandbox` for its own reason.
 - **Decided:** the snap moved to the Electron application without waiting for the measurement, so that every channel ships one shell. It keeps Canonical's Chromium only for the site import, and `--no-sandbox` for want of a store grant. If the measurement shows software rendering, the answer is a recorded limitation in §9.6, or a store request for the interfaces that fix it, not a second shell.
 
 ## Implementation
