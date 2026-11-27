@@ -10,6 +10,7 @@ code:
   - extensions/parser/src/Content.class.json
   - extensions/parser/src/content-data.ts
   - extensions/auth/src/Auth.class.json
+  - packages/compiler/src/site/project-sections.ts
 ---
 
 # Project sections and settings
@@ -47,6 +48,8 @@ projectData(sectionValue, { projectConfig, root, registry, io, lazy?, includeHel
 ```
 
 The compiler's site build and the dev server's resolve path both call it, storing the result as `_project[<key>]` in resolved scope, so the parser's `projectData` loads content types through the format registry and pages see the entries as `config._project.content`. The auth extension's `projectData` is nearly a passthrough: it exposes the section's identifiers under `_project.auth` (never secrets).
+
+`projectData` runs whenever the section's key is present, even when its value is empty, so `_project[<key>]` always holds the normalized value of a section the author wrote. What a section contributes is gated more strictly: its `emit` files, `assets` mounts, `head` entries, server mount and schema-push steps appear only when the section is non-empty. A missing key, `null`, `{}` and `[]` all count as empty, so a section whose every field is optional, such as `auth`, is turned on by setting at least one of them.
 
 ### Loading on demand
 

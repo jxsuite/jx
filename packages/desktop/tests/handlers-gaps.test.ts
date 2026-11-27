@@ -80,6 +80,7 @@ void mock.module("@jxsuite/compiler/format-host", () => ({
   buildInstalledExtensionRegistry: mockBuildRegistry,
   // Still linked by the server modules the session imports (data, live preview); unused here.
   buildProjectExtensionRegistry: async () => fakeRegistry,
+  createNodeFormatIO: () => ({}),
   missingExtensionsNotice: (names: string[]) => `not installed: ${names.join(", ")}`,
 }));
 

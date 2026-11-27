@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { Kysely, sql } from "kysely";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
+import { sectionOwnerActive } from "@jxsuite/compiler/project-sections";
 import { isBoolean, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { loadDevVars, parseDevVars, projectDevEnv } from "./dev-vars.ts";
@@ -526,7 +527,7 @@ export async function pushDataSchema(
     for (const entry of sectionOwners) {
       const { key } = entry.project!;
       const section = project.config[key];
-      if (section === undefined || section === null) {
+      if (section === undefined || section === null || !sectionOwnerActive(entry, project.config)) {
         continue;
       }
       const options: SectionDeployOptions =

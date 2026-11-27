@@ -102,7 +102,7 @@ DELETE /_jx/data/:table/:id
 ```
 
 :::doc-note
-The dev server constructs mounts the same way the generated worker does, so `jx dev` exercises the identical code path, including `ctx` ordering and the fail-closed behavior. See [The dev server](/docs/extending/embedding/dev-server).
+The dev server constructs mounts the same way the generated worker does, so `jx dev` exercises the identical code path, including `ctx` ordering and the fail-closed behavior. It activates the same mounts as well: a class owning a project section only when that section is non-empty, a class without one always. See [The dev server](/docs/extending/embedding/dev-server).
 :::
 
 ## Section-owner deploySchema

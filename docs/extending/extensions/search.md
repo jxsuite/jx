@@ -89,7 +89,7 @@ The result is one JSON envelope at the configured `output` path:
 }
 ```
 
-The emitter returns data; **the host writes the files**, guards against path traversal, and skips the emitter entirely when the project declares no `search` section, the same gating as section loading and server mounts.
+The emitter returns data; **the host writes the files**, guards against path traversal, and skips the emitter entirely unless the project declares a non-empty `search` section: the same test that decides whether a section's `assets`, `head` entries and server mount contribute.
 
 ### Multilingual collections
 

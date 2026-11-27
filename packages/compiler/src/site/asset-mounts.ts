@@ -23,6 +23,7 @@ import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+import { sectionOwnerActive } from "./project-sections.ts";
 
 /** What {@link copyMountedAssets} reports: files written, and URLs that resolved to nothing. */
 export interface MountedAssetCopy {
@@ -54,11 +55,7 @@ export async function loadAssetMounts(
   for (const entry of registry.assetProviders()) {
     const sectionKey = entry.project?.key;
     const sectionValue = sectionKey ? projectConfig[sectionKey] : undefined;
-    if (
-      sectionKey &&
-      (sectionValue == null ||
-        (isNonNullObject(sectionValue) && Object.keys(sectionValue).length === 0))
-    ) {
+    if (!sectionOwnerActive(entry, projectConfig)) {
       continue;
     }
     try {

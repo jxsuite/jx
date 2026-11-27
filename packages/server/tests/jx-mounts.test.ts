@@ -264,7 +264,7 @@ describe("auth mount dispatch (@jxsuite/auth)", () => {
     writeFileSync(
       resolve(AUTH_TMP, "project.json"),
       JSON.stringify({
-        auth: {},
+        auth: { connection: "main" },
         connections: { main: { binding: "DB", databaseId: "remote-uuid", provider: "d1" } },
         data: {
           comments: {
@@ -322,5 +322,67 @@ describe("auth mount dispatch (@jxsuite/auth)", () => {
     const listed = await authCall("GET", "/_jx/data/comments");
     expect(listed!.status).toBe(200);
     expect(await listed!.json()).toHaveLength(1);
+  });
+});
+
+describe("section gating", () => {
+  const GATE_TMP = `${TMP}-gating`;
+
+  function gateCall(method: string, path: string, body?: JsonObject) {
+    const url = `http://localhost:3000${path}`;
+    const init: RequestInit = { headers: { "Content-Type": "application/json" }, method };
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+    }
+    return handleJxMounts(new Request(url, init), new URL(url), GATE_TMP);
+  }
+
+  function writeProject(data: JsonObject | null) {
+    const project: JsonObject = {
+      auth: {},
+      connections: { main: { provider: "sqlite" } },
+      extensions: ["@jxsuite/connector", "@jxsuite/auth"],
+      name: "Gating Fixture",
+    };
+    if (data) {
+      project.data = data;
+    }
+    writeFileSync(resolve(GATE_TMP, "project.json"), JSON.stringify(project), "utf8");
+    resetJxMounts();
+  }
+
+  const notes = {
+    notes: {
+      connection: "main",
+      permissions: { insert: "authenticated", read: "public" },
+      schema: { properties: { text: { type: "string" } }, type: "object" },
+    },
+  };
+
+  beforeAll(() => {
+    rmSync(GATE_TMP, { force: true, recursive: true });
+    mkdirSync(GATE_TMP, { recursive: true });
+    writeFileSync(
+      resolve(GATE_TMP, ".dev.vars"),
+      "BETTER_AUTH_SECRET=dev-gate-secret-0123456789\n",
+    );
+  });
+
+  afterAll(() => {
+    rmSync(GATE_TMP, { force: true, recursive: true });
+    resetJxMounts();
+  });
+
+  test("an empty auth section mounts no auth", async () => {
+    writeProject(notes);
+    expect(await gateCall("GET", "/_jx/auth/get-session")).toBeNull();
+    const denied = await gateCall("POST", "/_jx/data/notes", { text: "x" });
+    expect(denied?.status).toBe(401);
+    expect(JSON.stringify(await denied?.json())).toContain("no auth mount configured");
+  });
+
+  test("an empty data section mounts nothing", async () => {
+    writeProject({});
+    expect(await gateCall("GET", "/_jx/data/notes")).toBeNull();
   });
 });

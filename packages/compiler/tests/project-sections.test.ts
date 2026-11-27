@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildProjectExtensionRegistry } from "../src/site/format-host";
-import { loadProjectSections } from "../src/site/project-sections";
+import { loadProjectSections, sectionOwnerActive } from "../src/site/project-sections";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 
@@ -119,5 +119,37 @@ describe("loadProjectSections", () => {
     const partial: ProjectConfig = { extensions: ["./ext"], name: "No Stuff" };
     const sections = await loadProjectSections(TMP, partial, registry);
     expect(sections).toEqual({});
+  });
+});
+
+describe("sectionOwnerActive", () => {
+  const owner = { project: { key: "k" } };
+  const none = { project: null };
+
+  it("a class owning no section is always active", () => {
+    // oxlint-disable-next-line unicorn/no-useless-undefined -- the missing config IS the case under test
+    expect(sectionOwnerActive(none, undefined)).toBe(true);
+    expect(sectionOwnerActive(none, {})).toBe(true);
+  });
+
+  it("an absent, null, empty-object or empty-array section is inactive", () => {
+    for (const config of [{}, { k: null }, { k: {} }, { k: [] }]) {
+      expect(sectionOwnerActive(owner, config)).toBe(false);
+    }
+    // oxlint-disable-next-line unicorn/no-useless-undefined -- the missing config IS the case under test
+    expect(sectionOwnerActive(owner, undefined)).toBe(false);
+  });
+
+  it("a non-empty object or array, or any scalar, is active", () => {
+    for (const config of [{ k: { a: 1 } }, { k: [1] }, { k: "x" }, { k: 0 }, { k: false }]) {
+      expect(sectionOwnerActive(owner, config)).toBe(true);
+    }
+  });
+});
+
+describe("loadProjectSections with an empty section", () => {
+  it("loads a present but empty section", async () => {
+    const sections = await loadProjectSections(TMP, { ...projectConfig, stuff: {} }, registry);
+    expect(sections.stuff).toMatchObject({ section: {} });
   });
 });
