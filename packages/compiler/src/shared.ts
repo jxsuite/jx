@@ -61,8 +61,8 @@ import {
   isNonNullObject,
   isNumber,
   isPrototypeDef,
+  isPureTypeDef,
   isRef,
-  isSchemaOnlyDef,
   isServerFnDef,
   isString,
   isTagExpression,
@@ -482,11 +482,7 @@ export function pageImportMap(sources: PageImportSources): string {
 // ─── Schema keywords & detection ─────────────────────────────────────────────
 // Centralized in @jxsuite/schema/guards; re-exported here for existing callers.
 
-export {
-  SCHEMA_KEYWORDS,
-  isSchemaOnlyDef as isSchemaOnly,
-  isTemplateString,
-} from "@jxsuite/schema/guards";
+export { SCHEMA_KEYWORDS, isPureTypeDef, isTemplateString } from "@jxsuite/schema/guards";
 
 /**
  * Returns true if a $src path points to a .class.json schema-defined class.
@@ -659,7 +655,7 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
       if ("default" in d) {
         return true;
       }
-      if (isSchemaOnlyDef(d)) {
+      if (isPureTypeDef(d)) {
         continue;
       }
       return true;
@@ -1195,7 +1191,7 @@ export function buildInitialScope(
       runtimeOnly.add(key);
       continue;
     }
-    if (!def.$prototype && !("$expression" in def) && !isSchemaOnlyDef(def)) {
+    if (!def.$prototype && !("$expression" in def) && !isPureTypeDef(def)) {
       setOwnScopeValue(scope, key, cloneValue(def));
     }
   }

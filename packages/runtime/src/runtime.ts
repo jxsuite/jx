@@ -75,6 +75,7 @@ import {
   attributeStateKey,
   isPrivateStateKey,
   isPrototypeDef,
+  isPureTypeDef,
   isRef as isRefValue,
   isServerFnDef,
   isString,
@@ -522,21 +523,6 @@ export function setDocumentParser(
 ): void {
   _documentParser = parser;
 }
-
-/** JSON Schema keywords used to identify pure type definitions (Shape 2b). */
-const SCHEMA_KEYWORDS = new Set([
-  "type",
-  "properties",
-  "items",
-  "enum",
-  "minimum",
-  "maximum",
-  "minLength",
-  "maxLength",
-  "pattern",
-  "required",
-  "examples",
-]);
 
 /** /** @type {{ skip: boolean }} */
 const _serverFnConfig = { skip: false };
@@ -1189,7 +1175,7 @@ export async function buildScope(
         raw[key] = def.default;
         continue;
       } // Shape 2: expanded signal
-      if (hasSchemaKeywords(def)) {
+      if (isPureTypeDef(def)) {
         continue;
       } // Shape 2b: pure type def
       raw[key] = def; // Shape 1: plain object
@@ -1311,23 +1297,6 @@ function bindPositionalArgs(
   }
   return args;
 }
-
-/**
- * Check whether an object contains any JSON Schema keywords. Used to discriminate Shape 2b (pure
- * type definition) from Shape 1 (naked object).
- *
- * @param obj A state entry object, as the document wrote it
- * @returns {boolean}
- */
-function hasSchemaKeywords(obj: Readonly<Record<string, JxDocumentValue | undefined>>) {
-  for (const k of Object.keys(obj)) {
-    if (SCHEMA_KEYWORDS.has(k)) {
-      return true;
-    }
-  }
-  return false;
-}
-export { hasSchemaKeywords };
 
 /**
  * The names a template may read without a `state.` prefix, in the order {@link templateArgs}
@@ -5448,7 +5417,7 @@ export function declaredDefaults(def: JxElement): Map<string, JxScopeValue> {
         out.set(key, undefined);
         continue;
       }
-      if (hasSchemaKeywords(entry)) {
+      if (isPureTypeDef(entry)) {
         continue;
       }
     }

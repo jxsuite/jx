@@ -28,7 +28,7 @@ import {
   isJsonObject,
   isMappedArray,
   isRef,
-  isSchemaOnlyDef,
+  isPureTypeDef,
   isString,
 } from "@jxsuite/schema/guards";
 
@@ -236,7 +236,7 @@ function stateSchema(def: JxDocumentValue | undefined, ctx: ItemSources): JsonOb
   if ("default" in def) {
     return sampleSchema(def.default);
   }
-  const isNakedObject = !isSchemaOnlyDef(def) && !Object.keys(def).some((k) => k.startsWith("$"));
+  const isNakedObject = !isPureTypeDef(def) && !Object.keys(def).some((k) => k.startsWith("$"));
   return isNakedObject ? sampleSchema(def) : declared;
 }
 

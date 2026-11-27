@@ -68,7 +68,7 @@ import {
   escapeHtml,
   inheritProjectFormulas,
   isMutating,
-  isSchemaOnly,
+  isPureTypeDef,
   rewriteState,
   serverCallHelperSource,
   tagNameToClassName,
@@ -415,7 +415,7 @@ function extractInitialValue(def: JxStateDefinition) {
     return JSON.stringify(def.default);
   }
   // Pure schema-only type definitions — skip (no runtime value)
-  if (isSchemaOnly(def)) {
+  if (isPureTypeDef(def)) {
     return; // Caller should skip this entry
   }
   // $prototype entries (LocalStorage, SessionStorage, Request, etc.)

@@ -290,7 +290,7 @@ Every entry in `state` falls into exactly one of four shapes, determinable by in
 **Rules:**
 
 - A plain string without `${}` is a string state property initialized to that string value
-- A plain object with no `$prototype`, no `type`, no `default`, and no `properties` is an object state property
+- A plain object with no `$prototype`, `$expression` or `default` is an object state property unless it is a pure type definition (§5.7): so `{}`, `{ "title": "Hello" }` and `{ "type": "admin", "name": "x" }` are values
 - All state entries are reactive by default
 
 > **Status: Implemented.** Runtime `buildScope` handles all naked value types.
@@ -528,8 +528,6 @@ State entries prefixed with `#` are private. They are never exposed to the studi
 
 ### 5.7 Shape Detection Algorithm
 
-> **Status: Partial.** The interpreter follows the steps below (`buildScope` in `packages/runtime/src/runtime.ts`), but an object with no `default`, `$prototype` or `$expression` is sorted by two different predicates, and the algorithm names neither. The interpreter treats it as a pure type definition, holding no value, when any key is one of its own schema keywords (`hasSchemaKeywords`); the compiled targets do so only when every key is one of a different set (`isSchemaOnlyDef` in `packages/schema/src/guards.ts`). So `{}` and `{ "description": "x" }` hold a value in the interpreter and none in built output, and `{ "type": "string", "label": "x" }` the reverse.
-
 ```
 For each entry in state:
 
@@ -548,11 +546,16 @@ For each entry in state:
 5. Value is an object with "default" (no "$prototype")?
    → Shape 2: Typed value (reactive property with type metadata)
 
-6. Value is a plain object (no reserved keys)?
+6. Value is an object whose every key is a JSON Schema keyword, at least one of them not an
+   annotation (description, title, $comment, examples, format, deprecated, readOnly, writeOnly)?
+   → Pure type definition (Shape 2b): declares the entry and holds no value until one is
+     supplied (a prop, an attribute)
+
+7. Value is a plain object (no reserved keys)?
    → Shape 1: Object value (reactive property)
 ```
 
-> **Status: Implemented.** Runtime `buildScope` follows this exact algorithm.
+> **Status: Implemented.** `isPureTypeDef` in `@jxsuite/schema/guards` is the pure-type step in both tiers: the interpreter's `buildScope` and the compiler's `buildInitialScope`, page `state` and element initial values call it.
 
 ---
 

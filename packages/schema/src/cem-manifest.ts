@@ -26,7 +26,7 @@ import { collectSlotDefs } from "./component-meta";
 import { LIFECYCLE_KEYS, classifyFunctionEntries } from "./function-role";
 import {
   attributeStateKey,
-  hasSchemaKeywords,
+  isPureTypeDef,
   isBoolean,
   isExpandedSignal,
   isFunctionDef,
@@ -224,7 +224,7 @@ function deprecation(value: JsonValue | undefined): string | true | undefined {
 /**
  * The field a public state entry is, or null when it is not one: a Shape 1 value (a string that is
  * no template, a number, a boolean, `null`, an array, or a plain object with no `$`-prefixed key
- * that carries no JSON Schema keyword, so `{}` counts) or a Shape 2 typed entry (spec.md §5.7).
+ * that is not a pure type definition, so `{}` counts) or a Shape 2 typed entry (spec.md §5.7).
  */
 function fieldOf(name: string, def: JsonValue): CemFieldOut | null {
   const field: CemFieldOut = { kind: "field", name };
@@ -243,7 +243,7 @@ function fieldOf(name: string, def: JsonValue): CemFieldOut | null {
   }
   if (isJsonObject(def)) {
     const computed = Object.keys(def).some((key) => key.startsWith("$"));
-    if (computed || hasSchemaKeywords(def)) {
+    if (computed || isPureTypeDef(def)) {
       return null;
     }
   } else if (isTemplateString(def)) {
