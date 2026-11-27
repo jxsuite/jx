@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +27,25 @@ describe("createBunSqliteDialect", () => {
       const tables = await again.introspection.getTables();
       expect(tables.map((t) => t.name)).toEqual(["t"]);
       await again.destroy();
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  test("enables foreign keys on every database it opens or is given", async () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-bunsqlite-fk-"));
+    try {
+      const file = new Kysely<DynamicDatabase>({
+        dialect: createBunSqliteDialect({ url: join(root, "fk.sqlite") }),
+      });
+      const injected = new Kysely<DynamicDatabase>({
+        dialect: createBunSqliteDialect({ database: new Database(":memory:") }),
+      });
+      for (const db of [file, injected]) {
+        const { rows } = await sql<{ foreign_keys: number }>`pragma foreign_keys`.execute(db);
+        expect(rows[0]!.foreign_keys).toBe(1);
+        await db.destroy();
+      }
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

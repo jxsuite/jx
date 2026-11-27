@@ -66,6 +66,7 @@ Two tools measure a change to the compiler, and both work on every project in th
 
 - `bun run conformance` builds each project, opens its pages in Chromium and records what the browser ends up with: the DOM with each element's geometry and computed style, the accessibility tree, console and network errors, the effect of clicking controls, and a screenshot. `capture` writes a recording, `compare` reports the differences between two, and `self` records the same tree twice to prove the tool repeats itself. Use it when a change replaces part of the compiler, to show the pages still behave the same. `scripts/conformance/README.md` has the details.
 - `bun run bench:build` times a cold and a warm build of each project, split into the phases of the build. Run it before and after on the same machine; the numbers mean nothing across machines.
+- `bun bench/project-state/run.ts` times the project state host (`specs/project-state.md` §13.2) on a generated 10,000-file project: indexing, then a burst of 1,000 conditional writes and a burst of 1,000 external changes. It runs under Bun, the dev server's runtime. Run it under Node, the desktop backend's, with `node node_modules/.bin/jiti bench/project-state/run.ts`. It is wall-clock, not part of CodSpeed; the numbers mean nothing across machines.
 
 Every dependency of a crate must be Rust itself, with no C library linked in. That is what lets the addon load on any system without installing anything beside it.
 

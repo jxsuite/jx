@@ -16,6 +16,14 @@ test("db push forwards flags, prints statements/warnings, and reports bindings",
         warnings: ["comments.legacy: column exists in the database but not in the schema"],
       },
     ],
+    sections: [
+      {
+        applied: false,
+        section: "auth",
+        steps: [{ kind: "auth", sql: 'create table "user" (...)', summary: "Create user" }],
+        warnings: ["auth: heads up"],
+      },
+    ],
     wranglerPath: "/proj/wrangler.jsonc",
   }));
 
@@ -26,5 +34,8 @@ test("db push forwards flags, prints statements/warnings, and reports bindings",
     true,
   );
   expect(run.logs.some((l) => l.includes('create table "comments"'))).toBe(true);
+  expect(run.logs.some((l) => l.includes("auth (section) — 1 step(s) [dry-run]"))).toBe(true);
+  expect(run.logs.some((l) => l.includes('create table "user"'))).toBe(true);
+  expect(run.warns.some((w) => w.includes("warning: auth: heads up"))).toBe(true);
   expect(run.logs.some((l) => l.includes("Updated bindings in"))).toBe(true);
 });

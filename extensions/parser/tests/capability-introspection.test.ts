@@ -6,10 +6,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { isFunction } from "@jxsuite/schema/guards";
+import { isFunction, isString } from "@jxsuite/schema/guards";
 import { Markdown } from "../src/markdown";
 import { Csv } from "../src/csv";
 import { MD_ELEMENTS } from "../src/serialize";
+import { isJxMarkdown } from "../src/transpile";
 
 type FormatClass = typeof Markdown | typeof Csv;
 
@@ -152,6 +153,46 @@ describe("Markdown capability behavior", () => {
       expect(result.frontmatter.title).toBe("T");
     } finally {
       rmSync(TMP, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("Markdown.class.json $studio documentMode", () => {
+  const def = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../src/Markdown.class.json"), "utf8"),
+  );
+  const mode = def.$studio.documentMode;
+
+  test("defaults to content and promotes on tagName", () => {
+    expect(mode.default).toBe("content");
+    expect(mode.componentWhen.frontmatterKey).toBe("tagName");
+  });
+
+  test("isJxMarkdown decides as the hint does on what parse returns (drift guard)", () => {
+    const sources = [
+      "---\ntagName: div # my-note\n---\n",
+      '---\ntagName: "-card"\n---\n',
+      "---\ntagName:\n  - my-card\n---\n",
+      "---\ntagName: [my-card\n---\n",
+      "---\ntagName: >-\n  my-card\n---\n",
+      "---\n{tagName: my-card}\n---\n",
+      "---\ntagName: my-card\n---\n\nHello",
+      "---\r\ntagName: my-card\r\n---\r\n\r\nHello",
+      "# Just a heading",
+      "---\ntitle: T\n---\n",
+      "---\ntagName: div\n---\n",
+    ];
+    const pattern = new RegExp(mode.componentWhen.matches);
+    for (const source of sources) {
+      let expected = false;
+      try {
+        // The frontmatter key is pinned to "tagName" by the test above.
+        const { tagName } = Markdown.parse(source);
+        expected = isString(tagName) && pattern.test(tagName);
+      } catch {
+        expected = false;
+      }
+      expect(isJxMarkdown(source)).toBe(expected);
     }
   });
 });
