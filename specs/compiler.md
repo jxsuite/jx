@@ -838,7 +838,7 @@ Helpers that `packages/compiler/src/shared.ts` exports for the compilation targe
 
 ### `isDynamic(def)` — Recursive static detection
 
-### `isSchemaOnly(value)` — Pure type definition detection (every key a JSON Schema keyword)
+### `isPureTypeDef(value)` — Pure type definition detection (spec.md §5.7), re-exported from `@jxsuite/schema/guards`
 
 ### `buildInitialScope(defs?, parentScope?)` — Static scope for compile-time pre-rendering
 
@@ -886,7 +886,7 @@ Project-level emission order is: base `:root` (custom properties) and `body` (di
 
 ### `collectServerEntries(doc)` — Find all `timing: "server"` entries
 
-> **Status: Implemented.** Shared utilities in `packages/compiler/src/shared.ts`, where `isSchemaOnly` is re-exported from `@jxsuite/schema/guards`.
+> **Status: Implemented.** Shared utilities in `packages/compiler/src/shared.ts`, where `isPureTypeDef` is re-exported from `@jxsuite/schema/guards`.
 
 ---
 

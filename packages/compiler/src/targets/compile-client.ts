@@ -45,7 +45,7 @@ import {
   escapeHtml,
   isMutating,
   isRefObject,
-  isSchemaOnly,
+  isPureTypeDef,
   isTemplateString,
   KEYED_LIST_HELPER,
   KEYED_LIST_IMPORTS,
@@ -294,7 +294,7 @@ export function compileClient(
     }
 
     // Pure schema-only type def → skip
-    if (isSchemaOnly(def)) {
+    if (isPureTypeDef(def)) {
       continue;
     }
 
