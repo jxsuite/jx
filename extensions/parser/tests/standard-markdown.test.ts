@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { processMarkdown } from "../src/md";
 import { serializeJxMarkdown } from "../src/serialize";
-import { transpileJxMarkdown } from "../src/transpile";
+import { convertChildren, mdastNodeToJx, transpileJxMarkdown } from "../src/transpile";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
@@ -422,5 +422,130 @@ describe("GFM syntax written back", () => {
       ],
     });
     expect(out).toContain(":::");
+  });
+});
+
+// ─── Branch coverage for the serializer and transpiler edge shapes ──────────
+
+/** A value a hand-written document can hold that the child-slot types do not describe. */
+function malformed(value: boolean | Record<string, string>): never {
+  // SAFETY: only fed to the serializer to check it tolerates shapes outside the declared types.
+  return value as never;
+}
+
+describe("serializer edge shapes", () => {
+  test("a footnote backlink that follows a lone space leaves no trailing space", () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          children: [
+            {
+              children: [
+                {
+                  children: [
+                    "note",
+                    " ",
+                    {
+                      attributes: { "data-footnote-backref": "", href: "#fnref-a" },
+                      tagName: "a",
+                      textContent: "x",
+                    },
+                  ],
+                  tagName: "li",
+                },
+              ],
+              tagName: "ol",
+            },
+          ],
+          attributes: { "data-footnotes": "" },
+          tagName: "section",
+        },
+      ],
+    };
+    const out = serializeJxMarkdown(doc);
+    expect(out).not.toContain("fnref");
+    expect(out).not.toMatch(/ \n/);
+  });
+
+  test("a loose task item drops the checkbox from inside its paragraph", () => {
+    roundTrip("- [ ] a\n\n- [x] b\n");
+    const out = serializeJxMarkdown(transpileJxMarkdown("- [ ] a\n\n- [x] b\n"));
+    expect(out).toContain("[ ] a");
+    expect(out).toContain("[x] b");
+  });
+
+  test("table whitespace text nodes and extra cell styles survive alignment stripping", () => {
+    const doc = transpileJxMarkdown("| a | b |\n| :-- | --: |\n| 1 | 2 |\n");
+    const table = el(childrenOf(doc)[0]);
+    const withText = (node: JxElement): JxElement => ({
+      ...node,
+      children: ["\n", ...kids(node)],
+    });
+    const head = withText(el(kids(table)[0]));
+    const row = el(kids(head)[1]);
+    const cell = el(kids(row)[0]);
+    cell.style = { ...cell.style, color: "red" };
+    const out = serializeJxMarkdown({
+      ...doc,
+      children: [{ ...table, children: [head, ...kids(table).slice(1)] }],
+    });
+    expect(out).toContain('style.color="red"');
+    expect(out).not.toContain("textAlign=");
+  });
+
+  test("an item's phrasing run stops at non-phrasing slots", () => {
+    const li = (children: (JxElement | string)[]): JxDocument => ({
+      children: [{ children: [{ children, tagName: "li" }], tagName: "ul" }],
+    });
+    // A number, a nested inline element, and an inline element holding a block.
+    const out = serializeJxMarkdown(
+      li([
+        "a ",
+        { children: ["b", { tagName: "em", textContent: "c" }], tagName: "strong" },
+        { children: [{ tagName: "p", textContent: "d" }], tagName: "span" },
+        malformed(true),
+        { children: malformed({ $prototype: "Array" }), tagName: "span" },
+      ]),
+    );
+    expect(out).toContain("- a **");
+    expect(out).toContain("d");
+  });
+});
+
+describe("transpiler edge shapes", () => {
+  test("a list item mdast node converts on its own", () => {
+    const item = mdastNodeToJx({
+      children: [{ children: [{ type: "text", value: "x" }], type: "paragraph" }],
+      type: "listItem",
+    });
+    expect(item).toMatchObject({ tagName: "li" });
+  });
+
+  test("a table row without children aligns nothing", () => {
+    const table = mdastNodeToJx({
+      align: ["left"],
+      children: [{ children: [], type: "tableRow" }],
+      type: "table",
+    });
+    expect(table).toMatchObject({ tagName: "table" });
+  });
+
+  test("literal text inside raw inline HTML is kept beside the converted nodes", () => {
+    const out = convertChildren([
+      { type: "html", value: "<span>lit " },
+      { children: [{ type: "text", value: "em" }], type: "emphasis" },
+      { type: "html", value: " end</span>" },
+    ]);
+    expect(JSON.stringify(out)).toMatch(/lit .*"tagName":"em"/);
+  });
+
+  test("raw inline HTML with mixed text keeps its text nodes", () => {
+    const out = body("x <span>a <b>b</b> c</span> y\n");
+    expect(JSON.stringify(out)).toContain('"tagName":"b"');
+  });
+
+  test("a loose task item with an empty paragraph still gets its checkbox", () => {
+    const out = body("- [ ] <!-- c -->\n\n- [x] b\n");
+    expect(JSON.stringify(out)).toContain("checkbox");
   });
 });
