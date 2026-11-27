@@ -40,7 +40,7 @@ Before the census the section led with `Implemented`. Both gaps have one cause, 
 ## Outcome
 
 - parser.md §9.3 → Implemented: on all three branches declared dates are coerced once and each refusal is reported once; every entry loaded from a local file carries `_meta.mtime`; a remote entry's lack of one, and the runtime instances' exclusion, are stated.
-- parser.md does not graduate here unless this is the last of its plans to land (§3, §7 and §9.1 are owned by `plan:parser/heading-slug-combining-marks`, `plan:_shared/collection-directive-elements` and `plan:parser/localized-mount-name-warning`).
+- parser.md does not graduate here unless this is the last of its plans to land (§3 and §7 are owned by `plan:parser/heading-slug-combining-marks` and `plan:_shared/collection-directive-elements`; §9.1 has landed).
 
 ## Decisions
 

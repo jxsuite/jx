@@ -36,7 +36,7 @@ Before the census the marker said both derived values were correct only for Lati
 ## Outcome
 
 - parser.md §3 → Implemented: a heading's slug keeps every nonspacing and spacing combining mark written on a kept letter or number, except a variation selector, and drops variation selectors, enclosing marks, and any mark whose base was dropped. Every heading whose NFC form has no such mark slugs exactly as today, the pure-ASCII corpus and headings with a capital `İ` included.
-- parser.md graduates only if this lands last: §7, §9.1 and §9.3 are owned by `plan:_shared/collection-directive-elements`, `plan:parser/localized-mount-name-warning` and `plan:parser/uniform-entry-dates`.
+- parser.md graduates only if this lands last: §7 and §9.3 are owned by `plan:_shared/collection-directive-elements` and `plan:parser/uniform-entry-dates` (§9.1 has landed).
 
 ## Decisions
 
