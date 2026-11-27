@@ -623,6 +623,51 @@ describe("buildSite — a call cycle through project.json state", () => {
   });
 });
 
+describe("buildSite — two pages, one URL", () => {
+  const DIR = resolve(import.meta.dir, "__test-site-route-collision__");
+  const write = (name: string, doc: JsonObject) => {
+    mkdirSync(resolve(DIR, "pages", name, ".."), { recursive: true });
+    writeFileSync(resolve(DIR, "pages", name), JSON.stringify(doc), "utf8");
+  };
+  const text = (value: string): JsonObject => ({
+    children: [{ tagName: "p", textContent: value }],
+    tagName: "main",
+  });
+
+  afterAll(() => rmSync(DIR, { force: true, recursive: true }));
+
+  it("builds the more specific page and warns", async () => {
+    scaffold(DIR, { name: "Collide" });
+    write("blog/about.json", text("Static"));
+    write("blog/[slug].json", {
+      ...text("Generated"),
+      $paths: { param: "slug", values: ["about"] },
+    });
+
+    const { result, warnings } = await captured(() => buildSite(DIR));
+
+    expect(readFileSync(resolve(DIR, "dist/blog/about/index.html"), "utf8")).toContain("Static");
+    const warning = warnings.find((w) => w.includes("both generate"));
+    expect(warning).toContain("/blog/about");
+    expect(warning).toContain("pages/blog/about.json");
+    expect(warning).toContain("pages/blog/[slug].json");
+    expect(result.errors).toEqual([]);
+  });
+
+  it("fails the build when neither route outranks the other", async () => {
+    scaffold(DIR, { name: "Tie" });
+    write("about.json", text("One"));
+    write("about/index.json", text("Two"));
+
+    const { errors, result } = await captured(() => buildSite(DIR));
+
+    const tie = result.errors.find((e) => e.includes("neither route is more specific"));
+    expect(tie).toContain("pages/about.json");
+    expect(tie).toContain("pages/about/index.json");
+    expect(errors).toContain(tie!);
+  });
+});
+
 describe("buildSite — a page named in URL pattern syntax", () => {
   const DIR = resolve(import.meta.dir, "__test-site-pattern-name__");
 

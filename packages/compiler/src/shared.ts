@@ -305,6 +305,13 @@ type SrcExportOwner =
  * A template `url` is read inside the effect, so the fetch re-runs whenever the interpolated state
  * changes; an URL that still interpolates to `undefined` is skipped rather than fetched.
  *
+ * `debounce` (a finite number above 0) delays every fetch by that many milliseconds, the first
+ * included. Each run passes `fetch` an `AbortController` signal, and the effect's cleanup aborts it
+ * and clears a pending delay, so a change cancels the fetch it replaces and `stop()` cancels one
+ * still in flight. An `AbortError` is never written to the entry. A caller that emits a
+ * non-`manual` entry must import `onEffectCleanup` from `@vue/reactivity`; every tracked read has
+ * to happen synchronously before the timer.
+ *
  * @param {string} key - State key receiving the response
  * @param {JxPrototypeDef} def - The Request definition
  * @param {{ statePrefix?: string; indent?: string; collect?: string }} [opts] - `statePrefix` is
@@ -323,6 +330,8 @@ export function emitRequestFetch(
   const { url } = def;
   const isTemplateUrl = isTemplateString(url);
   const method = def.method ?? "GET";
+  const debounceMs =
+    isNumber(def.debounce) && Number.isFinite(def.debounce) && def.debounce > 0 ? def.debounce : 0;
 
   if (def.manual) {
     return `${indent}// ${key}: manual Request — fetch triggered by user action`;
@@ -342,6 +351,8 @@ export function emitRequestFetch(
     lines.push(`  const url = ${JSON.stringify(url)};`);
   }
 
+  lines.push("  const _ac = new AbortController();");
+
   const fetchOpts: string[] = [];
   if (method !== "GET") {
     fetchOpts.push(`method: ${JSON.stringify(method)}`);
@@ -355,15 +366,26 @@ export function emitRequestFetch(
       : JSON.stringify(def.body);
     fetchOpts.push(`body: ${bodyStr}`);
   }
+  fetchOpts.push("signal: _ac.signal");
 
-  const optsStr = fetchOpts.length > 0 ? `, { ${fetchOpts.join(", ")} }` : "";
-  lines.push(
-    `  fetch(url${optsStr})`,
-    "    .then(r => r.ok ? r.json() : Promise.reject(r.statusText))",
-    `    .then(d => { ${statePrefix}.${key} = d; })`,
-    `    .catch(e => { ${statePrefix}.${key} = { error: String(e) }; });`,
-    collect ? "}));" : "});",
-  );
+  const chain = [
+    `fetch(url, { ${fetchOpts.join(", ")} })`,
+    "  .then(r => r.ok ? r.json() : Promise.reject(r.statusText))",
+    `  .then(d => { ${statePrefix}.${key} = d; })`,
+    `  .catch(e => { if (e?.name !== "AbortError") ${statePrefix}.${key} = { error: String(e) }; });`,
+  ];
+
+  if (debounceMs > 0) {
+    lines.push(
+      "  const _t = setTimeout(() => {",
+      ...chain.map((line) => `    ${line}`),
+      `  }, ${debounceMs});`,
+      "  onEffectCleanup(() => { _ac.abort(); clearTimeout(_t); });",
+    );
+  } else {
+    lines.push("  onEffectCleanup(() => _ac.abort());", ...chain.map((line) => `  ${line}`));
+  }
+  lines.push(collect ? "}));" : "});");
 
   return lines.map((line) => `${indent}${line}`).join("\n");
 }
@@ -649,6 +671,54 @@ function withoutPureFormulas(def: JxElement | JxMutableNode): string {
   return JSON.stringify({ ...def, state });
 }
 
+/** The internal key a spliced node carries: no string in its subtree is a template (spec.md §8.4). */
+export const LITERAL_KEY = "$literal";
+
+/**
+ * Whether a node is spliced content: an element `markLiteral` marked, whose text, attributes and
+ * styles every pass writes as they stand (spec.md §8.4).
+ *
+ * @param {unknown} node
+ * @returns {boolean}
+ */
+export function isLiteralNode(node: StaticChild | JxMappedArray): boolean {
+  return (
+    isNonNullObject(node) && !Array.isArray(node) && LITERAL_KEY in node && node.$literal === true
+  );
+}
+
+/**
+ * Mark content a computed-children template splices in as literal (spec.md §8.4). Each element, at
+ * every depth, is copied with `$literal: true` (the entry's cached tree is not mutated), and a
+ * string holding `${` is split after each `$` so no part holds a template and the parts render as
+ * one run of text.
+ *
+ * @param {(JxElement | string)[]} nodes
+ * @returns {(JxElement | string)[]}
+ */
+export function markLiteral(nodes: (JxElement | string)[]): (JxElement | string)[] {
+  return nodes.flatMap((node): (JxElement | string)[] => {
+    if (isString(node)) {
+      const parts: string[] = [];
+      let rest = node;
+      for (let at = rest.indexOf("${"); at >= 0; at = rest.indexOf("${")) {
+        parts.push(rest.slice(0, at + 1));
+        rest = rest.slice(at + 1);
+      }
+      parts.push(rest);
+      return parts;
+    }
+    if (!isNonNullObject(node) || Array.isArray(node)) {
+      return [node];
+    }
+    const copy: JxElement = { ...node, [LITERAL_KEY]: true };
+    if (Array.isArray(copy.children)) {
+      copy.children = markLiteral(copy.children);
+    }
+    return [copy];
+  });
+}
+
 /**
  * Determine whether a node (or any of its descendants) requires client-side JavaScript.
  *
@@ -664,7 +734,8 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
   if (isString(def)) {
     return isTemplateString(def);
   }
-  if (!isNonNullObject(def)) {
+  // Spliced content is data: a template in it is text, so it never needs the client (spec.md §8.4).
+  if (!isNonNullObject(def) || isLiteralNode(def)) {
     return false;
   }
 
@@ -728,6 +799,14 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
     }
     if (isTemplateString(val)) {
       return true;
+    }
+  }
+
+  if (isNonNullObject(def.$props)) {
+    for (const [key, val] of Object.entries(def.$props)) {
+      if (!key.startsWith("#") && (isRef(val) || isTemplateString(val))) {
+        return true;
+      }
     }
   }
 
@@ -1470,29 +1549,68 @@ function readsRuntimeOnlyState(str: string, scope: JxScope | null) {
   if (!scope) {
     return false;
   }
-  const runtimeOnly = runtimeOnlyKeysOf(scope);
   for (const match of str.matchAll(/\bstate\.([A-Za-z_$][\w$]*)\s*(\()?/g)) {
     if (match[2]) {
       continue;
     }
     // SAFETY: capture group 1 is outside any optional part of the pattern, so a match has it.
     const key = match[1] as string;
-    if (runtimeOnly?.has(key)) {
-      return true;
-    }
-    // Reading the key can run a computed's getter, which is free to throw on partial build-time
-    // Data. A throw says nothing about whether the entry is runtime-only, so it is not a mark.
-    let value: JxScope[string];
-    try {
-      value = scope[key];
-    } catch {
-      continue;
-    }
-    if (isFunction(value)) {
+    if (isRuntimeOnlyKey(scope, key)) {
       return true;
     }
   }
   return false;
+}
+
+/**
+ * Whether one state key holds no build-time value: it carries a runtime-only mark, or reading it
+ * yields a function (a placeholder for a bodyless `$src`, or a handler).
+ *
+ * @param {JxScope} scope
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isRuntimeOnlyKey(scope: JxScope, key: string): boolean {
+  if (runtimeOnlyKeysOf(scope)?.has(key)) {
+    return true;
+  }
+  // Reading the key can run a computed's getter, which is free to throw on partial build-time
+  // Data. A throw says nothing about whether the entry is runtime-only, so it is not a mark.
+  let value: JxScope[string];
+  try {
+    value = scope[key];
+  } catch {
+    return false;
+  }
+  return isFunction(value);
+}
+
+/**
+ * Whether a `$ref` reads state the build cannot settle (compiler.md §8.1): `window#/` and
+ * `document#/` have no build-time value, a `$map/` pointer is a row value, and a state pointer
+ * (`#/state/`, `parent#/` or a bare path) is judged by its head entry.
+ *
+ * @param {string} ref
+ * @param {JxScope | null} scope
+ * @returns {boolean}
+ */
+export function refReadsRuntimeOnlyState(ref: string, scope: JxScope | null): boolean {
+  if (ref.startsWith("window#/") || ref.startsWith("document#/")) {
+    return true;
+  }
+  if (ref.startsWith("$map/") || !scope) {
+    return false;
+  }
+  let path = ref;
+  if (ref.startsWith("#/state/")) {
+    path = ref.slice("#/state/".length);
+  } else if (ref.startsWith("parent#/")) {
+    path = ref.slice("parent#/".length);
+  } else if (ref.includes("#/")) {
+    return false;
+  }
+  const [head] = refSegments(path);
+  return head !== undefined && head !== "" && isRuntimeOnlyKey(scope, head);
 }
 
 /**
@@ -1609,6 +1727,7 @@ export function cloneValue<T>(value: T): T {
 export function inlineStyleDeclarations(
   style: JxStyle | null | undefined,
   scope: JxScope | null,
+  literal = false,
 ): string {
   if (!style || !scope) {
     return "";
@@ -1624,7 +1743,7 @@ export function inlineStyleDeclarations(
         isTemplateString(v),
     )
     .map(([k, v]) => {
-      const value = resolveStaticValue(v, scope);
+      const value = literal ? v : resolveStaticValue(v, scope);
       return value == null ? null : `${camelToKebab(k)}: ${value}`;
     })
     .filter(Boolean)
@@ -1753,7 +1872,13 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   // Allocated by the first live row: most elements have none.
   let live: Set<string> | undefined;
 
-  const id = resolveStaticValue(def.id, scope);
+  /* Spliced content is data, never a template (spec.md §8.4): its values are written as they stand. */
+  const literal = isLiteralNode(def);
+  /* SAFETY: a template resolves to a scope value, the same as `resolvePropertyValue` reads it. */
+  const resolve = (value: JxDocumentValue | undefined): JxDocumentValue | JxScope[string] =>
+    literal ? value : (resolveStaticValue(value, scope) as JxScope[string]);
+
+  const id = resolve(def.id);
   if (id) {
     written.set("id", serializeAttr("id", String(id), false));
   }
@@ -1761,7 +1886,7 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
      handle (spec.md §9.2). The author's are `attributes.class` when the element writes one, which
      is what the runtime leaves in effect, since it applies attributes after properties. */
   const mergesClass = writesMergedClass(def);
-  const authorClass = mergesClass ? resolveStaticValue(authorClassValue(def), scope) : null;
+  const authorClass = mergesClass ? resolve(authorClassValue(def)) : null;
   const className = [
     isString(authorClass) || isNumber(authorClass) ? String(authorClass) : "",
     styleHandleOf(def) ?? "",
@@ -1781,7 +1906,9 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
     if (!reflection) {
       return;
     }
-    const resolved = resolvePropertyValue(value, scope);
+    /* SAFETY: a literal property is a document value the build reads as the scope value it
+       would have resolved to; the reflection below ignores any that is not text. */
+    const resolved = literal ? (value as JxScope[string]) : resolvePropertyValue(value, scope);
     /* A live row decides its attribute even when it writes none: `checked: false` leaves the box
        unchecked whatever `attributes.checked` says afterwards. A value the build cannot read
        decides nothing. */
@@ -1824,7 +1951,7 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
       if (mergesClass && k === "class") {
         continue;
       }
-      const value = resolveStaticValue(v, scope);
+      const value = resolve(v);
       /*
        * A boolean is the attribute's PRESENCE or its text, depending on which family HTML puts the
        * attribute in — `booleanAttrValue` owns that judgement, and the runtime asks it the same
@@ -1875,7 +2002,9 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   // The host declarations go last: in one `style` attribute the later declaration of a property
   // Wins, and the page walk gives the definition's resolved host style the same precedence over an
   // Instance's own (`{ ...node.style, ...resolvedStyle }`), so the two paths agree.
-  const inline = [inlineStyleDeclarations(def.style, scope), hostStyle].filter(Boolean).join("; ");
+  const inline = [inlineStyleDeclarations(def.style, scope, literal), hostStyle]
+    .filter(Boolean)
+    .join("; ");
   if (inline) {
     /*
      * Escaped like every other attribute. Both halves carry values a template string resolved
@@ -3843,16 +3972,20 @@ function renderInner(
   context: ComponentPrerenderContext | null,
   preformatted = false,
 ): string {
+  // Spliced content is data (spec.md §8.4): its text is escaped and written, never evaluated.
+  const literal = isLiteralNode(node);
   if (node.textContent !== undefined) {
-    const val = resolveStaticValue(node.textContent, scope);
+    const val = literal ? node.textContent : resolveStaticValue(node.textContent, scope);
     return val != null ? escapeHtml(String(val)) : "";
   }
   if (node.innerHTML) {
-    const val = resolveStaticValue(node.innerHTML, scope);
+    const val = literal ? node.innerHTML : resolveStaticValue(node.innerHTML, scope);
     return val != null ? String(val) : node.innerHTML;
   }
   // A content property is the element's text (spec.md §8.1).
-  const content = contentPropertyText(node, resolveStaticTagName(node.tagName, scope), scope);
+  const content = literal
+    ? undefined
+    : contentPropertyText(node, resolveStaticTagName(node.tagName, scope), scope);
   if (content !== undefined) {
     return content;
   }

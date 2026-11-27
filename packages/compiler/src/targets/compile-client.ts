@@ -66,6 +66,8 @@ import {
   PREFORMATTED_TAGS,
   pureSchemeOf,
   isExpandedInstance,
+  isLiteralNode,
+  renderStaticNode,
   resolveStaticValue,
   serverCallHelperSource,
   collectFunctionImports,
@@ -130,6 +132,8 @@ interface ClientCounter {
   /** Lit-rendered regions (`_listN`, `_childrenN`). */
   l: number;
   m: number;
+  /** Component-instance prop bindings (`_pN`): one per bound `$props` entry (spec.md §13.3). */
+  p: number;
   /** Whether any region is rendered through lit-html. */
   needsLit: boolean;
   needsFormulaGuard: boolean;
@@ -215,6 +219,7 @@ export function compileClient(
     m: 0,
     needsFormulaGuard: hasCallableEntries(raw.state ?? {}),
     needsLit: false,
+    p: 0,
     s: 0,
     sw: 0,
     t: 0,
@@ -224,6 +229,7 @@ export function compileClient(
   const handlers = new Map<string, HandlerDef>(); // Key → { body, args }
 
   // Classify state entries into reactive state, computed, bind, on, and init blocks
+  let autoFetch = false;
   const stateEntries: [string, JsonValue | undefined][] = []; // [key, initValue] → reactive({...})
   const computedEntries: [string, string][] = []; // [key, bodyExpr]   → state.key = computed(...)
   const bindEntries: [string, string][] = []; // [key, bodyExpr]   → bind = {...}
@@ -331,6 +337,9 @@ export function compileClient(
       if (def.$prototype === "Request") {
         stateEntries.push([key, null]);
         initBlocks.push(emitRequestFetch(key, def));
+        if (!def.manual) {
+          autoFetch = true;
+        }
         continue;
       }
 
@@ -378,6 +387,18 @@ export function compileClient(
       onEntries.push([key, def]);
     }
   }
+  /* A handler a `$props` value names has to be a function on `state`, where the page binding and a
+     row's `.prop=` read it (`state.<key>` was `undefined`). It is the element target's unbound
+     `(state, event)` shape. A key an earlier rule already put on `state` is assigned once. */
+  const propRefKeys = collectPropRefKeys(raw);
+  for (const [key, def] of onEntries) {
+    const target = `state[${JSON.stringify(key)}] =`;
+    if (propRefKeys.has(key) && !initBlocks.some((block) => block.startsWith(target))) {
+      initBlocks.push(
+        `${target} (state, e) => { const fn = (${def.args.join(", ")}) => { ${def.body ?? ""}\n}; return fn(state, e); };`,
+      );
+    }
+  }
 
   // Generate the JS module
   const srcImports = collectFunctionImports(defs, roles);
@@ -394,6 +415,7 @@ export function compileClient(
     opts.rewriteSrc,
     clientClasses,
     mappedArrayFeatures(raw),
+    autoFetch,
     { needsCookie },
   );
 
@@ -468,6 +490,11 @@ function buildClientNode(
   }
   if (!isNonNullObject(def)) {
     return "";
+  }
+
+  // Spliced content is data (spec.md §8.4): written as static, escaped markup and bound to nothing.
+  if (isLiteralNode(def)) {
+    return renderStaticNode(def, context.scope, null, null, context.preformatted === true);
   }
 
   const nextContext = createCompileContext(
@@ -642,6 +669,28 @@ function buildClientNode(
       counter.t += 1;
       bindAttrs.push(`:${camelToKebab(prop)}="${key}"`);
       bindings.set(key, `() => \`${val}\``);
+      needsBind = true;
+    }
+  }
+
+  /* A component instance's `$props`: each is written onto the element as a property, when the
+     module hydrates and again whenever what it reads changes (spec.md §13.3). The property name
+     is the directive's value, because an attribute name folds case and cannot hold `-` or `.`. */
+  if (isString(def.tagName) && def.tagName.includes("-") && isNonNullObject(def.$props)) {
+    for (const [name, val] of Object.entries(def.$props)) {
+      if (name.startsWith("#")) {
+        continue;
+      }
+      const key = `_p${counter.p}`;
+      counter.p += 1;
+      if (isRefObject(val)) {
+        bindings.set(key, `() => ${mapRefToClientExpr(val.$ref)}`);
+      } else if (isTemplateString(val)) {
+        bindings.set(key, `() => \`${val}\``);
+      } else {
+        bindings.set(key, `() => (${JSON.stringify(val)})`);
+      }
+      bindAttrs.push(`:prop.${key}="${escapeHtml(name)}"`);
       needsBind = true;
     }
   }
@@ -1165,6 +1214,7 @@ function emitClientModule(
   rewriteSrc: ((specifier: string) => string) | undefined,
   clientClasses: ClientClasses,
   lists: MappedArrayFeatures,
+  needsEffectCleanup: boolean,
   features: { needsCookie?: boolean } = {},
 ) {
   const lines: string[] = [];
@@ -1181,6 +1231,9 @@ function emitClientModule(
   // The keyed-list directive owns an effect it stops, and a snapshot the page's render reads.
   if (lists.keyed) {
     reactivityImports.push("stop", "shallowRef");
+  }
+  if (needsEffectCleanup) {
+    reactivityImports.push("onEffectCleanup");
   }
   lines.push(`import { ${reactivityImports.join(", ")} } from '@vue/reactivity';`);
 
@@ -1313,6 +1366,10 @@ function emitClientModule(
   }
   lines.push(
     "          effect(() => { el.style[parts[1]] = bind[key](); });",
+    "        } else if (parts[0] === 'prop' && parts.length > 1) {",
+    "          const name = key;",
+    "          const k = parts[1];",
+    "          effect(() => { el[name] = bind[k](); });",
     "        } else if (parts[0] === 'attr' && parts.length > 1) {",
     // A binding that flips back has to take the attribute WITH it: the element is being re-used, so
     // Anything left behind is the state the page just said it had left. Same decision as the
@@ -1436,7 +1493,74 @@ function mapRefToClientExpr(written: string) {
   if (ref.startsWith("#/state/")) {
     return refAccessor("state", ref.slice("#/state/".length));
   }
+  // The remaining schemes mirror `refToExpr` in compile-element.ts, as the runtime lowers them.
+  if (ref.startsWith("parent#/")) {
+    return refAccessor("state", ref.slice("parent#/".length));
+  }
+  if (ref.startsWith("window#/")) {
+    return refAccessor("window", ref.slice("window#/".length));
+  }
+  if (ref.startsWith("document#/")) {
+    return refAccessor("document", ref.slice("document#/".length));
+  }
   return refAccessor("state", ref);
+}
+
+/**
+ * The head state key of every `#/state/`, `parent#/` or bare `$ref` a component instance's `$props`
+ * names, anywhere in the document: the keys whose handler entries a prop may deliver.
+ *
+ * @param {JxMutableNode | JsonPrimitive | undefined} node
+ * @returns {Set<string>}
+ */
+function collectPropRefKeys(node: JxMutableNode | JsonPrimitive | undefined): Set<string> {
+  const keys = new Set<string>();
+  const pending: unknown[] = [node];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (Array.isArray(value)) {
+      const items: unknown[] = value;
+      pending.push(...items);
+    } else if (isNonNullObject(value)) {
+      /* SAFETY: authored document JSON; only the members destructured here are read, each as the
+         schema types it. */
+      const { $props: props, cases, children, map } = value as JxMutableNode;
+      if (isNonNullObject(props) && !Array.isArray(props)) {
+        for (const prop of Object.values(props)) {
+          const head = isRefObject(prop) ? propRefHead(prop.$ref) : undefined;
+          if (head) {
+            keys.add(head);
+          }
+        }
+      }
+      pending.push(children, map);
+      if (isNonNullObject(cases) && !Array.isArray(cases)) {
+        const branches: unknown[] = Object.values(cases);
+        pending.push(...branches);
+      }
+    }
+  }
+  return keys;
+}
+
+/**
+ * The head state key a prop's `$ref` reads, or `undefined` for a pointer that names no state entry
+ * (`$map/`, `window#/`, `document#/` or another document).
+ *
+ * @param {string} written
+ * @returns {string | undefined}
+ */
+function propRefHead(written: string): string | undefined {
+  const ref = canonicalMapRef(written);
+  let path = ref;
+  if (ref.startsWith("#/state/")) {
+    path = ref.slice("#/state/".length);
+  } else if (ref.startsWith("parent#/")) {
+    path = ref.slice("parent#/".length);
+  } else if (ref.includes("#/") || ref.startsWith("$map/")) {
+    return undefined;
+  }
+  return refSegments(path)[0];
 }
 
 /**

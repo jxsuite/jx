@@ -36,10 +36,10 @@ Every document is a JSON object with up to six top-level fields:
 | `$id`      | Recommended | Component identifier, used by tooling                                                                                                   |
 | `$defs`    | Optional    | Pure JSON Schema type definitions, tooling only, never rendered                                                                         |
 | `state`    | Optional    | Reactive state: values, computed entries, functions, and data sources. See [State](/docs/framework/concepts/state)                      |
-| `tagName`  | Required    | HTML tag name for the root element                                                                                                      |
+| `tagName`  | Optional    | HTML tag name for the root element; a `div` when absent                                                                                 |
 | `children` | Optional    | Array of child [elements](/docs/framework/concepts/elements), text nodes, and [repeaters](/docs/framework/concepts/lists), mixed freely |
 
-Only `tagName` is required. A document can also carry `$media` (named breakpoints, see [Styling](/docs/framework/concepts/styling)) and `$elements` (custom-element dependencies, see [Components](/docs/framework/concepts/components)).
+No root field is required. A document can also carry `$media` (named breakpoints, see [Styling](/docs/framework/concepts/styling)) and `$elements` (custom-element dependencies, see [Components](/docs/framework/concepts/components)).
 
 :::doc-note
 `https://jxsuite.com/schema/v1` names the dialect, which is what you want for a document that travels on its own. Inside a project, point `$schema` at the `document.schema.json` that [`jx schema`](/docs/framework/build/cli) writes into the project root instead. That bundle is the core schema _plus_ every enabled extension's contributions, so your editor's autocomplete and `jx validate` are reading the same rules. See [Schema composition](/docs/extending/extensions/schema-composition).
@@ -71,6 +71,7 @@ What a document _is_ follows from its root `tagName` and where the file lives:
 
 - A root `tagName` **containing a hyphen** (`"my-counter"`, `"user-card"`) defines a **custom element**, a reusable [component](/docs/framework/concepts/components) that other documents instantiate by reference.
 - A root `tagName` that is a **plain HTML tag** (`"main"`, `"section"`) is a **page fragment**: a tree that renders in place, either as a route in a site's `pages/` directory (see [Routing](/docs/framework/site/routing)) or inlined into another document via `$ref` (see [References](/docs/framework/concepts/references)).
+- A document with **no root `tagName`** renders its root as a `div`. Pages usually leave it out: a page wrapped by a [layout](/docs/framework/site/layouts) renders inside the layout's root element, so a `tagName` at the top of the page is not used.
 
 Either kind may declare `state`; the difference is that a custom element gets its own isolated scope and a `$props` boundary (see [Props and scope](/docs/framework/concepts/props-and-scope)).
 
@@ -92,7 +93,7 @@ JSON Schema is the authoritative definition of the format: any 2020-12-compatibl
 ## Rules
 
 - A document must be valid JSON: no comments, no trailing commas, no inline code (behavior lives in `state` entries as strings or structured data).
-- `tagName` is the only required root field; `$schema` and `$id` are recommended.
+- No root field is required: `$schema` and `$id` are recommended, and `tagName` is optional.
 - `$defs` is tooling-only: no signals, no functions, no runtime artifacts.
 - Jx reserves the keywords `$prototype`, `$props`, `$switch`, `$map`, `$src`, `$export`, `timing`, `default`, `body`, and `arguments`, and `name` inside a function definition, on top of the standard JSON Schema vocabulary.
 - One document per file; a document nests other documents only by `$ref`, never by pasting their JSON inline.

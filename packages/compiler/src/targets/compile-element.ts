@@ -487,7 +487,8 @@ export function emitElementModule(
   lines.push(...clientClasses.imports);
 
   // `$prototype: "Request"` entries each get an auto-fetch effect in connectedCallback, plus the
-  // Machinery to stop those effects again on disconnect. Both are emitted only when one exists, so
+  // Machinery to stop those effects again on disconnect, and the `onEffectCleanup` import follows the
+  // Same rule. All are emitted only when one exists, so
   // Documents without a Request produce exactly the same module as before.
   const requestEntries = Object.entries(defs).flatMap(([key, def]): [string, JxPrototypeDef][] =>
     isPrototypeDef(def) && def.$prototype === "Request" ? [[key, def]] : [],
@@ -502,10 +503,16 @@ export function emitElementModule(
   /* What the document's lists need (compiler.md §4.7), decided before anything is emitted. A
      module with no filtered, sorted or keyed list carries none of it. */
   const lists = mappedArrayFeatures(doc);
+  const reactivityNames = ["reactive", "computed", "effect", "stop"];
+  if (lists.keyed) {
+    reactivityNames.push("shallowRef");
+  }
+  // `onEffectCleanup` aborts a Request fetch on a re-run and on `stop()`; only an auto-fetch needs it.
+  if (requestEntries.some(([, d]) => !d.manual)) {
+    reactivityNames.push("onEffectCleanup");
+  }
   lines.push(
-    lists.keyed
-      ? `import { reactive, computed, effect, stop, shallowRef } from '@vue/reactivity';`
-      : `import { reactive, computed, effect, stop } from '@vue/reactivity';`,
+    `import { ${reactivityNames.join(", ")} } from '@vue/reactivity';`,
     /* `nothing` is what REMOVES an attribute in a lit template, and it is the only way to express a
        false presence attribute: writing `open="false"` produces an OPEN <details>. See
        `attrHelperSource`. */

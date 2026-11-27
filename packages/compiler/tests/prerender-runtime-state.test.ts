@@ -18,7 +18,7 @@ import {
   srcImportBinding,
 } from "../src/shared";
 import { isFunction } from "@jxsuite/schema/guards";
-import type { JxStateDefinition } from "@jxsuite/schema/types";
+import type { JxPrototypeDef, JxStateDefinition } from "@jxsuite/schema/types";
 
 /** @param {Record<string, JxStateDefinition>} defs */
 const scopeOf = (defs: Record<string, JxStateDefinition>) => buildInitialScope(defs);
@@ -219,13 +219,53 @@ describe("emitRequestFetch", () => {
 
     expect(out).toContain("manual Request");
     expect(out).not.toContain("fetch(");
+    expect(out).not.toContain("AbortController");
+  });
+
+  test("passes an abort signal the effect's cleanup aborts", () => {
+    const out = emitRequestFetch("d", { $prototype: "Request", url: "/api/d" });
+
+    expect(out).toContain("new AbortController()");
+    expect(out).toContain("onEffectCleanup(() => _ac.abort());");
+    expect(out).toContain("fetch(url, { signal: _ac.signal })");
+  });
+
+  test("emits no timer without a positive finite debounce", () => {
+    for (const debounce of [undefined, 0, -5, Infinity, "300"]) {
+      // SAFETY: a hand-edited document can hold any value here; the emitter must ignore a non-number.
+      const def = { $prototype: "Request", debounce, url: "/api/d" } as JxPrototypeDef;
+      const out = emitRequestFetch("d", def);
+
+      expect(out).not.toContain("setTimeout");
+      expect(out).not.toContain("300");
+    }
+  });
+
+  test("schedules the fetch when debounce is set", () => {
+    const out = emitRequestFetch("d", { $prototype: "Request", debounce: 250, url: "/api/d" });
+
+    expect(out).toContain("const _t = setTimeout(() => {");
+    expect(out).toContain("}, 250);");
+    expect(out).toContain("onEffectCleanup(() => { _ac.abort(); clearTimeout(_t); });");
+  });
+
+  test("skips an AbortError when writing the error", () => {
+    const out = emitRequestFetch("d", { $prototype: "Request", url: "/api/d" });
+
+    expect(out).toContain('if (e?.name !== "AbortError") state.d = { error: String(e) };');
   });
 
   test("indents every emitted line", () => {
-    const out = emitRequestFetch("d", { $prototype: "Request", url: "/api/d" }, { indent: "    " });
+    for (const debounce of [undefined, 50]) {
+      const out = emitRequestFetch(
+        "d",
+        { $prototype: "Request", url: "/api/d", ...(debounce && { debounce }) },
+        { indent: "    " },
+      );
 
-    for (const line of out.split("\n")) {
-      expect(line.startsWith("    ")).toBe(true);
+      for (const line of out.split("\n")) {
+        expect(line.startsWith("    ")).toBe(true);
+      }
     }
   });
 });

@@ -10,7 +10,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { ContentFieldValue, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -81,6 +81,7 @@ beforeAll(() => {
     JSON.stringify({
       classes: {
         Content: resolve(import.meta.dir, "../src/Content.class.json"),
+        Csv: resolve(import.meta.dir, "../src/Csv.class.json"),
         Markdown: resolve(import.meta.dir, "../src/Markdown.class.json"),
       },
       name: "parser-fixture",
@@ -1342,5 +1343,157 @@ describe("asset references written as the published address", () => {
   it("leaves the raw body alone, so the entry still round-trips as authored", async () => {
     const post = await loadOwn({ url: "https://example.com" });
     expect(post.body).toContain("](https://example.com/content/own/images/hero.png)");
+  });
+});
+
+// ─── Dates and modification times on every branch ────────────────────────────
+
+describe("entry dates and modification times on every branch", () => {
+  const T_LIST = new Date("2021-02-03T04:05:06Z");
+  const T_SOLO = new Date("2022-03-04T05:06:07Z");
+  const T_CSV = new Date("2023-04-05T06:07:08Z");
+  const T_MD = new Date("2024-05-06T07:08:09Z");
+  const instant = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const schema = { properties: { published: { format: "date-time", type: "string" } } };
+
+  beforeAll(() => {
+    const write = (rel: string, text: string, when: Date) => {
+      const path = resolve(TMP, rel);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, text);
+      utimesSync(path, when, when);
+    };
+    write(
+      "content/dated-json/list.json",
+      JSON.stringify([
+        { id: "early", published: "2025-03-04T01:00:00+02:00" },
+        { id: "late", published: "2025-03-04T00:30:00Z" },
+        { id: "bad", published: "03/04/2025" },
+      ]),
+      T_LIST,
+    );
+    write("content/dated-json/solo.json", JSON.stringify({ id: "solo" }), T_SOLO);
+    write(
+      "content/dated-csv/rows.csv",
+      "id,published\none,2025-03-04T01:00:00+02:00\ntwo,2025-03-04T00:30:00Z\n",
+      T_CSV,
+    );
+    write("content/dated-md/post.md", "---\ntitle: Post\n---\n\nBody.\n", T_MD);
+  });
+
+  const loadJson = async () => {
+    const section = { dj: { format: "json", schema, source: "./content/dated-json/" } };
+    return entriesOf(await loadContentSection(section, TMP, makeRegistry()), "dj");
+  };
+  const byId = (entries: ContentLoaderEntry[], id: string) => {
+    const found = entries.find((e) => e.id === id);
+    if (!found) {
+      throw new Error(`no entry ${id}`);
+    }
+    return found;
+  };
+
+  it("normalizes a JSON collection's declared dates and keeps the authored text", async () => {
+    captureWarnings();
+    const entries = await loadJson();
+    const early = byId(entries, "early");
+    const late = byId(entries, "late");
+    expect(early.data.published).toBe("2025-03-03T23:00:00Z");
+    expect(early._meta?.rawDates?.published).toBe("2025-03-04T01:00:00+02:00");
+    expect(late.data.published).toBe("2025-03-04T00:30:00Z");
+    expect(late._meta?.rawDates).toBeUndefined();
+    expect(String(early.data.published) < String(late.data.published)).toBe(true);
+  });
+
+  it("reports a date it cannot read once", async () => {
+    const warnings = captureWarnings();
+    await loadJson();
+    const about = warnings.filter((w) => w.includes("dated-json/bad") || w.includes("03/04/2025"));
+    expect(about).toHaveLength(1);
+    expect(warnings.some((w) => w.includes("was not coerced"))).toBe(false);
+  });
+
+  it("coerces a remote source's declared dates", async () => {
+    const { entry } = makeFakeEntry("RemoteDates", {
+      loadImpl: () => [{ body: null, data: { published: "2025-03-04T01:00:00+02:00" }, id: "r" }],
+      remote: true,
+    });
+    const section = { feed: { format: "RemoteDates", schema, source: "https://example.com/f" } };
+    const [loaded] = entriesOf(await loadContentSection(section, TMP, makeRegistry(entry)), "feed");
+    expect(loaded?.data.published).toBe("2025-03-03T23:00:00Z");
+    expect(loaded?._meta?.rawDates?.published).toBe("2025-03-04T01:00:00+02:00");
+    expect(loaded?._meta?.mtime).toBeUndefined();
+  });
+
+  it("stamps a JSON entry with its file's modification time", async () => {
+    captureWarnings();
+    const entries = await loadJson();
+    expect(byId(entries, "early")._meta?.mtime).toBe(instant(T_LIST));
+    expect(byId(entries, "late")._meta?.mtime).toBe(instant(T_LIST));
+    expect(byId(entries, "solo")._meta?.mtime).toBe(instant(T_SOLO));
+  });
+
+  it("stamps a CSV row with its file's modification time", async () => {
+    const registry = await buildFixtureRegistry();
+    const section: ContentSection = {
+      dc: { format: "Csv", schema, source: "./content/dated-csv/rows.csv" },
+    };
+    const data = await Content.projectData(section, { projectConfig: {}, registry, root: TMP });
+    const rows = entriesOf(data, "dc");
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row._meta?.mtime).toBe(instant(T_CSV));
+    }
+    expect(rows[0]?.data.published).toBe("2025-03-03T23:00:00Z");
+  });
+
+  it("still stamps a markdown entry, from the loader", async () => {
+    const registry = await buildFixtureRegistry();
+    const section: ContentSection = { dm: { format: "Markdown", source: "./content/dated-md/" } };
+    const data = await Content.projectData(section, { projectConfig: {}, registry, root: TMP });
+    expect(entriesOf(data, "dm")[0]?._meta?.mtime).toBe(instant(T_MD));
+  });
+
+  it("stamps a third-party format class's entries from the file it loaded", async () => {
+    const { entry } = makeFakeEntry("ThirdParty", {
+      discoverResult: [resolve(TMP, "content/dated-md/post.md")],
+      withDiscover: true,
+    });
+    const section = { tp: { format: "ThirdParty", source: "./content/dated-md/" } };
+    const loaded = entriesOf(await loadContentSection(section, TMP, makeRegistry(entry)), "tp");
+    expect(loaded[0]?._meta?.mtime).toBe(instant(T_MD));
+  });
+
+  it("keeps a modification time the format class set", async () => {
+    const { entry } = makeFakeEntry("OwnTime", {
+      discoverResult: [resolve(TMP, "content/dated-md/post.md")],
+      loadImpl: () => [
+        { _meta: { mtime: "2020-01-01T00:00:00Z" }, body: null, data: {}, id: "own" },
+      ],
+      withDiscover: true,
+    });
+    const section = { ot: { format: "OwnTime", source: "./content/dated-md/" } };
+    const loaded = entriesOf(await loadContentSection(section, TMP, makeRegistry(entry)), "ot");
+    expect(loaded[0]?._meta?.mtime).toBe("2020-01-01T00:00:00Z");
+  });
+
+  it("dates nothing that is not a file", async () => {
+    const dir = makeFakeEntry("DirSource");
+    const virtual = makeFakeEntry("Virtual", {
+      discoverResult: ["/virtual/a.fake"],
+      withDiscover: true,
+    });
+    const section = {
+      d: { format: "DirSource", source: "./content/dated-md/" },
+      v: { format: "Virtual", source: "./content/dated-md/" },
+    };
+    const dirData = await loadContentSection({ d: section.d }, TMP, makeRegistry(dir.entry));
+    const virtualData = await loadContentSection(
+      { v: section.v },
+      TMP,
+      makeRegistry(virtual.entry),
+    );
+    expect(entriesOf(dirData, "d")[0]?._meta).toBeUndefined();
+    expect(entriesOf(virtualData, "v")[0]?._meta).toBeUndefined();
   });
 });

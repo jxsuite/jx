@@ -296,8 +296,38 @@ export function isJxMarkdown(source: string): boolean {
 
 // ─── Transpiler ─────────────────────────────────────────────────────────────
 
-/** HTML attributes that go into the `attributes` sub-object (not top-level DOM properties). */
-const HTML_ATTR_PATTERN = /^(?:aria-|data-|slot$)/;
+/**
+ * The directive keys that stay on the element definition. Structural keys, `cases` (the companion
+ * of `$switch`) and `innerText` (the element's text, which has no attribute), and the element
+ * properties whose attribute is spelt differently or that both renderers already write.
+ */
+const ELEMENT_LEVEL_KEYS = new Set([
+  "style",
+  "children",
+  "cases",
+  "textContent",
+  "innerText",
+  "innerHTML",
+  "id",
+  "className",
+  "hidden",
+  "tabIndex",
+  "lang",
+  "dir",
+]);
+
+/**
+ * Whether a directive attribute stays on the element definition (jx-markdown.md §6.6) rather than
+ * going into `attributes`. Structural keys and element properties are a fixed set, `$` keys are Jx
+ * keywords, and handlers (any key beginning `on`) are tested as the renderers test them (spec.md
+ * §4.3). Every other key is an HTML attribute.
+ *
+ * @param {string} key
+ * @returns {boolean}
+ */
+export function isElementLevelKey(key: string): boolean {
+  return ELEMENT_LEVEL_KEYS.has(key) || key.startsWith("$") || key.startsWith("on");
+}
 
 /**
  * Elements with phrasing content model — cannot contain <p> elements. When these appear as
@@ -342,10 +372,14 @@ const PHRASING_ELEMENTS = new Set([
 ]);
 
 /**
- * Route directive attributes to their correct Jx locations.
+ * Route directive attributes to their correct Jx locations. The whole §6.6 rule, identical for
+ * every element.
  *
  * @param {Record<string, string>} attrs
- * @returns {{ props: ExpandedAttributes; attributes: Record<string, JxAttributeValue> }}
+ * @returns {{
+ *   props: Record<string, string | boolean | ExpandedAttributes>;
+ *   attributes: Record<string, JxAttributeValue>;
+ * }}
  */
 function routeAttributes(attrs: Record<string, string>) {
   const expanded = expandDotPaths(attrs);
@@ -356,14 +390,15 @@ function routeAttributes(attrs: Record<string, string>) {
     expanded.style = applyStyleKeyMapping(style);
   }
 
-  const props: ExpandedAttributes = {};
+  const props: Record<string, string | boolean | ExpandedAttributes> = {};
   const attributes: Record<string, JxAttributeValue> = {};
 
   for (const [key, value] of Object.entries(expanded)) {
-    if (HTML_ATTR_PATTERN.test(key)) {
-      attributes[key] = attributeValue(value);
+    if (isElementLevelKey(key)) {
+      // A bare `hidden` is `true`, as the attribute is in HTML.
+      props[key] = key === "hidden" && value === "" ? true : value;
     } else {
-      props[key] = value;
+      attributes[key] = attributeValue(value);
     }
   }
 
@@ -629,60 +664,10 @@ function directiveToJx(node: MdastNode) {
 
   if (node.attributes && Object.keys(node.attributes).length > 0) {
     const { props, attributes } = routeAttributes(node.attributes);
-    const isCustomElement = name.includes("-");
-    if (isCustomElement) {
-      // For custom elements:
-      //   - style, children, textContent, innerHTML, $-prefixed → element-level
-      //     ($props included: "props", bare or dotted, is a JX_DOLLAR_KEYS entry, so
-      //     `expandDotPaths` has already renamed it to "$props" by the time this loop sees it)
-      //   - everything else → HTML attributes
-      for (const [key, value] of Object.entries(props)) {
-        if (
-          key === "style" ||
-          key === "children" ||
-          key === "textContent" ||
-          key === "innerHTML" ||
-          key.startsWith("$")
-        ) {
-          el[key] = value;
-        } else {
-          if (!el.attributes) {
-            el.attributes = {};
-          }
-          el.attributes[key] = attributeValue(value);
-        }
-      }
-    } else {
-      // For standard HTML elements:
-      //   - Jx structural keys (style, children, textContent, innerHTML, $-prefixed) → element-level
-      //   - Known DOM properties that buildAttrs handles → element-level
-      //   - Everything else → HTML attributes (src, href, width, height, type, alt, etc.)
-      for (const [key, value] of Object.entries(props)) {
-        if (
-          key === "style" ||
-          key === "children" ||
-          key === "textContent" ||
-          key === "innerHTML" ||
-          key === "id" ||
-          key === "className" ||
-          key === "hidden" ||
-          key === "tabIndex" ||
-          key === "lang" ||
-          key === "dir" ||
-          key.startsWith("$") ||
-          key.startsWith("on")
-        ) {
-          el[key] = value;
-        } else {
-          if (!el.attributes) {
-            el.attributes = {};
-          }
-          el.attributes[key] = attributeValue(value);
-        }
-      }
-    }
+    // A bare or dotted `props` is already `$props` by this point (`expandDotPaths`).
+    Object.assign(el, props);
     if (Object.keys(attributes).length > 0) {
-      el.attributes = { ...el.attributes, ...attributes };
+      el.attributes = attributes;
     }
   }
 
