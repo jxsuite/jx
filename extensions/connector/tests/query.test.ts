@@ -5,7 +5,13 @@
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { Kysely } from "kysely";
+import {
+  DummyDriver,
+  Kysely,
+  PostgresAdapter,
+  PostgresIntrospector,
+  PostgresQueryCompiler,
+} from "kysely";
 import { planTable } from "../src/columns";
 import { createBunSqliteDialect } from "../src/dialects/bun-sqlite";
 import {
@@ -16,7 +22,7 @@ import {
   normalizeSort,
 } from "../src/query";
 import type { JsonValue } from "@jxsuite/schema/types";
-import type { DynamicDatabase } from "../src/query";
+import type { DynamicDatabase, FilterRule } from "../src/query";
 import type { TableDef } from "../src/types";
 
 const TABLES = {
@@ -168,5 +174,76 @@ describe("sort", () => {
         { field: "views", order: "asc" },
       ]),
     ).toEqual(["c", "a", "b", "d"]);
+  });
+});
+
+describe("a keyed integer reference column", () => {
+  const tables = {
+    comments: {
+      connection: "main",
+      schema: { properties: { author: { $ref: "#/data/users" } }, type: "object" },
+      timestamps: false,
+    },
+    users: { connection: "main", id: "integer", schema: { properties: {}, type: "object" } },
+  } satisfies Record<string, TableDef>;
+  const keyed = planTable("comments", tables.comments!, tables, "postgres");
+
+  const pg = new Kysely<DynamicDatabase>({
+    dialect: {
+      createAdapter: () => new PostgresAdapter(),
+      createDriver: () => new DummyDriver(),
+      createIntrospector: (k) => new PostgresIntrospector(k),
+      createQueryCompiler: () => new PostgresQueryCompiler(),
+    },
+  });
+  const compile = (rules: FilterRule[]) =>
+    applyFilter(pg.selectFrom("comments").selectAll(), rules, keyed.columns).compile();
+
+  test("filters without a Postgres cast error", () => {
+    const eq = compile([{ field: "author", op: "==", value: "7" }]);
+    expect(eq.parameters).toEqual([7]);
+    const bad = compile([{ field: "author", op: "==", value: "abc" }]);
+    expect(bad.sql).toContain("where false");
+    expect(bad.parameters).toEqual([]);
+    const ne = compile([{ field: "author", op: "!=", value: "abc" }]);
+    expect(ne.sql).toContain("where true");
+    expect(compile([{ field: "author", op: "!=", value: "7" }]).parameters).toEqual([7]);
+    expect(compile([{ field: "author", op: "empty" }]).sql).toContain('"author_id" is null');
+    expect(compile([{ field: "author", op: "not empty" }]).sql).toContain(
+      '"author_id" is not null',
+    );
+    expect(compile([{ field: "author", op: "contains", value: "7" }]).sql).toContain(
+      'cast("author_id" as text) like',
+    );
+    expect(compile([{ field: "author", op: "not contains", value: "7" }]).sql).toContain(
+      'cast("author_id" as text) not like',
+    );
+    // A null probe and an unlisted op keep today's expressions.
+    expect(compile([{ field: "author", op: "==", value: null }]).sql).toContain("is null");
+    expect(compile([{ field: "author", op: ">", value: "1" }]).parameters).toEqual([1]);
+  });
+
+  test("matches an integer column over real SQLite", async () => {
+    const lite = new Kysely<DynamicDatabase>({
+      dialect: createBunSqliteDialect({ database: new Database(":memory:") }),
+    });
+    await lite.schema
+      .createTable("comments")
+      .addColumn("id", "text")
+      .addColumn("author_id", "integer")
+      .execute();
+    await lite
+      .insertInto("comments")
+      .values([
+        { author_id: 1, id: "a" },
+        { author_id: 2, id: "b" },
+      ])
+      .execute();
+    const found = await applyFilter(
+      lite.selectFrom("comments").selectAll(),
+      [{ field: "author", op: "==", value: "1" }],
+      keyed.columns,
+    ).execute();
+    expect(found.map((r) => r.id)).toEqual(["a"]);
   });
 });

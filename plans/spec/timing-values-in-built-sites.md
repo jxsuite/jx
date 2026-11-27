@@ -3,8 +3,6 @@ status: drafted
 disposition: implement
 claims:
   - spec.md#11.3
-requires:
-  - spec/timing-values-in-built-sites-default
 workspaces:
   - packages/compiler
   - packages/studio
@@ -25,7 +23,7 @@ The trailing `> **Status: Implemented.**` note (line 1281) describes the externa
 
 - The `"server"` row's compiled call has landed (compiler.md §6.1, spec.md §11.4), and so has its interpreting-host half: the runtime no longer imports a server module in the browser (spec.md §11.4's Security Boundary), and the marker's clause saying it could was deleted then.
 - The `"client"` row, and the `"compiler"` row's self-contained half, closed with `compiler.md` §3 and §5.4 (landed). That work also routes component documents through `resolvePrototypes` and turns every unresolvable entry into one build error; this plan extends that error list.
-- The unset-`timing` question is settled on paper by `plan:spec/timing-values-in-built-sites-default`, split from this stub because it is a `reconcile` that needs neither prerequisite.
+- The unset-`timing` question is settled in `specs/spec.md` §11.3 (the **An unset `timing`.** paragraph), which was split from this stub because it is a `reconcile` that needs neither prerequisite.
 - The `"compiler"` row's `Request` half is this plan's. It was also `compiler.md` §10's ledger row "`timing: "compiler"`: bake fetch responses into HTML at build time"; §10 is Removed, and its marker points at this section.
 
 **What ships** (verified 2026-09-27; the census was right about the page path, and every bullet after the first is new):
@@ -59,7 +57,7 @@ The trailing `> **Status: Implemented.**` note (line 1281) describes the externa
 - **Decided:** `compilePage`'s strip deletes every key whose definition said `timing: "compiler"` before resolution, as well as every object still carrying the marker. compiler.md §8.1 already says such an entry is always stripped; the marker-only test misses an array value (Context), which a fetched response usually is. No tracked `.json` document declares a `"compiler"` entry today (only Markdown examples in `specs/`, `docs/` and `examples/content/` do), so no in-repo page changes.
 - **Decided:** `"server"` stays a function entry's timing only, as §11.4 already says ("No `$prototype` is used"), and §11.3's new paragraph says so in one sentence. No tier gains a refusal for a `$prototype` entry marked `"server"`: no tracked document writes one, and a refusal would change the lowering branch `plan:extensions/local-imports-precedence` tests at every timing. Studio stops offering it for a `Request` (the Open below).
 - **Decided:** a request with no answer in 30 seconds fails (`AbortSignal.timeout`), because a hung endpoint would otherwise hang `jx build` with no output. The limit is a module constant rather than a `project.json` key; nothing asks for one.
-- **Decided:** every refusal joins `resolvePrototypes`' one failure list, so each fails the build naming the entry. That covers a `manual` or unresolvable `Request`, a network failure, a non-2xx answer, a body that is not JSON, a timeout, any other built-in marked `"compiler"` ("has no build-time value; remove `timing` or use `"client"`"), and an unset-`timing` external class that names no class. Each ships today as a page bound to nothing while the build reports success. This follows the prerequisite's third Open: if that is signed toward warnings, these are warnings in the same list. The unset-`timing` case also follows `plan:spec/timing-values-in-built-sites-default`'s Open (an unset external class resolves during the build); if that Open goes the other way, drop that case.
+- **Decided:** every refusal joins `resolvePrototypes`' one failure list, so each fails the build naming the entry. That covers a `manual` or unresolvable `Request`, a network failure, a non-2xx answer, a body that is not JSON, a timeout, any other built-in marked `"compiler"` ("has no build-time value; remove `timing` or use `"client"`"), and an unset-`timing` external class that names no class. Each ships today as a page bound to nothing while the build reports success. This follows the prerequisite's third Open: if that is signed toward warnings, these are warnings in the same list. The unset-`timing` case also follows §11.3's landed rule that an unset external class resolves during the build.
 - **Decided:** a built-in marked `"compiler"` that reaches `compileClient` or `emitElementModule` throws: a `Request` with `"<key>": a timing "compiler" Request resolves only in a site build`, any other with the resolver's "has no build-time value" message. This mirrors the prerequisite's refusal of a client class with no resolver. Inside a site build none reaches a target; outside one (`compile()` alone) a silent browser fetch, or a storage entry lowered as client, would contradict the row.
 - **Decided:** a component's `"compiler"` `Request` becomes its initial state, fetched once per component file, because a site build resolves a component's `"compiler"` class that way (compiler.md §3).
 - **Decided:** the `"client"` cell cites §11.2 for each built-in's compiled support instead of waiting for `plan:spec/web-api-prototype-parity`. The spec-wide rule is that a gap is marked where the behaviour is specified, and §11.2's cells mark each built-in's compiled gap. §11.3 specifies the timing value.
@@ -134,7 +132,7 @@ Run `bun test --isolate --coverage` from `packages/compiler` and from `packages/
 
 ## Specs & docs
 
-**`specs/spec.md` §11.3**, in place, over the text `plan:spec/timing-values-in-built-sites-default` leaves:
+**`specs/spec.md` §11.3**, in place, over the text §11.3 carries today:
 
 - Replace the leading Partial marker with: "> **Status: Implemented.** A site build resolves a `"compiler"` external class during the build, with or without an `$implementation` (§12.4, compiler.md §5.4), fetches a `"compiler"` `Request` (`resolvePrototypes` in `packages/compiler/src/site/prototype-resolver.ts`, `fetchAtBuildTime` in `packages/compiler/src/site/build-time-request.ts`), bakes both into the page, and fails on an entry it cannot resolve. A compiled page or element constructs a `"client"` external class (compiler.md §3) and calls a `"server"` entry's route (§11.4); each built-in's compiled support is §11.2's."
 - The cells: `"client"`: "**Implemented** — external classes hydrate (compiler.md §3); each built-in's compiled support is §11.2's". `"server"`: "**Implemented** — a built page calls the route (§11.4)". `"compiler"`: "**Implemented** — an external class (§12.4) and a `Request`; any other built-in is a build error".

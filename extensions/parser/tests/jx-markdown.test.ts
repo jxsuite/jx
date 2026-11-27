@@ -13,6 +13,7 @@ import {
 } from "../src/md";
 
 import { jxKey, mdKey } from "../src/transpile";
+import { serializeJxMarkdown } from "../src/serialize";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
@@ -285,6 +286,15 @@ describe("isJxMarkdown", () => {
 
   test("returns false for no frontmatter", () => {
     expect(isJxMarkdown("# Just a heading\n\nSome content")).toBe(false);
+  });
+
+  test("a content document's seeded empty paragraph serializes to its frontmatter alone", () => {
+    const out = serializeJxMarkdown(
+      { title: "T", children: [{ tagName: "p", children: [] }] },
+      { mode: "roundtrip" },
+    );
+    expect(out).toBe("---\ntitle: T\n---\n");
+    expect(transpileJxMarkdown(out)).toEqual({ title: "T" });
   });
 });
 

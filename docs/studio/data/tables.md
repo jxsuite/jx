@@ -36,7 +36,7 @@ A **reference** field links a row to something else. Its **Target** picker lists
 Studio draws one picker for every field that points at a collection, wherever that field appears: a schema-driven settings form, a content entry's **[frontmatter](/docs/studio/editing/frontmatter)**, a row inside a repeatable group. It lists that collection's entries, and it never quietly hides a problem: an id that no longer matches an entry stays in the field, flagged as not found, and if the entries can't be listed at all the field keeps editing as plain text with the reason beside it and a **Retry**.
 
 :::doc-note
-Under the hood a table's fields are ordinary Jx field schemas in the `data` section of the project file. The schema format also allows table-to-table references: a to-one reference becomes a `<field>_id` column, and a to-many reference between two tables materializes a junction table on push. The visual Target picker currently offers content types, so table targets are written in the JSON directly.
+Under the hood a table's fields are ordinary Jx field schemas in the `data` section of the project file. The schema format also allows table-to-table references: a to-one reference becomes a `<field>_id` column, with a foreign key when the target table is on the same connection so that deleting the referenced row clears the reference, and a to-many reference between two tables on the same connection materializes a junction table on push. The visual Target picker currently offers content types, so table targets are written in the JSON directly.
 :::
 
 ## Table options
@@ -56,9 +56,9 @@ Defining a table describes it; pushing creates it. Click **Push Schema** in the 
 
 From the Data Tables section a push covers every connection; from the Connections section, selecting a connection first scopes the push to it.
 
-Pushes are **additive only**: they create missing tables and columns and never drop, rename, or retype anything that exists. Removing a field from a schema leaves its column (and its data) in place, and the plan notes such drift as a warning instead of destroying data. This makes pushing safe to run repeatedly.
+Pushes are **additive only**: they create missing tables and columns and never drop, rename, or retype anything that exists. Removing a field from a schema leaves its column (and its data) in place, and the plan notes such drift as a warning instead of destroying data. A reference column whose type or foreign key no longer matches its field is reported the same way, and keeps resolving. This makes pushing safe to run repeatedly.
 
-A terminal or CI can push too: `jx db push` applies the same additive rules and takes the same `--dry-run` flag; see the **[CLI reference](/docs/framework/build/cli)**. Two differences matter. The CLI pushes the tables you define here and nothing else, so the auth extension's account tables come only from the button above. And the CLI talks to each connection exactly as declared, while the button goes through Studio's local backend. So for a **Cloudflare D1** connection, which is stood in by a local SQLite file while you develop, `jx db push` is what creates the tables in the real D1 database.
+A terminal or CI can push too: `jx db push` applies the same additive rules and takes the same `--dry-run` flag; see the **[CLI reference](/docs/framework/build/cli)**. The CLI plans the same steps, account tables included, and differs only in where they land: it talks to each connection exactly as declared, while the button goes through Studio's local backend. So for a **Cloudflare D1** connection, which is stood in by a local SQLite file while you develop, `jx db push` is what creates the tables in the real D1 database.
 
 ## Using tables from pages
 

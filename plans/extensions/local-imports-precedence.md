@@ -45,7 +45,7 @@ Tests: `packages/compiler/tests/connector-mounts.test.ts` (describe `prototype-r
 
 - extensions.md §3 → Implemented. The marker is removed, so the section is unmarked again like §2, §3.1 and §4. The "Name visibility" bullet states the precedence for `$src` and `imports` at every timing.
 - extensions.md §8.3 stays Implemented and gains one sentence: only an entry that resolves to the manifest class is lowered.
-- extensions.md stays Partial. Twelve other plans (eleven in this directory and `plan:_shared/db-push-section-owners`) hold its fourteen other open items, so nothing graduates.
+- extensions.md stays Partial. Eleven other plans in this directory hold its thirteen other open items, so nothing graduates.
 
 ## Decisions
 

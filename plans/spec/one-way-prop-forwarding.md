@@ -48,7 +48,7 @@ The body (line 1547) promises the opposite: "the child receives the same reactiv
 **Related**
 
 - The landed property bridge (`compiler.md` §4.4, `spec.md` §16.2) rewrote this section's marker to a narrower Partial. This plan replaces that marker. With the bridge, a `$ref` prop re-delivers the parent's value in both tiers wherever a compiled parent binds it, a name the platform owns included (the accessor calls the platform's setter and then writes state, as the interpreter's does, so there is no reflected-name exception to state). For a page-level instance that holds only once the enabling plan has landed too (correction 1).
-- The landed property bridge added a "Setting props from script" section to `props-and-scope.md`, and `plan:spec/elements-registration-example` edits its "Component instances" section. The hunks here are "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules", so whichever lands second rebases adjacent hunks at most.
+- The landed property bridge added a "Setting props from script" section to `props-and-scope.md`, and the "Component instances" section now teaches the `$elements` array form. The hunks here are "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules".
 
 ## Outcome
 

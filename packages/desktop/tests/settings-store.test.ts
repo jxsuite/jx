@@ -190,7 +190,9 @@ describe("patchSettings", () => {
 
   test("leaves no temp file behind, so a reader never sees a partial store", async () => {
     await patchSettings({ set: { aiApiKey: "sk-abc" } });
-    const strays = readdirSync(dirname(storePath())).filter((name) => name.includes(".tmp"));
+    const strays = readdirSync(dirname(storePath())).filter(
+      (name) => name.includes(".tmp") || name.endsWith(".lock") || name.endsWith(".stale"),
+    );
     expect(strays).toEqual([]);
   });
 
