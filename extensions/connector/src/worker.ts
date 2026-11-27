@@ -20,7 +20,7 @@
 
 import { isJsonObject } from "@jxsuite/schema/guards";
 import { Kysely } from "kysely";
-import { fromStorage, newRowId, planTable, toStorage } from "./columns.ts";
+import { fromStorage, idKey, newRowId, planTable, toStorage, typedId } from "./columns.ts";
 import { syncTables } from "./ddl.ts";
 import { applyFilter, applySort, columnForField, normalizeFilter, normalizeSort } from "./query.ts";
 import { tablesForConnection } from "./provider-utils.ts";
@@ -182,10 +182,10 @@ export async function handleDataRequest(
           : await getRow(db, plan, tables, kind, url, decision, id);
       }
       case "insert": {
-        return await insertRow(db, plan, tableDef, kind, request, decision);
+        return await insertRow(db, plan, tableDef, tables, kind, request, decision);
       }
       case "update": {
-        return await updateRow(db, plan, tableDef, kind, request, decision, id!);
+        return await updateRow(db, plan, tableDef, tables, kind, request, decision, id!);
       }
       default: {
         return await deleteRow(db, plan, decision, id!);
@@ -195,6 +195,9 @@ export async function handleDataRequest(
     /* A driver's message quotes the statement, the table and the constraint that refused it. That
        is the schema, so it goes to the log and the caller is told only that the request failed. */
     console.error(`jx data: ${action} on "${tableName}" failed:`, error);
+    if (error instanceof Error && isForeignKeyViolation(error)) {
+      return fail(400, "A reference names a row that does not exist");
+    }
     return fail(500, "Server error");
   }
 }
@@ -294,11 +297,16 @@ function getDb(
 
 /** Parse a path id per the table's id strategy (integer ids must be integral). */
 function parseId(plan: TablePlan, rawId: string): string | number | undefined {
-  if (plan.idType === "integer") {
-    const num = Number(rawId);
-    return Number.isInteger(num) ? num : undefined;
-  }
-  return rawId;
+  return typedId(plan.idType, rawId);
+}
+
+/** A write the database refused for a missing referenced row (SQLite, D1 and Postgres words). */
+function isForeignKeyViolation(error: Error & { code?: string }): boolean {
+  return (
+    error.code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
+    error.code === "23503" ||
+    error.message.includes("FOREIGN KEY constraint failed")
+  );
 }
 
 /** Apply whereOwner to any builder with a `where(column, "=", value)` method. */
@@ -386,6 +394,7 @@ async function insertRow(
   db: Kysely<DynamicDatabase>,
   plan: TablePlan,
   tableDef: TableDef,
+  tables: Record<string, TableDef>,
   kind: SqlDialectKind,
   request: Request,
   decision: AuthorizeDecision,
@@ -394,7 +403,7 @@ async function insertRow(
   if (body === null) {
     return fail(400, "Body must be JSON");
   }
-  const { valid, errors, value } = validateRow(tableDef, body);
+  const { valid, errors, value } = validateRow(tableDef, body, { tables });
   if (!valid) {
     return fail(400, "Validation failed", errors);
   }
@@ -431,6 +440,7 @@ async function updateRow(
   db: Kysely<DynamicDatabase>,
   plan: TablePlan,
   tableDef: TableDef,
+  tables: Record<string, TableDef>,
   kind: SqlDialectKind,
   request: Request,
   decision: AuthorizeDecision,
@@ -443,7 +453,7 @@ async function updateRow(
   if (isJsonObject(body) && Object.keys(body).length === 0) {
     return fail(400, "Empty patch");
   }
-  const { valid, errors, value } = validateRow(tableDef, body, { partial: true });
+  const { valid, errors, value } = validateRow(tableDef, body, { partial: true, tables });
   if (!valid) {
     return fail(400, "Validation failed", errors);
   }
@@ -557,14 +567,20 @@ async function expandIncludes(
   });
   for (const field of fields) {
     const spec = plan.columns.find((c) => c.field === field && c.ref !== null && !c.manyRef);
-    if (spec && spec.ref!.section === "data" && tables[spec.ref!.name]) {
-      const targetDef = tables[spec.ref!.name]!;
-      const targetPlan = planTable(spec.ref!.name, targetDef, tables, kind);
+    if (spec) {
+      const target = spec.references;
+      if (!target || !tables[target.table]) {
+        // Content, unknown and cross-connection references are left unexpanded.
+        continue;
+      }
+      const targetPlan = planTable(target.table, tables[target.table]!, tables, kind);
+      const lookup = (value: SqlValue | undefined) =>
+        value === null || value === undefined ? undefined : typedId(target.idType, value);
       const ids = [
         ...new Set(
           rows.flatMap((r) => {
-            const fk = r[spec.column];
-            return fk == null ? [] : [fk];
+            const key = lookup(r[spec.column]);
+            return key === undefined ? [] : [key];
           }),
         ),
       ];
@@ -576,10 +592,10 @@ async function expandIncludes(
         .selectAll()
         .where("id", "in", ids)
         .execute();
-      const byId = new Map(targets.map((t) => [t.id, fromStorage(targetPlan.columns, t)]));
+      const byId = new Map(targets.map((t) => [idKey(t.id), fromStorage(targetPlan.columns, t)]));
       for (const { payload, stored } of expanded) {
-        const key = stored[spec.column];
-        payload[field] = key == null ? null : (byId.get(key) ?? null);
+        const key = idKey(lookup(stored[spec.column]));
+        payload[field] = key === null ? null : (byId.get(key) ?? null);
       }
       continue;
     }
@@ -613,11 +629,11 @@ async function expandIncludes(
         targetIds.length > 0
           ? await db.selectFrom(targetPlan.table).selectAll().where("id", "in", targetIds).execute()
           : [];
-      const byId = new Map(targets.map((t) => [t.id, fromStorage(targetPlan.columns, t)]));
+      const byId = new Map(targets.map((t) => [idKey(t.id), fromStorage(targetPlan.columns, t)]));
       for (const { payload, stored } of expanded) {
-        const mine = links.filter((l) => l[junction.sourceColumn] === stored.id);
+        const mine = links.filter((l) => idKey(l[junction.sourceColumn]) === idKey(stored.id));
         payload[field] = mine.flatMap((l) => {
-          const target = byId.get(l[junction.targetColumn]);
+          const target = byId.get(idKey(l[junction.targetColumn]));
           return target === undefined ? [] : [target];
         });
       }

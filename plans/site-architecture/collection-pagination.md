@@ -211,7 +211,7 @@ Slice 1 docs (no em dashes), from `bun run docs:sync` over `pages-discovery.ts`,
 - Fragment: `bun run spec:change site-architecture.md minor -m "§4.3 Studio's route-parameter picker offers a paged page's numbers and its canvas renders the chosen page's slice with its pagination."`
 - Docs: `docs/framework/site/routing.md`'s closing Studio tip adds "On a paged page it lists the page numbers, and the canvas shows that page." Checked, with no change: `docs/studio/interface/tabs.md` and `modes.md`, which describe the picker generically, and `docs/studio/design/breakpoints.md`, `stylebook.md` and `components.md`, which `docs:sync` also names for `pane-context.ts`.
 
-This closes §4.3 but does not graduate site-architecture.md, since other items stay open. Slice 2 deletes this file. No plan requires it, but four cite it (`plans/extensions/connector-table-paths.md`, `plans/site-architecture/route-pattern-validation.md`, `plans/site-architecture/route-specificity-order.md`), and slice 2 rewrites each surviving citation to site-architecture.md §4.3 or to what now ships, or `plans:check` reports `citation-unknown`.
+This closes §4.3 but does not graduate site-architecture.md, since other items stay open. Slice 2 deletes this file. No plan requires it, but three cite it (`plans/extensions/connector-table-paths.md`, `plans/site-architecture/route-specificity-order.md`), and slice 2 rewrites each surviving citation to site-architecture.md §4.3 or to what now ships, or `plans:check` reports `citation-unknown`.
 
 ## Acceptance
 

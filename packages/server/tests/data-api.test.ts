@@ -581,3 +581,71 @@ describe("push with the auth extension (section-owner deploySchema)", () => {
     expect(result.plan.filter((step) => step.kind === "auth")).toEqual([]);
   });
 });
+
+describe("push with a non-auth section owner (warnings and failures)", () => {
+  function writeLedgerProject(dir: string, ledger: JsonObject) {
+    writeFixture(`${dir}/project.json`, {
+      connections: { main: { provider: "sqlite" } },
+      extensions: ["@jxsuite/connector", "./ledger-ext"],
+      ledger,
+      name: "Ledger Push Fixture",
+    });
+    writeFixture(`${dir}/ledger-ext/jx-extension.json`, {
+      classes: { Ledger: "./Ledger.class.json" },
+      name: "ledger-ext",
+    });
+    writeFixture(`${dir}/ledger-ext/Ledger.class.json`, {
+      $defs: {
+        methods: {
+          deploySchema: {
+            identifier: "deploySchema",
+            role: "deploySchema",
+            scope: "static",
+            timing: ["server"],
+          },
+        },
+      },
+      $implementation: "./ledger.js",
+      project: { key: "ledger" },
+      title: "Ledger",
+    });
+    writeFixture(
+      `${dir}/ledger-ext/ledger.ts`,
+      `export const Ledger = {
+  deploySchema(section: Record<string, unknown>) {
+    if (section.fail === true) {
+      throw new Error("ledger exploded");
+    }
+    return {
+      steps: [{ summary: "Create ledger", sql: "create table ledger (id integer)", table: "ledger" }],
+      warnings: ["ledger warning"],
+    };
+  },
+};
+`,
+    );
+  }
+
+  test("an empty section owner contributes no steps (the §8.4 gate)", async () => {
+    writeLedgerProject("ledgerempty", {});
+    const result = await pushDataSchema(resolve(TMP, "ledgerempty"), { dryRun: true });
+    expect(result.warnings ?? []).not.toContain("ledger warning");
+    expect(JSON.stringify(result.plan)).not.toContain("Create ledger");
+  });
+
+  test("the owner's steps and warnings join the plan", async () => {
+    writeLedgerProject("ledgerproj", { enabled: true });
+    const result = await pushDataSchema(resolve(TMP, "ledgerproj"), { dryRun: true });
+    expect(result.errors).toBeUndefined();
+    expect(result.warnings).toEqual(["ledger warning"]);
+    expect(result.plan.map((step) => step.kind)).toEqual(["ledger"]);
+    expect(result.plan[0]!.table).toBe("ledger");
+  });
+
+  test("an owner that throws is reported under its section key and blocks apply", async () => {
+    writeLedgerProject("ledgerfail", { fail: true });
+    const result = await pushDataSchema(resolve(TMP, "ledgerfail"), {});
+    expect(result.errors).toEqual(["ledger: ledger exploded"]);
+    expect(result.applied).toBe(false);
+  });
+});

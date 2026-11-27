@@ -13,8 +13,7 @@
  * @docs studio/logic/data
  */
 
-import { hasSchemaKeywords } from "@jxsuite/runtime";
-import { isBoolean, isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
+import { isBoolean, isJsonObject, isNumber, isPureTypeDef, isString } from "@jxsuite/schema/guards";
 import type { JsonValue, JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
 
 /** The state entries of a document, as a walker reads them. */
@@ -57,7 +56,7 @@ export function documentStateValue(def: JxStateDefinition | undefined): JsonValu
     return def.default;
   }
   // A declaration with no `default` (`{ "type": "string" }`) holds no value of its own.
-  return hasSchemaKeywords(def) ? undefined : def;
+  return isPureTypeDef(def) ? undefined : def;
 }
 
 /**
@@ -86,7 +85,7 @@ export function withStateValues(
       continue;
     }
     // A declared entry keeps what it declares (its `type` decides how an attribute is read).
-    const declared = isJsonObject(def) && ("default" in def || hasSchemaKeywords(def)) ? def : {};
+    const declared = isJsonObject(def) && ("default" in def || isPureTypeDef(def)) ? def : {};
     state[key] = { ...declared, default: value };
   }
   return { ...renderDoc, state };

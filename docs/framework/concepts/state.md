@@ -3,6 +3,8 @@ title: "State"
 description: "The four shapes of a Jx state entry (naked value, typed value, computed template, $prototype), plus naming rules and private entries."
 spec:
   - spec.md#5
+code:
+  - packages/schema/src/guards.ts
 ---
 
 # State
@@ -69,6 +71,8 @@ Schema keywords are tooling-only. They drive validation, autocomplete, and which
 }
 ```
 
+An entry written as a schema alone, such as `{ "type": "number", "minimum": 0 }`, declares the name without a value until a prop or an attribute supplies one. An object with any other key, or with only descriptions and titles, is an ordinary value.
+
 Use the typed form when the value needs constraints, documentation, or a shared type; use naked values when none apply.
 
 ## Shape 3: computed templates
@@ -129,7 +133,7 @@ Rename the entry without the `#` if you meant it to be part of the component's i
 
 ## How it works
 
-At load time the runtime walks `state` once, classifying each entry by inspection in a fixed order: a string containing `${` is computed; any other scalar or array is a naked value; an object is checked for `$expression`, then `$prototype`, then `default`; a plain object with no reserved keys is a naked object value. The whole scope is initialized inside a reactive proxy, computed templates become tracked computed values, and inside function bodies state is read and written directly (`state.count`, `state.items.push(...)`), with no getter or setter calls.
+At load time the runtime walks `state` once, classifying each entry by inspection in a fixed order: a string containing `${` is computed; any other scalar or array is a naked value; an object is checked for `$expression`, then `$prototype`, then `default`; an object made only of JSON Schema keywords, not only annotations, is a declaration with no value; any other plain object is a naked object value. The whole scope is initialized inside a reactive proxy, computed templates become tracked computed values, and inside function bodies state is read and written directly (`state.count`, `state.items.push(...)`), with no getter or setter calls.
 
 ## Rules
 

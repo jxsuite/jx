@@ -633,3 +633,29 @@ describe("buildSite — a runtime subpath the package does have", () => {
     expect(existsSync(resolve(DIR, "dist/assets/lit-html/directives/class-map.js"))).toBe(true);
   });
 });
+
+describe("buildSite — a page named in URL pattern syntax", () => {
+  const DIR = resolve(import.meta.dir, "__test-site-pattern-name__");
+
+  beforeAll(() => {
+    scaffold(DIR, { name: "Syntax" });
+    mkdirSync(resolve(DIR, "pages/(marketing)"), { recursive: true });
+    writeFileSync(
+      resolve(DIR, "pages/(marketing)/about.json"),
+      JSON.stringify({ $children: ["About"], tagName: "main" }),
+      "utf8",
+    );
+  });
+  afterAll(() => rmSync(DIR, { force: true, recursive: true }));
+
+  /* Its pattern would match `/marketing/about`, not the URL its name spells: the file is named. */
+  it("reports the file as an error and still builds the rest", async () => {
+    const { errors, result } = await captured(() => buildSite(DIR));
+
+    const named = result.errors.filter((e) => e.startsWith("pages/(marketing)/about.json:"));
+    expect(named).toHaveLength(1);
+    expect(named[0]).toContain("(marketing)");
+    expect(errors.some((e) => e.startsWith("pages/(marketing)/about.json:"))).toBe(true);
+    expect(existsSync(resolve(DIR, "dist/index.html"))).toBe(true);
+  });
+});

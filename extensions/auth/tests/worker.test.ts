@@ -324,6 +324,20 @@ describe("Auth.deploySchema (push seam)", () => {
     });
     expect(skipped).toEqual({ applied: false, connection: "main", steps: [], warnings: [] });
   });
+
+  test("a push filtered to another connection never opens the auth database", async () => {
+    // `main` is a D1 binding with no credentials: opening it would fail as unreachable.
+    const config = {
+      auth: {},
+      connections: { main: { binding: "DB", provider: "d1" }, other: { provider: "sqlite" } },
+    };
+    const skipped = await Auth.deploySchema({}, config, {
+      connection: "other",
+      dryRun: true,
+      env: {},
+    });
+    expect(skipped).toEqual({ applied: false, connection: "main", steps: [], warnings: [] });
+  });
 });
 
 describe("Auth.projectData", () => {

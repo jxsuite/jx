@@ -12,28 +12,24 @@
  * extension registry, reusing the dev server's `local: "<provider>"` stand-in rule from jx-mounts
  * (specs/extensions.md §12). Only the generic Kysely surface (row CRUD + introspection) runs here.
  *
- * Auth-task: auth extensions contribute additional push steps here — compose their migration steps
- * (kind "auth") after the connector plan inside {@link pushDataSchema}.
+ * Section owners (the auth extension's account tables among them) contribute push steps after the
+ * connector plan: {@link pushDataSchema} composes them through `pushSectionOwners`
+ * (`@jxsuite/compiler/section-push`, specs/extensions.md §11.1).
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { Kysely, sql } from "kysely";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
-import { sectionOwnerActive } from "@jxsuite/compiler/project-sections";
+import { pushSectionOwners } from "@jxsuite/compiler/section-push";
 import { isBoolean, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { loadDevVars, parseDevVars, projectDevEnv } from "./dev-vars.ts";
 import type { ProjectDevEnv } from "./dev-vars.ts";
-import { resolveConnectorStandins } from "./jx-mounts.ts";
 import { writeFile } from "node:fs/promises";
 import type { Dialect } from "kysely";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type {
-  ConnectorBlock,
-  FormatEntry,
-  SectionDeployOptions,
-} from "@jxsuite/schema/format-registry";
+import type { ConnectorBlock, FormatEntry } from "@jxsuite/schema/format-registry";
 import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 import type {
   DataColumnMeta,
@@ -93,15 +89,6 @@ interface ArrivingRowInsert extends Omit<DataRowInsert, "values"> {
 /** A row update as it arrives over HTTP or RPC; a missing `set` is refused as an empty update. */
 interface ArrivingRowUpdate extends Omit<DataRowUpdate, "set"> {
   set?: JsonObject;
-}
-
-/**
- * How this console reads a section owner's `deploySchema` answer (`SectionDeployResult`): its steps
- * and warnings, each optional and defaulted where it is read.
- */
-interface SectionDeployReading {
-  steps?: DataPushStep[];
-  warnings?: string[];
 }
 
 declare module "@jxsuite/schema/format-registry" {
@@ -515,41 +502,18 @@ export async function pushDataSchema(
     }
   }
 
-  // Section-owner push steps: any non-connector project contribution declaring a deploySchema
-  // Capability composes its own migration steps after the connector plan (the auth extension's
-  // Land as kind "auth" — its section key). The host stays extension-agnostic: registry dispatch
-  // Only, no auth import, no "auth" literal, and the same connector stand-ins the mounts see.
-  const sectionOwners = registry
-    .projectContributions()
-    .filter((entry) => entry.connector === null && entry.capabilities.deploySchema);
-  if (sectionOwners.length > 0) {
-    const connectors = await resolveConnectorStandins(registry);
-    for (const entry of sectionOwners) {
-      const { key } = entry.project!;
-      const section = project.config[key];
-      if (section === undefined || section === null || !sectionOwnerActive(entry, project.config)) {
-        continue;
-      }
-      const options: SectionDeployOptions =
-        request.connection === undefined
-          ? { connectors, dryRun, env }
-          : { connection: request.connection, connectors, dryRun, env };
-      try {
-        // A capability that throws is reported below.
-        const result: SectionDeployReading = await entry.call(
-          "deploySchema",
-          section,
-          project.config,
-          options,
-        );
-        for (const step of result.steps ?? []) {
-          step.kind ||= key;
-          plan.push(step);
-        }
-        warnings.push(...(result.warnings ?? []));
-      } catch (error) {
-        errors.push(`${key}: ${errorMessage(error)}`);
-      }
+  // Section-owner push steps (specs/extensions.md §11.1) compose after the connector plan, through
+  // The one loop `jx db push` also runs; the studio hands it the `local:` stand-ins its mounts see.
+  for (const section of await pushSectionOwners(registry, project.config, {
+    dryRun,
+    env,
+    connection: request.connection,
+    standins: true,
+  })) {
+    plan.push(...section.steps);
+    warnings.push(...section.warnings);
+    if (section.error !== undefined) {
+      errors.push(`${section.section}: ${section.error}`);
     }
   }
 

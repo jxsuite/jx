@@ -9,6 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compileSiteServer } from "../src/targets/compile-server";
@@ -503,7 +504,7 @@ describe("dbPush", () => {
     });
     try {
       writeFile(".dev.vars", 'CLOUDFLARE_API_TOKEN="tok"\nCLOUDFLARE_ACCOUNT_ID=acct\n# comment\n');
-      const { results, bindingsPatched } = await dbPush(TMP, { dryRun: true });
+      const { results, sections, bindingsPatched } = await dbPush(TMP, { dryRun: true });
       expect(results).toHaveLength(1);
       const [main] = results;
       expect(main!.connection).toBe("main");
@@ -511,6 +512,7 @@ describe("dbPush", () => {
       expect(main!.tables).toEqual(["comments"]);
       expect(main!.applied).toBe(false);
       expect(main!.statements.some((s) => s.startsWith('create table "comments"'))).toBe(true);
+      expect(sections).toEqual([]);
       expect(bindingsPatched).toBe(false);
       expect(sqls.some((s) => s.startsWith("create table"))).toBe(false);
     } finally {
@@ -531,10 +533,11 @@ describe("dbPush", () => {
         "wrangler.jsonc",
         JSON.stringify({ compatibility_date: "2026-01-01", name: "site" }, null, "\t"),
       );
-      const { results, bindingsPatched, wranglerPath } = await dbPush(TMP, {
+      const { results, sections, bindingsPatched, wranglerPath } = await dbPush(TMP, {
         connection: "main",
       });
       expect(results[0]!.applied).toBe(true);
+      expect(sections).toEqual([]);
       expect(bindingsPatched).toBe(true);
       const wrangler: JsonValue = JSON.parse(readFileSync(wranglerPath!, "utf8"));
       expect(wrangler).toHaveProperty("name", "site");
@@ -588,6 +591,111 @@ describe("dbPush", () => {
       );
     } finally {
       rmSync(noProviderDir, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("dbPush with the auth extension", () => {
+  /** A fresh project directory with `project` as its project.json. */
+  function authProject(name: string, project: JsonObject): string {
+    const dir = `${TMP}-${name}`;
+    rmSync(dir, { force: true, recursive: true });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(resolve(dir, "project.json"), JSON.stringify(project), "utf8");
+    return dir;
+  }
+
+  const SQLITE_PROJECT = {
+    auth: { connection: "main" },
+    connections: { main: { provider: "sqlite" } },
+    data: {
+      notes: {
+        connection: "main",
+        schema: { properties: { text: { type: "string" } }, type: "object" },
+      },
+    },
+    extensions: ["@jxsuite/connector", "@jxsuite/auth"],
+    name: "Auth Push",
+  };
+
+  test("dry-run plans the Better Auth tables after the connector plan", async () => {
+    const dir = authProject("auth-dry", SQLITE_PROJECT);
+    try {
+      const { results, sections } = await dbPush(dir, { dryRun: true });
+      expect(sections).toHaveLength(1);
+      expect(sections[0]!.section).toBe("auth");
+      expect(sections[0]!.steps.length).toBeGreaterThan(0);
+      expect(new Set(sections[0]!.steps.map((step) => step.kind))).toEqual(new Set(["auth"]));
+      expect(new Set(sections[0]!.steps.map((step) => step.connection))).toEqual(new Set(["main"]));
+      expect(sections[0]!.steps.some((step) => step.table === "user")).toBe(true);
+      expect(results[0]!.statements.some((s) => s.startsWith('create table "notes"'))).toBe(true);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("apply creates the auth tables and a second push plans none", async () => {
+    const dir = authProject("auth-apply", SQLITE_PROJECT);
+    try {
+      const first = await dbPush(dir, {});
+      expect(first.sections[0]!.error).toBeUndefined();
+      expect(first.sections[0]!.applied).toBe(true);
+      const db = new Database(resolve(dir, ".jx/data/main.sqlite"), { readonly: true });
+      try {
+        const rows = db
+          .query("select name from sqlite_master where type = 'table' and name = 'user'")
+          .all();
+        expect(rows).toHaveLength(1);
+      } finally {
+        db.close();
+      }
+      const second = await dbPush(dir, {});
+      expect(second.sections[0]!.steps).toEqual([]);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("a D1 connection receives the auth steps over the HTTP API, not the stand-in", async () => {
+    const dir = authProject("auth-d1", {
+      ...PROJECT,
+      auth: { connection: "main" },
+      extensions: [...PROJECT.extensions, "@jxsuite/auth"],
+    });
+    writeFileSync(
+      resolve(dir, ".dev.vars"),
+      'CLOUDFLARE_API_TOKEN="tok"\nCLOUDFLARE_ACCOUNT_ID=acct\n',
+      "utf8",
+    );
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchDouble(async () =>
+      Response.json({ result: [{ meta: {}, results: [], success: true }], success: true }),
+    );
+    try {
+      const { sections } = await dbPush(dir, { dryRun: true });
+      expect(sections[0]!.error).toBeUndefined();
+      expect(sections[0]!.steps.length).toBeGreaterThan(0);
+      expect(existsSync(resolve(dir, ".jx/data/main.sqlite"))).toBe(false);
+    } finally {
+      globalThis.fetch = realFetch;
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("--connection to another connection skips the auth steps without reaching the auth database", async () => {
+    const dir = authProject("auth-other", {
+      auth: { connection: "main" },
+      connections: { main: { binding: "DB", provider: "d1" }, other: { provider: "sqlite" } },
+      extensions: ["@jxsuite/connector", "@jxsuite/auth"],
+      name: "Auth Other",
+    });
+    try {
+      const { sections } = await dbPush(dir, { connection: "other", dryRun: true });
+      expect(sections).toHaveLength(1);
+      expect(sections[0]!.steps).toEqual([]);
+      expect(sections[0]!.error).toBeUndefined();
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
     }
   });
 });

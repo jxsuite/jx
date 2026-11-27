@@ -125,7 +125,7 @@ So in practice the interpreter aborts on a re-run only. The Decisions section ta
 2. **`packages/compiler/src/targets/compile-client.ts`.**
    - In the `Request` branch of `compileClient`, set a local `autoFetch = true` when `!def.manual`.
    - Pass it to `emitClientModule` as a new trailing parameter. `emitClientModule` appends `"onEffectCleanup"` to `reactivityImports`, last, when it is set.
-   - `plan:spec/compiled-cookie-attributes` adds a trailing `needsCookie` flag to the same function. Whichever lands second folds both flags into one trailing options object (`{ needsCookie, needsEffectCleanup }`) rather than stacking positional parameters.
+   - spec.md §11.2a's landing added a trailing options object (`{ needsCookie }`) to `emitClientModule`. Add `needsEffectCleanup` to that object rather than stacking positional parameters.
 3. **`packages/compiler/src/targets/compile-element.ts`.**
    - Build the `@vue/reactivity` import at line 410 from a list (`reactive, computed, effect, stop`) and append `onEffectCleanup` when `requestEntries.some(([, d]) => !(d as JxPrototypeDef).manual)`.
    - Update the comment above `requestEntries` to say the import follows the same rule: emitted only when a `Request` needs it.

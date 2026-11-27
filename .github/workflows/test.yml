@@ -106,7 +106,7 @@ jobs:
             --reporter=junit --reporter-outfile=junit.xml \
             2>&1 | tee /tmp/test-output.txt || status=$?
           if [ "$status" -eq 124 ] || { [ "$status" -eq 137 ] && [ $((SECONDS - started)) -ge 720 ]; }; then
-            echo "::error::bun test in ${{ matrix.package.dir }} was still running after 12 minutes (about twice the slowest suite's normal run) and was stopped. The last test file in the log above is where it stalled; look for a failure whose message never finished printing."
+            echo "::error::bun test in ${{ matrix.package.dir }} hit the 12 minute timeout (about twice the slowest suite's normal run) and was stopped. The last test file in the log above is where it stalled; look for a failure whose message never finished printing."
             exit "$status"
           fi
           # An exit status above 128 is a SIGNAL: the test RUNNER died, and the counts above it
@@ -117,6 +117,12 @@ jobs:
           # test. Say which it was, here, where the failure is annotated.
           if [ "$status" -gt 128 ]; then
             echo "::error::bun test was killed by signal $((status - 128)) (exit $status) in ${{ matrix.package.dir }} — the runner crashed partway through, so no test reported this. Treat the counts above as a partial run, not a result."
+          fi
+          # Any other non-zero status is bun's own verdict, not a stall and not a timeout. Bun
+          # also exits 1 with no message and no file name when a per-file coverage threshold
+          # fails, so a red step with no failing test means: read the coverage table above.
+          if [ "$status" -ne 0 ] && [ "$status" -le 128 ]; then
+            echo "::error::bun test exited with status $status in ${{ matrix.package.dir }}. This is not a timeout. Look for failing tests above; if none failed, a per-file coverage threshold did (bun exits non-zero without naming the file), so read the coverage table."
           fi
           exit "$status"
         working-directory: ${{ matrix.package.dir }}

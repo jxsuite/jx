@@ -34,7 +34,13 @@ runs:
       run: |
         # A container job runs as root and has no sudo; a hosted runner has sudo and is not root.
         elevate=""; command -v sudo >/dev/null && elevate="sudo"
-        command -v nasm >/dev/null || { $elevate apt-get update -qq && $elevate apt-get install -y -qq nasm; }
+        # A broken third-party source (a vendor repository whose signing key lapsed answers 403)
+        # makes `apt-get update` exit 100 even though Ubuntu's own index refreshed. Tolerate that:
+        # the install below is the real test, and only its failure fails the step.
+        if ! command -v nasm >/dev/null; then
+          $elevate apt-get update -qq || echo "::warning::apt-get update reported errors (a third-party source?); installing nasm from the indexes that did refresh."
+          $elevate apt-get install -y -qq nasm
+        fi
     - if: runner.os == 'macOS'
       shell: bash
       run: command -v nasm >/dev/null || brew install nasm
