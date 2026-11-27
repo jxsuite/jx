@@ -88,7 +88,7 @@ All spec edits are in `specs/ui.md`, in place. Every paragraph and bullet is one
 7. **Ride-along spec edits.**
    - §5.3 `jx-field` row (line 251): after "the label-to-control naming contract the four classes it replaces could not hold", add "; a `help` slot that replaces the `description` sentence when filled". `plan:studio-ui-guidelines/inline-error-role` rewrites another clause of the same cell (`invalid` takes the label from `warning`); the clauses are independent, and whichever plan lands second keeps the other's.
    - §5.4 `jx-accordion-item` row (line 278): after "a re-announced `toggle` that stops at the element", add "; slots `heading` (an inert mark beside the label) and `actions` (a control whose click neither toggles nor is cancelled)". The table elements' row (ui.md §5.4) is in the same table, and the edits do not overlap.
-   - §3's own marker is not touched. `plan:ui/behaviour-list-text` removes its "(§3.1, §3.2, §3.3)" enumeration. The "Declarative first" bullet is not touched either, and that plan relies on it as written.
+   - §3's own marker is not touched. its "(§3.1, §3.2, §3.3)" enumeration is already gone. The "Declarative first" bullet is not touched either, and ui.md §3.3 relies on it as written.
 8. **`packages/ui/src/behaviors/split.ts`**, `announce()` (line 162): `new CustomEvent(name, { bubbles: true, detail: modifiers })`. Update its doc comment to say it bubbles and is not composed (ui.md §3.2).
 9. **`packages/ui/components/jx-option.json`**, `state.onClick`: delete `"composed": true` from the `select` dispatch.
 10. **`emits` where a dispatch is undeclared.**
