@@ -32,7 +32,7 @@ Verified at the current tree:
 ## Outcome
 
 - parser.md §9.1 → Implemented: one name check covers both source shapes, and the body states the per-locale mount shape and what an unsafe name costs.
-- parser.md graduates only if this lands last: §3 (`plan:parser/heading-slug-combining-marks`), §7 (`plan:_shared/collection-directive-elements`) and §9.3 (`plan:parser/uniform-entry-dates`) are owned elsewhere.
+- parser.md graduates only if this lands last: §7 (`plan:_shared/collection-directive-elements`) and §9.3 (`plan:parser/uniform-entry-dates`) are owned elsewhere.
 
 ## Decisions
 
