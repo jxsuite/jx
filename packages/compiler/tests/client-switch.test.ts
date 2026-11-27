@@ -87,3 +87,81 @@ describe("compileClient — $switch", () => {
     expect(moduleOf(compile())).toContain("lit-html");
   });
 });
+
+describe("compileClient — $switch inside a lit region", () => {
+  const rowSwitch: JxElement = {
+    $switch: { $ref: "$map/item/kind" },
+    cases: {
+      a: { tagName: "b", textContent: "ROW-A-BRANCH" },
+      b: { tagName: "i", textContent: "ROW-B-BRANCH" },
+    },
+    tagName: "li",
+  };
+  const listOf = (map: JxElement): JxElement => ({
+    $prototype: "Array",
+    items: { $ref: "#/state/rows" },
+    map,
+  });
+
+  test("renders a switch in a mapped row's template, keyed on the row", () => {
+    const js = moduleOf(
+      compile({ children: [listOf(rowSwitch)], state: { rows: [] }, tagName: "ul" }),
+    );
+
+    expect(js).toContain("ROW-A-BRANCH");
+    expect(js).toContain("ROW-B-BRANCH");
+    expect(js).toContain("[String(item.kind)]");
+  });
+
+  test("renders a switch nested in another switch's case", () => {
+    const js = moduleOf(
+      compile({
+        children: [
+          {
+            ...SWITCH_NODE,
+            cases: {
+              a: { ...SWITCH_NODE, cases: { a: { tagName: "p", textContent: "INNER-CASE-TEXT" } } },
+            },
+          },
+        ],
+        state: { mode: "a" },
+        tagName: "div",
+      }),
+    );
+
+    expect(js).toContain("INNER-CASE-TEXT");
+  });
+
+  test("renders a switch beside a mapped array among an element's children", () => {
+    const js = moduleOf(
+      compile({
+        children: [listOf({ tagName: "li", textContent: "row" }), SWITCH_NODE],
+        state: { mode: "a", rows: [] },
+        tagName: "div",
+      }),
+    );
+
+    expect(js).toContain("AAA-BRANCH");
+    expect(js).toContain("BBB-BRANCH");
+  });
+
+  test("a row's switch with no matching key renders nothing", () => {
+    const js = moduleOf(
+      compile({ children: [listOf(rowSwitch)], state: { rows: [] }, tagName: "ul" }),
+    );
+
+    expect(js).toContain("[String(item.kind)] ?? html``");
+  });
+
+  test("a row's switch accepts a template-string discriminant", () => {
+    const js = moduleOf(
+      compile({
+        children: [listOf({ ...rowSwitch, $switch: "${$map.item.kind}" })],
+        state: { rows: [] },
+        tagName: "ul",
+      }),
+    );
+
+    expect(js).toContain("[String(`${item.kind}`)]");
+  });
+});

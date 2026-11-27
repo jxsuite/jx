@@ -309,11 +309,11 @@ A browser without `ElementInternals` ignores the declaration: the component rend
 
 ## Props and encapsulation
 
-Props are passed via `$props` on an instance node, which is the only mechanism for crossing component boundaries. Register the component in `$elements` and instantiate it by its custom-element tag:
+Props are passed via `$props` on an instance node, which is the only mechanism for crossing component boundaries. List the component's file in `$elements` and instantiate it by the `tagName` that file declares (`my-card` here):
 
 ```json
 {
-  "$elements": { "my-card": { "$ref": "./card.json" } },
+  "$elements": [{ "$ref": "./card.json" }],
   "children": [
     {
       "tagName": "my-card",

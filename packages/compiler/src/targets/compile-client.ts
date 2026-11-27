@@ -25,6 +25,8 @@ import {
   ATTR_HELPER,
   refuseBodyWithSrc,
   attrHelperSource,
+  cookieHelperSource,
+  emitCookieBinding,
   collectClientClasses,
   emitExternalClassResolution,
   externalClassHelperSource,
@@ -40,12 +42,13 @@ import {
   contentPropertyText,
   createCompileContext,
   emitFormulaFn,
+  emitStatementsFn,
   emitRequestFetch,
   emitServerCall,
   escapeHtml,
   isMutating,
   isRefObject,
-  isSchemaOnly,
+  isPureTypeDef,
   isTemplateString,
   KEYED_LIST_HELPER,
   KEYED_LIST_IMPORTS,
@@ -222,6 +225,7 @@ export function compileClient(
   const bindEntries: [string, string][] = []; // [key, bodyExpr]   → bind = {...}
   const onEntries: [string, HandlerDef][] = []; // [key, { args, body }] → on = {...}
   const initBlocks: string[] = []; // Lines emitted after state for prototype init
+  let needsCookie = false; // A Cookie entry makes the module carry the cookie helper
   const serverCalls: string[] = []; // One block per `timing: "server"` entry, after the computed block
 
   const defs = raw.state ?? {};
@@ -264,12 +268,16 @@ export function compileClient(
       if (Array.isArray(body)) {
         // Structured body (spec §20) → an event handler compiled from statements.
         // With parameters, a positional callable like a named formula.
-        const compiled = compileStatements(body, { eventParam: "e", statePrefix: "state" });
-        if (def.parameters && def.parameters.length > 0) {
-          initBlocks.push(
-            `state[${JSON.stringify(key)}] = ${emitFormulaFn(def, `(() => {\n${compiled}\n})()`)};`,
-          );
+        if (Array.isArray(def.parameters) && def.parameters.length > 0) {
+          // A callable has no event: it dispatches from the page's root element (spec.md §20.3).
+          const compiled = compileStatements(body, {
+            dispatchTarget: "document.body.firstElementChild",
+            eventParam: "e",
+            statePrefix: "state",
+          });
+          initBlocks.push(`state[${JSON.stringify(key)}] = ${emitStatementsFn(def, compiled)};`);
         } else {
+          const compiled = compileStatements(body, { eventParam: "e", statePrefix: "state" });
           onEntries.push([key, { args: ["state", "e"], body: compiled }]);
         }
       } else if (def.$src) {
@@ -294,7 +302,7 @@ export function compileClient(
     }
 
     // Pure schema-only type def → skip
-    if (isSchemaOnly(def)) {
+    if (isPureTypeDef(def)) {
       continue;
     }
 
@@ -325,7 +333,8 @@ export function compileClient(
       // $prototype: "Cookie"
       if (def.$prototype === "Cookie") {
         stateEntries.push([key, null]);
-        initBlocks.push(emitCookieInit(key, def.name ?? key, def.default ?? null));
+        initBlocks.push(emitCookieBinding(key, def));
+        needsCookie = true;
         continue;
       }
 
@@ -381,6 +390,7 @@ export function compileClient(
     opts.rewriteSrc,
     clientClasses,
     mappedArrayFeatures(raw),
+    { needsCookie },
   );
 
   // The page's import map: lit-html always, since compiled custom elements need it.
@@ -654,16 +664,10 @@ function buildClientNode(
     const discriminant = isRefObject(source.$switch)
       ? stateRead(source.$switch.$ref)
       : `\`${String(source.$switch)}\``;
-    const cases = source.cases ?? {};
-    // Parsed JSON, so a case slot can hold `null` or a bare value the declared type leaves out.
-    const caseEntries = Object.entries<JxMutableNode | JsonPrimitive>(cases)
-      // An external `$ref` case cannot be fetched at compile time, exactly as in the static target.
-      .filter(([, caseDef]) => caseDef && !isRefObject(caseDef))
-      .map(
-        ([key, caseDef]) =>
-          `${JSON.stringify(key)}: html\`${emitChildLit(caseDef, nextContext.preformatted)}\``,
-      );
-    bindings.set(swKey, `() => ({${caseEntries.join(", ")}})[String(${discriminant})] ?? html\`\``);
+    bindings.set(
+      swKey,
+      `() => ${emitSwitchLookup(source, discriminant, nextContext.preformatted)}`,
+    );
     bindAttrs.push(`:render="${swKey}"`);
     const bindAttrStrSwitch = ` ${bindAttrs.join(" ")}`;
     return `<${tag}${staticAttrs} data-bind${bindAttrStrSwitch}></${tag}>`;
@@ -748,6 +752,32 @@ function buildClientNode(
   }
 
   return `<${tag}${staticAttrs}${dataBindAttr}${bindAttrStr}>${inner}</${tag}>`;
+}
+
+/**
+ * The lookup a `$switch` renders as: an object of lit templates keyed by case, indexed by the
+ * discriminant's string, with the empty template for a key no case holds (spec.md §14.1). The one
+ * emitter of it: the container's `:render` binding and a switch inside a lit region (a mapped row,
+ * another switch's case) both call it.
+ *
+ * @param {JxMutableNode} node - The element holding `$switch` and `cases`
+ * @param {string} discriminant - The expression the key is read from
+ * @param {boolean} preformatted - Whether the switch sits inside a `<pre>`
+ * @returns {string}
+ */
+function emitSwitchLookup(
+  node: JxMutableNode,
+  discriminant: string,
+  preformatted: boolean,
+): string {
+  // Parsed JSON, so a case slot can hold `null` or a bare value the declared type leaves out.
+  const caseEntries = Object.entries<JxMutableNode | JsonPrimitive>(node.cases ?? {})
+    // An external `$ref` case cannot be fetched at compile time, exactly as in the static target.
+    .filter(([, caseDef]) => caseDef && !isRefObject(caseDef))
+    .map(
+      ([key, caseDef]) => `${JSON.stringify(key)}: html\`${emitChildLit(caseDef, preformatted)}\``,
+    );
+  return `({${caseEntries.join(", ")}})[String(${discriminant})] ?? html\`\``;
 }
 
 // ─── Lit-html map template generation ─────────────────────────────────────────
@@ -949,7 +979,13 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
 
   // Inner content
   let inner = "";
-  if (def.textContent !== undefined) {
+  if (def.$switch) {
+    // A switch in a lit region renders its lookup as the element's content, a template hole.
+    const discriminant = isRefObject(def.$switch)
+      ? mapRefToClientExpr(def.$switch.$ref)
+      : `\`${mapRefsToLit(String(def.$switch))}\``;
+    inner = `\${${emitSwitchLookup(def, discriminant, inPre)}}`;
+  } else if (def.textContent !== undefined) {
     const tc = String(def.textContent);
     if (isTemplateString(tc)) {
       inner = `${mapRefsToLit(tc)}${guard}`;
@@ -1125,6 +1161,7 @@ function emitClientModule(
   rewriteSrc: ((specifier: string) => string) | undefined,
   clientClasses: ClientClasses,
   lists: MappedArrayFeatures,
+  features: { needsCookie?: boolean } = {},
 ) {
   const lines: string[] = [];
   const { needsLit, textParts } = counter;
@@ -1159,6 +1196,9 @@ function emitClientModule(
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
   lines.push(...src.imports, ...clientClasses.imports, ...src.loaders, "", attrHelperSource());
+  if (features.needsCookie) {
+    lines.push(cookieHelperSource());
+  }
   /* The list rules (compiler.md §4.7), carried only by a module whose document filters, sorts or
      keys a list. */
   if (lists.arranged || lists.keyed) {
@@ -1318,8 +1358,8 @@ function emitClientModule(
 }
 
 // ─── Prototype init emitters ─────────────────────────────────────────────────
-// Request auto-fetch lives in shared.ts (`emitRequestFetch`) so the element target emits the same
-// Effect against `this.state`.
+// Request auto-fetch (`emitRequestFetch`) and the cookie binding (`emitCookieBinding`) live in
+// Shared.ts, so the element target can emit the same effects against `this.state`.
 
 /**
  * @param {string} key
@@ -1347,26 +1387,6 @@ function emitStorageInit(
     `    else ${storeName}.setItem(${JSON.stringify(storageKey)}, JSON.stringify(v));`,
     "  } catch {}",
     "});",
-  ];
-  return lines.join("\n");
-}
-
-/**
- * @param {string} key
- * @param {string} cookieName
- * @param {JsonValue} defaultVal
- * @returns {string}
- */
-function emitCookieInit(key: string, cookieName: string, defaultVal: JsonValue) {
-  const lines: string[] = [
-    `// ${key}: Cookie (name: "${cookieName}")`,
-    "{",
-    `  const _m = document.cookie.match(new RegExp("(?:^|; )${cookieName}=([^;]*)"));`,
-    `  try { state.${key} = _m ? JSON.parse(decodeURIComponent(_m[1])) : ${JSON.stringify(
-      defaultVal,
-    )}; }`,
-    `  catch { state.${key} = _m ? _m[1] : ${JSON.stringify(defaultVal)}; }`,
-    "}",
   ];
   return lines.join("\n");
 }

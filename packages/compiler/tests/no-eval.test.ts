@@ -23,6 +23,8 @@ describe("compiled output contains no eval (spec §21.1)", () => {
         doubled: { $prototype: "Function", body: "return state.count * 2" },
         // An event handler body (mutates state).
         inc: { $prototype: "Function", body: "state.count++" },
+        // A Cookie entry, so the inlined cookie helper is under the lock.
+        session: { $prototype: "Cookie", name: "sid", default: "anon" },
       },
       children: [
         { tagName: "span", textContent: "${state.count}" },

@@ -415,20 +415,23 @@ A surface's local state does not earn a class. It belongs to the module that ren
 
 ## 7. Spacing System
 
-> **Status: Partial.** The premise is stale: the kit ships `--jx-space-1` to `--jx-space-7` (2/4/8/12/16/24/32px, `ui.md` §4), and surfaces spell most gaps and padding through it. The 6px horizontal gap is off that scale and written as a literal, and section padding in `packages/studio/src/surfaces/properties-panel.json` is `0 var(--jx-space-2) var(--jx-space-2)`, not `4px 8px`.
+Studio's spacing is the kit's space scale: `--jx-space-1` to `--jx-space-7`, 2, 4, 8, 12, 16, 24 and 32px (`ui.md` §4.3). Studio declares no spacing token of its own, and no density re-declares the scale, so every value below holds at every density.
 
-No formal spacing scale — use these established values consistently:
+**A step is written as its token.** A new gap, padding or margin that lands on a step spells it `var(--jx-space-3)`, not `8px`; an existing literal equal to a step draws the same value and is not an error. **A value between two steps stays a literal, and the scale does not grow to meet it.** 6px is the one such value Studio uses as rhythm: the gap between the items of an inline run and the block padding of a dock header. 10px pads a few cards and pills, and 1px, 3px and 5px correct for a border or centre a glyph inside a chip; each belongs to the element it corrects. Spacing is not policed: `packages/studio/scripts/check-styles.ts` nudges a font size or a radius toward its token and leaves gaps, padding and margins alone on purpose, because the scale is coarse and a dense editor draws structural pixels.
 
-| Context          | Value     | Usage                                       |
-| ---------------- | --------- | ------------------------------------------- |
-| Form row gap     | `2px`     | Between label and input (`.style-row`)      |
-| Form row padding | `2px 0`   | Vertical rhythm between rows                |
-| Section padding  | `4px 8px` | Panel section content                       |
-| Panel padding    | `8px`     | Panel body areas                            |
-| Child indent     | `16px`    | Nested/sub-property rows                    |
-| Component gap    | `4px`     | Within label containers, badge groups       |
-| Horizontal gap   | `6px`     | Between inline items (signal rows, toolbar) |
-| Canvas gap       | `24px`    | Between canvas panels                       |
+**A kit element's own spacing is the kit's.** A toolbar's gap, an action group's gap and an accordion item's body padding are drawn by the element (`ui.md` §5). A surface adds to them in its own `style` block and does not restate them.
+
+| Context      | Step                                                  | Where                                                                                                      |
+| ------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Form row     | `--jx-space-1` (2px)                                  | Between a row's label and its control, and above and below each row (§4.1)                                 |
+| Row label    | `--jx-space-2` (4px)                                  | Between the provenance chip and the row's name (§4.1, §4.2)                                                |
+| Child indent | `--jx-space-5` (16px)                                 | A nested row's inline start (§4.1)                                                                         |
+| Section body | `--jx-space-2` (4px)                                  | Inside a section, which `jx-accordion-item` pads itself (§5.1)                                             |
+| Strip        | `--jx-space-2` block, `--jx-space-3` inline (4px 8px) | A toolbar or filter bar above a panel's list                                                               |
+| Panel body   | `--jx-space-2` or `--jx-space-3` (4px or 8px)         | A panel body that pads at all; a list whose rows pad themselves does not                                   |
+| Dock header  | 6px block, `--jx-space-3` inline                      | The Navigator's and the Inspector's header rows                                                            |
+| Inline run   | 6px                                                   | Between the items of a run: the shell toolbar, a section band's icon and title, a field and its Add button |
+| Canvas       | `--jx-space-6` (24px)                                 | Between the canvas's artboards                                                                             |
 
 ---
 

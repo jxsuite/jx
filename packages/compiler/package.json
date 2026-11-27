@@ -37,6 +37,7 @@
     "./site-loader": "./src/site/site-loader.ts",
     "./types": "./src/types.ts",
     "./db-push": "./src/site/db-push.ts",
+    "./section-push": "./src/site/section-push.ts",
     "./document-scripts": "./src/site/document-scripts.ts",
     "./pack": "./src/targets/compile-pack.ts",
     "./bundler": "./src/site/bundler.ts",
@@ -67,6 +68,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
+    "@jxsuite/auth": "workspace:^",
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/parser": "workspace:^",
     "@jxsuite/test-support": "workspace:^",

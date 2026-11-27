@@ -111,13 +111,13 @@ The manifest lives at the package root, referenced by `"jx": "./jx-extension.jso
 }
 ```
 
-| Key           | Type                     | Meaning                                                                                                        |
-| ------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `name`        | `string` (required)      | Package name; must match `package.json`.                                                                       |
-| `title`       | `string`                 | Human-readable name for Studio surfaces.                                                                       |
-| `description` | `string`                 | One-line description.                                                                                          |
-| `classes`     | `Record<string, string>` | `$prototype`-visible name → class descriptor path, relative to the manifest.                                   |
-| `schemas`     | `object`                 | Schema fragments this package contributes: `project` (project.json sections), `document` (document positions). |
+| Key           | Type                     | Meaning                                                                                                                                                                            |
+| ------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | `string` (required)      | Package name; must match `package.json`.                                                                                                                                           |
+| `title`       | `string`                 | Human-readable name for Studio surfaces.                                                                                                                                           |
+| `description` | `string`                 | One-line description.                                                                                                                                                              |
+| `classes`     | `Record<string, string>` | `$prototype`-visible name → class descriptor path, relative to the manifest.                                                                                                       |
+| `schemas`     | `object`                 | Schema fragments this package contributes: `project` (project.json sections), `document` (document positions), `fields` (a fragment whose `$defs` join the project's field union). |
 
 The manifest is pure data, validated by the generated `extension-manifest.schema.json` from `@jxsuite/schema`. It enumerates; it does not define behavior. That lives in the class descriptors it points to.
 

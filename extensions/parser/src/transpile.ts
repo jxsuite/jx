@@ -285,19 +285,26 @@ export function collapseStylePaths(styleObj: JsonObject) {
 
 // ─── Detection ──────────────────────────────────────────────────────────────
 
+/** The component rule: a character on each side of a hyphen (specs/jx-markdown.md §3.1). */
+const COMPONENT_TAG = /.+-.+/;
+
 /**
- * Check if a markdown source string is a Jx component (vs content markdown). Returns true if
- * frontmatter contains a `tagName` key with a hyphen.
+ * Whether a markdown source is a Jx component rather than content markdown: its parsed frontmatter
+ * `tagName` is a string matching the rule `Markdown.class.json` declares as
+ * `$studio.documentMode.componentWhen` (specs/jx-markdown.md §3.1). A source that does not
+ * transpile is not a component.
  *
  * @param {string} source - Raw markdown string
  * @returns {boolean}
  */
-export function isJxMarkdown(source: string) {
-  const fmMatch = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!fmMatch) {
+export function isJxMarkdown(source: string): boolean {
+  let tagName: unknown;
+  try {
+    ({ tagName } = transpileJxMarkdown(source));
+  } catch {
     return false;
   }
-  return /^tagName:\s*.+-.+/m.test(fmMatch[1]!);
+  return isString(tagName) && COMPONENT_TAG.test(tagName);
 }
 
 // ─── Transpiler ─────────────────────────────────────────────────────────────
@@ -856,16 +863,26 @@ export function transpileJxMarkdown(source: string) {
  * collapsed to single hyphens. The one algorithm behind rendered heading `id`s, `$toc` entries, and
  * search deep links (specs/parser.md).
  *
- * **NFC first, and that is the whole point of the change** (UAX #15). "Café" typed on macOS is `e`
- *
- * - U+0301; the same word typed on Windows, or pasted from a web page, is U+00E9. They look
- *   identical, they compare unequal, and they produced two different anchors — so a link written
- *   against one heading silently stopped working when someone re-typed the heading. Normalizing
- *   puts both spellings in one form before anything else looks at them.
+ * **NFC first, and that is the whole point of the change** (UAX #15). "Café" typed on macOS is `e` +
+ * U+0301; the same word typed on Windows, or pasted from a web page, is U+00E9. They look
+ * identical, they compare unequal, and they produced two different anchors — so a link written
+ * against one heading silently stopped working when someone re-typed the heading. Normalizing puts
+ * both spellings in one form before anything else looks at them.
  *
  * **`toLowerCase`, never `toLocaleLowerCase`.** Locale-sensitive casing would make the same heading
  * produce different anchors in different projects — Turkish maps `I` to `ı`, not `i` — and an
- * anchor is a URL, which belongs to the document rather than to the reader's locale.
+ * anchor is a URL, which belongs to the document rather than to the reader's locale. `İ` (U+0130)
+ * is folded to `i` first, because its default lowercase form is the one default case mapping that
+ * adds a mark (a combining dot U+0307) the author never wrote.
+ *
+ * **Combining marks are part of the letter.** A Devanagari vowel sign or virama, a Thai vowel, an
+ * Arabic or Hebrew point is written on its letter, so it stays in the anchor. NFC folds the marks
+ * that have a precomposed form; the rest stay as marks. A mark whose letter was dropped is dropped
+ * with it, and a mark with no letter before it never leads the slug.
+ *
+ * **Presentation is not spelling.** Variation selectors (U+FE0F after an emoji) and enclosing marks
+ * (the keycap U+20E3) choose how a character is drawn, not which word it spells, so they never
+ * reach the slug: `❤️ Love` is `love`, `1️⃣ Install` is `1-install`.
  *
  * **`_` stays in the character class deliberately.** The old class was `\w`, which is
  * `[A-Za-z0-9_]`; `\p{L}\p{N}` is the Unicode-aware replacement and does **not** include `_`.
@@ -879,8 +896,10 @@ export function transpileJxMarkdown(source: string) {
 export function slugifyHeading(text: string) {
   return text
     .normalize("NFC")
+    .replaceAll("\u0130", "i")
     .toLowerCase()
-    .replaceAll(/[^\p{L}\p{N}_\s-]/gu, "")
+    .replaceAll(/[\p{Variation_Selector}\p{Me}]/gu, "")
+    .replaceAll(/[^\p{L}\p{N}\p{M}_\s-]\p{M}*|(?<![\p{L}\p{N}\p{M}])\p{M}+/gu, "")
     .replaceAll(/\s+/gu, "-")
     .replaceAll(/-+/g, "-")
     .replaceAll(/^-|-$/g, "");

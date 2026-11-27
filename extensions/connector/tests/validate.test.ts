@@ -133,3 +133,45 @@ describe("validateRow", () => {
     expect(result.value.mood).toBeNull();
   });
 });
+
+describe("validateRow with the table set", () => {
+  const tables = {
+    archive: { connection: "cold", id: "integer", schema: { properties: {}, type: "object" } },
+    notes: {
+      connection: "main",
+      schema: {
+        properties: {
+          far: { $ref: "#/data/archive" },
+          many: { items: { $ref: "#/data/posts" }, type: "array" },
+          post: { $ref: "#/data/posts" },
+        },
+        type: "object",
+      },
+    },
+    posts: { connection: "main", id: "integer", schema: { properties: {}, type: "object" } },
+  } satisfies Record<string, TableDef>;
+  const notes = tables.notes!;
+
+  test("a same-connection integer-id reference must be an integer string", () => {
+    expect(validateRow(notes, { post: "7" }, { tables }).valid).toBe(true);
+    for (const bad of ["x", "7.5", " "]) {
+      const one = validateRow(notes, { post: bad }, { tables });
+      expect(one.errors).toEqual([
+        { field: "post", message: "Reference value must be an integer id" },
+      ]);
+      const many = validateRow(notes, { many: ["1", bad] }, { tables });
+      expect(many.errors).toEqual([
+        { field: "many", message: "Reference list must be an array of integer ids" },
+      ]);
+    }
+    expect(validateRow(notes, { many: ["1", "2"] }, { tables }).valid).toBe(true);
+    expect(validateRow(notes, { post: "" }, { tables }).errors[0]!.message).toBe(
+      "Reference value must be an entry id string",
+    );
+  });
+
+  test("without the table set, or onto another connection, any id string passes", () => {
+    expect(validateRow(notes, { post: "x" }).valid).toBe(true);
+    expect(validateRow(notes, { far: "x" }, { tables }).valid).toBe(true);
+  });
+});
