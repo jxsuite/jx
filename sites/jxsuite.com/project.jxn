@@ -232,6 +232,9 @@ copy {
     "../../packages/schema/project-schema.json" "schema/project/v1/index.json"
     "../../packages/schema/class-schema.json" "schema/class/v1/index.json"
     "../../packages/schema/schemas/document.paths.schema.json" "schema/document/paths/v2/index.json"
+    "../../packages/schema/extension-manifest.schema.json" "schema/extension-manifest/v1/index.json"
+    "../../packages/schema/schemas/project.core.schema.json" "schema/project/core/v2/index.json"
+    "../../packages/schema/schemas/project.fields.schema.json" "schema/project/fields/v2/index.json"
 }
 
 build outDir="./dist" trailingSlash=always

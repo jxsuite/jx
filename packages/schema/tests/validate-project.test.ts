@@ -9,6 +9,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { resolveI18n } from "../src/locale.ts";
 import { CONVENTIONAL_PROJECT_CORE_REF, emitProjectSchema } from "../src/project-schemas";
 import { explainJxnLists, validateProjectFile } from "../src/validate-project";
 import { serializeProject } from "../src/jxn/index.ts";
@@ -109,6 +110,15 @@ describe("validateProjectFile", () => {
     const result = await validateProjectFile(root);
     expect(result.valid).toBe(false);
     expect(JSON.stringify(result.errors)).toContain("pattern");
+  });
+
+  test("a padded locale tag is refused at author time and at build time", async () => {
+    const i18n = { defaultLocale: "en", locales: ["en", "fr "] };
+    const root = makeProject({ project: { ...validProject(), i18n } });
+    const result = await validateProjectFile(root);
+    expect(result.valid).toBe(false);
+    expect(JSON.stringify(result.errors)).toContain("pattern");
+    expect(resolveI18n({ name: "t", i18n }).errors.join("\n")).toContain('"fr "');
   });
 
   test("a well-formed locale block still validates", async () => {

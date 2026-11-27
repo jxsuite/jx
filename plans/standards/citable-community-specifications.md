@@ -4,8 +4,7 @@ disposition: reconcile
 claims:
   - standards.md#2.1
   - standards.md#2.2
-requires:
-  - standards/one-canonical-url-per-catalog-entry
+requires: []
 workspaces:
   - scripts/docs
   - packages/runtime
@@ -18,9 +17,9 @@ size: M
 
 ## Context
 
-`specs/standards.md` §2.1, line 29, as the census left it (`plan:standards/one-canonical-url-per-catalog-entry` rewrites its facts when it lands; this plan replaces whichever text is there):
+`specs/standards.md` §2.1, line 29, as the gate-hardening change left it (this plan replaces whichever text is there):
 
-> **Status: Partial.** The catalog admits issuing bodies outside these eight: the `Org` union in `scripts/docs/lib/standards.ts` ends in `Other`, and `scripts/docs/standards.json` files CommonMark, GFM, JSON Feed 1.1 and Sitemaps 0.9 under `Other` and Gitignore under `Git`, which is not in the union at all. Nothing in `scripts/docs/check-standards.ts` compares a catalog entry's `org` with this list, so those five standards are cited as rows across four specs.
+> **Status: Partial.** The catalog admits one issuing body outside these eight: `ORGS` in `scripts/docs/lib/standards.ts` ends in `Other`, under which `scripts/docs/standards.json` files CommonMark, GFM, Gitignore, IPTC Photo Metadata, JSON Feed 1.1 and Sitemaps 0.9, and `bun run docs:standards` refuses any other `org` (`catalog-org-unknown`). This section does not name that class, so six standards it does not admit are cited as rows across several specs.
 
 `specs/standards.md` §2.2, line 35:
 
@@ -71,7 +70,7 @@ One plan owns both because they are one decision: §2.1 says which bodies may be
 
 ## Implementation
 
-Lands after `plan:standards/one-canonical-url-per-catalog-entry`, in one pull request.
+The gate half (`ORGS`, `catalog-org-unknown`, the dotted-name identifier) has landed; this lands in one pull request.
 
 1. **`specs/standards.md`**
    - §2.1 becomes:

@@ -224,6 +224,30 @@ describe("isJxMarkdown", () => {
   test("false when tagName has no hyphen", () => {
     expect(isJxMarkdown("---\ntagName: div\n---\n\nBody")).toBe(false);
   });
+
+  test("false when the hyphen sits only in a YAML comment", () => {
+    expect(isJxMarkdown("---\ntagName: div # my-note\n---\n")).toBe(false);
+  });
+
+  test("false when nothing precedes the hyphen", () => {
+    expect(isJxMarkdown('---\ntagName: "-card"\n---\n')).toBe(false);
+  });
+
+  test("false for a non-string tagName", () => {
+    expect(isJxMarkdown("---\ntagName:\n  - my-card\n---\n")).toBe(false);
+  });
+
+  test("false, without throwing, when the frontmatter does not parse", () => {
+    expect(isJxMarkdown("---\ntagName: [my-card\n---\n")).toBe(false);
+  });
+
+  test("true for a block-scalar tagName", () => {
+    expect(isJxMarkdown("---\ntagName: >-\n  my-card\n---\n")).toBe(true);
+  });
+
+  test("true for flow-mapping frontmatter", () => {
+    expect(isJxMarkdown("---\n{tagName: my-card}\n---\n")).toBe(true);
+  });
 });
 
 // ─── mdastNodeToJx: null / edge paths ───────────────────────────────────────
@@ -1075,6 +1099,14 @@ describe("assignHeadingIds", () => {
 });
 
 describe("slugifyHeading", () => {
+  const legacy = (text: string) =>
+    text
+      .toLowerCase()
+      .replaceAll(/[^\w\s-]/g, "")
+      .replaceAll(/\s+/g, "-")
+      .replaceAll(/-+/g, "-")
+      .replaceAll(/^-|-$/g, "");
+
   test("lowercases, strips punctuation, and collapses whitespace", () => {
     expect(slugifyHeading("The `emit` Capability!")).toBe("the-emit-capability");
     expect(slugifyHeading("  spaced   out  ")).toBe("spaced-out");
@@ -1106,13 +1138,6 @@ describe("slugifyHeading", () => {
      * not, so `_` is kept in the class explicitly. Nothing on an English site moves, which is what
      * lets existing anchors and the links pointing at them survive.
      */
-    const legacy = (text: string) =>
-      text
-        .toLowerCase()
-        .replaceAll(/[^\w\s-]/g, "")
-        .replaceAll(/\s+/g, "-")
-        .replaceAll(/-+/g, "-")
-        .replaceAll(/^-|-$/g, "");
     const corpus = [
       "The `emit` Capability!",
       "  spaced   out  ",
@@ -1131,6 +1156,62 @@ describe("slugifyHeading", () => {
     ];
     for (const heading of corpus) {
       expect(slugifyHeading(heading)).toBe(legacy(heading));
+    }
+  });
+
+  test("a heading keeps the combining marks its script is written with", () => {
+    expect(slugifyHeading("नमस्ते दुनिया")).toBe("नमस्ते-दुनिया");
+    expect(slugifyHeading("สวัสดีชาวโลก")).toBe("สวัสดีชาวโลก");
+    expect(slugifyHeading("வணக்கம் உலகம்")).toBe("வணக்கம்-உலகம்");
+    expect(slugifyHeading("مَرْحَبًا")).toBe("مَرْحَبًا");
+    expect(slugifyHeading("שָׁלוֹם עוֹלָם")).toBe("שָׁלוֹם-עוֹלָם");
+    // NFC does not compose the nukta, so the mark stays a separate code point.
+    expect([...slugifyHeading("क\u093Cलम")].map((c) => c.codePointAt(0)?.toString(16))).toEqual([
+      "915",
+      "93c",
+      "932",
+      "92e",
+    ]);
+    expect([...slugifyHeading("\u0958लम")].map((c) => c.codePointAt(0)?.toString(16))).toEqual([
+      "915",
+      "93c",
+      "932",
+      "92e",
+    ]);
+  });
+
+  test("a mark with no precomposed form survives after NFC", () => {
+    expect(slugifyHeading("q\u0303 tilde")).toBe("q\u0303-tilde");
+    expect(slugifyHeading("Cafe\u0301")).toBe(slugifyHeading("Caf\u00E9"));
+  });
+
+  test("presentation marks never reach the slug", () => {
+    expect(slugifyHeading("\u2764\uFE0F Love")).toBe("love");
+    expect(slugifyHeading("\u2714\uFE0F Done")).toBe("done");
+    expect(slugifyHeading("1\uFE0F\u20E3 Install")).toBe("1-install");
+    expect(slugifyHeading("#\uFE0F\u20E3 hash")).toBe("hash");
+    expect(slugifyHeading("葛\u{E0100}城")).toBe("葛城");
+    expect(slugifyHeading("a\u20DD enclosed")).toBe("a-enclosed");
+  });
+
+  test("a mark goes with the character it was written on", () => {
+    expect(slugifyHeading("a!\u0301b")).toBe("ab");
+    expect(slugifyHeading(" \u0301lead")).toBe("lead");
+    expect(slugifyHeading("\u0301")).toBe("");
+  });
+
+  test("casing never adds a mark", () => {
+    expect(slugifyHeading("İstanbul")).toBe("istanbul");
+    expect(slugifyHeading("İletişim")).toBe("iletişim");
+    expect(slugifyHeading("I")).toBe("i");
+  });
+
+  test("every ASCII pair is byte-identical to the old implementation", () => {
+    for (let a = 0; a < 128; a += 1) {
+      for (let b = 0; b < 128; b += 1) {
+        const text = `x${String.fromCodePoint(a)}${String.fromCodePoint(b)}y`;
+        expect(slugifyHeading(text)).toBe(legacy(text));
+      }
     }
   });
 });

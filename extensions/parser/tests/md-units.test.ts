@@ -341,6 +341,13 @@ describe("processMarkdown heading ids", () => {
     expect($toc.map((e) => e.id)).toEqual(ids);
   });
 
+  test("anchors in a script with combining marks agree with $toc and dedupe", () => {
+    const { $children, $toc } = processMarkdown("## नमस्ते दुनिया\n\n## नमस्ते दुनिया", "/t.md");
+    const ids = $children.map((el) => idOf(el) ?? "");
+    expect(ids).toEqual(["नमस्ते-दुनिया", "नमस्ते-दुनिया-2"]);
+    expect($toc.map((e) => e.id)).toEqual(ids);
+  });
+
   test("headings with rich inline content slug their concatenated text", () => {
     const { $children, $toc } = processMarkdown("## Using `jx build` **fast**", "/t.md");
     expect(idOf($children[0])).toBe("using-jx-build-fast");
