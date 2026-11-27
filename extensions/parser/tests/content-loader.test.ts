@@ -918,7 +918,7 @@ describe("content asset mounts", () => {
         { root: TMP },
       );
       expect(mounts).toEqual([]);
-      expect(warnings.some((w) => w.includes("not URL-safe"))).toBe(true);
+      expect(warnings.filter((w) => w.includes("not URL-safe"))).toHaveLength(1);
     });
 
     it("returns [] for an absent section", () => {
@@ -1043,6 +1043,19 @@ describe("localesForExpansion", () => {
     expect(
       localesForExpansion({ i18n: { defaultLocale: "en", locales: ["en", "fr", "en"] } }),
     ).toEqual(["en", "fr"]);
+  });
+
+  it("drops a tag that is not well-formed, so every locale is a URL-safe path segment", () => {
+    const locales = localesForExpansion({
+      i18n: {
+        defaultLocale: "en",
+        locales: ["en", "../evil", "a b", "zh-hant-tw", "en-u-ca-buddhist", "en_US"],
+      },
+    });
+    expect(locales).toEqual(["en", "zh-Hant-TW", "en-u-ca-buddhist"]);
+    for (const locale of locales) {
+      expect(locale).toMatch(/^[\w.~-]+$/);
+    }
   });
 
   // A project may declare only a default; expanding over it alone is still a real expansion.
@@ -1218,11 +1231,36 @@ describe("localized content types", () => {
     ]);
   });
 
-  it("skips a locale with no directory, and a locale name that is not URL-safe", () => {
+  it("skips a locale with no directory, and a malformed tag never reaches the loop", () => {
     const mounts = contentAssetMounts(section, TMP, {
       i18n: { defaultLocale: "en", locales: ["en", "de", "../evil"] },
     });
     expect(mounts.map((mount) => mount.urlPrefix)).toEqual(["/content/i18n-posts/en"]);
+  });
+
+  const unsafe: ContentSection = {
+    "i18n posts": { format: "Markdown", source: "./content/i18n-posts/{locale}/" },
+  };
+
+  it("warns once and publishes nothing for a type whose name is not URL-safe", () => {
+    for (const projectConfig of [config, {}]) {
+      const warnings = captureWarnings();
+      expect(contentAssetMounts(unsafe, TMP, projectConfig)).toEqual([]);
+      const matching = warnings.filter(
+        (w) => w.includes("not URL-safe") && w.includes('"i18n posts"'),
+      );
+      expect(matching).toHaveLength(1);
+    }
+  });
+
+  it("still loads that type's entries, leaving their references as authored", async () => {
+    const registry = await buildFixtureRegistry();
+    const data = await Content.projectData(unsafe, { projectConfig: config, registry, root: TMP });
+    const entries = entriesOf(data, "i18n posts");
+    expect(entries.map((entry) => entry._meta?.locale)).toEqual(["en", "fr"]);
+    for (const entry of entries) {
+      expect(imageSrcs(entry)).toEqual(["./hero.png"]);
+    }
   });
 
   it("loads every locale's directory and stamps where each entry came from", async () => {

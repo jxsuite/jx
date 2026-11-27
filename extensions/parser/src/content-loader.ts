@@ -301,11 +301,14 @@ function mountFilterFor(def: ContentTypeDef | undefined): ((path: string) => boo
 /**
  * Asset mounts for a `content` section: every content type whose source is a local **directory**
  * publishes that directory at `/content/<type>`, so files sitting beside the entries (images,
- * downloads) have a stable site URL even when the source lives outside the project root.
- * Single-file and remote sources get no mount — a lone file's siblings are not its collection.
+ * downloads) have a stable site URL even when the source lives outside the project root. A
+ * `{locale}` source yields one mount per declared locale whose directory exists, at
+ * `/content/<type>/<locale>`. Single-file and remote sources get no mount — a lone file's siblings
+ * are not its collection. A type whose name is not URL-safe yields none and is reported.
  *
  * @param {ContentSection} section - The project.json `content` section value
  * @param {string} root - Absolute project root directory
+ * @param {ProjectConfig} [projectConfig] - Supplies the locales a `{locale}` source expands over
  * @returns {AssetMount[]} One mount per eligible content type, in declaration order
  */
 export function contentAssetMounts(
@@ -328,20 +331,28 @@ export function contentAssetMounts(
     if (!source || source.startsWith("http://") || source.startsWith("https://")) {
       continue;
     }
+    /* The name is a path segment of every mount the type would get, plain or per-locale, so it is
+       judged before the two shapes part (parser.md §9.1). */
+    if (!SAFE_CONTENT_TYPE_NAME.test(name)) {
+      console.warn(
+        `Content type "${name}": name is not URL-safe — nothing is published under ` +
+          `/${CONTENT_SECTION_KEY}/${name}, so its entries' content-relative asset references ` +
+          `stay unresolved.`,
+      );
+      continue;
+    }
     /*
      * A localized source is N directories, so it is N mounts — published under
      * `/content/<type>/<locale>` so a French post's `./hero.png` and its English translation's
-     * cannot collide at one URL.
+     * cannot collide at one URL. Every locale is a canonical BCP 47 tag from
+     * `localesForExpansion`, so it is already a URL-safe segment.
      */
     if (source.includes(LOCALE_PLACEHOLDER)) {
       for (const locale of locales) {
-        if (!SAFE_CONTENT_TYPE_NAME.test(locale)) {
-          continue;
-        }
         const dir = resolve(root, localeSource(root, source, locale))
           .split("\\")
           .join("/");
-        if (SAFE_CONTENT_TYPE_NAME.test(name) && existsSync(dir) && statSync(dir).isDirectory()) {
+        if (existsSync(dir) && statSync(dir).isDirectory()) {
           mounts.push({
             dir,
             urlPrefix: `/${CONTENT_SECTION_KEY}/${name}/${locale}`,
@@ -349,13 +360,6 @@ export function contentAssetMounts(
           });
         }
       }
-      continue;
-    }
-    if (!SAFE_CONTENT_TYPE_NAME.test(name)) {
-      console.warn(
-        `Content type "${name}": name is not URL-safe — its source directory is not published ` +
-          `at /${CONTENT_SECTION_KEY}/${name}, so content-relative asset references stay unresolved.`,
-      );
       continue;
     }
     const resolvedSource = resolve(root, source).split("\\").join("/");
