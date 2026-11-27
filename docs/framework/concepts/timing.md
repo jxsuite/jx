@@ -14,11 +14,11 @@ spec:
 
 The `timing` key on a state entry declares **where** its value is resolved. There are three values, and each moves the work to a different machine:
 
-| Value        | When it resolves                                         |
-| ------------ | -------------------------------------------------------- |
-| `"client"`   | At runtime, in the visitor's browser (the default)       |
-| `"server"`   | At runtime, on the server, called over an RPC boundary   |
-| `"compiler"` | At build time; the result is baked into the emitted HTML |
+| Value        | When it resolves                                                           |
+| ------------ | -------------------------------------------------------------------------- |
+| `"client"`   | At runtime, in the visitor's browser (the default for a Web-API prototype) |
+| `"server"`   | At runtime, on the server, called over an RPC boundary                     |
+| `"compiler"` | At build time; the result is baked into the emitted HTML                   |
 
 The smallest complete server-timed entry is a function that runs on the server, whose return value lands in state:
 
@@ -36,7 +36,7 @@ The smallest complete server-timed entry is a function that runs on the server, 
 
 ## Client
 
-`"client"` is the default: omit `timing` and the entry resolves in the browser. All the Web-API [data prototypes](/docs/framework/concepts/data-prototypes) (`Request`, `LocalStorage`, `IndexedDB`, …) are client-timed unless told otherwise.
+A Web-API [data prototype](/docs/framework/concepts/data-prototypes) (`Request`, `LocalStorage`, `IndexedDB`, …) with no `timing` is client-timed: it resolves in the visitor's browser. An external class, such as a content collection, is different; see [Leaving timing out](#leaving-timing-out).
 
 ## Server: the RPC function boundary
 
@@ -107,6 +107,14 @@ During development the runtime never requests a server module's source: every ca
 }
 ```
 
+## Leaving timing out
+
+What an entry without `timing` does depends on what it names:
+
+- A Web-API data prototype resolves in the browser, as `"client"`.
+- An external class (a content collection, or your own `.class.json`) resolves during the build, as `"compiler"` does, and the page also keeps its value as state, so code running in the browser can still read it. Write `"compiler"` when only the HTML reads the value: the entry is dropped after the build and the page can ship no JavaScript. Write `"client"` when the class has to run in the visitor's browser.
+- Studio's canvas and preview have no build, so they resolve every entry while they show the page, whatever its `timing`.
+
 ## How it works
 
 For each `timing: "server"` entry, the [compiler](/docs/framework/build) emits two artifacts. On the client it emits a `POST` to `/_jx/server/<export>` (under the [deployment base](/docs/framework/site/deployment#serving-from-a-subfolder) when the site has one), whose JSON body is the entry's `arguments`. A top-level `$ref` argument is read from `#/state/`, `parent#/`, `window#/` or `document#/`, and any other scheme fails the build. The entry is `null` until a call answers, and then holds the parsed response. When an argument is a `$ref` the call runs in an effect, so a change calls again and the answer to a superseded call is dropped. A failed call keeps the entry's last value and logs the error to the console. A page calls when its module loads, and a custom element calls from `connectedCallback`, after its props are merged, and stops when it disconnects. On the server it emits a route in the site worker that imports the export from `$src` and answers with the function's return value as JSON, or `{ ok: false, error: "Server error" }` with status 500 when it throws. What it threw goes to the worker's log and is not sent to the browser, because an error message often quotes a query, a secret's name or an upstream host. To tell the caller something, return it.
@@ -119,7 +127,7 @@ An external class with `timing: "client"` is built into a module the page loads.
 
 ## Rules
 
-- `"client"` is the default whenever `timing` is absent.
+- With no `timing`, a Web-API data prototype resolves in the browser and an external class resolves during the build.
 - A server entry uses `$src` + `$export` with **no** `$prototype`, and the export must be an async named export.
 - The server function's signature is `(args, env)`; `arguments` is one named-values object.
 - A reactive `$ref` in `arguments` makes the RPC call reactive.

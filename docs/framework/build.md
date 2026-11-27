@@ -211,6 +211,7 @@ Work the static-detection list backwards:
 - **Live `state` on the page document**, even `{"count": 0}`, makes the page dynamic. If the data never changes after the build, move it to `timing: "compiler"` or reference `$site`/`$page` context instead. A `project.json` `state` entry counts only on the pages where something still reads it as `state.<key>` in the browser.
 - **A `${…}` template string** whose inputs exist only at runtime keeps its binding alive. Templates over build-time data compile away.
 - **`$switch`, `$ref` bindings, and mapped arrays** over runtime state need the client tier; mapped arrays over build-resolved content do not.
+- **An external class with no `timing`**, such as a `ContentEntry`, is resolved during the build and its value also ships as page state. Write `timing: "compiler"` when only the HTML reads it.
 - **Interactive components** cost their own module on the pages that use them. The rest of the page stays static. A component is interactive when it has an event handler, a function or request in its `state`, a `$ref` binding, a `$switch`, a tag chosen at creation, or a mapped array over anything but a literal array with no `filter`, `sort` or `key`.
 - **A component that a live component renders** ships its module on the pages where that live component appears. On a page where it stands alone it stays static.
 - **An external class with `timing: "client"`** loads its class module and the page's hydration script.
