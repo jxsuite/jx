@@ -40,6 +40,7 @@ import {
   contentPropertyText,
   createCompileContext,
   emitFormulaFn,
+  emitStatementsFn,
   emitRequestFetch,
   emitServerCall,
   escapeHtml,
@@ -264,12 +265,16 @@ export function compileClient(
       if (Array.isArray(body)) {
         // Structured body (spec §20) → an event handler compiled from statements.
         // With parameters, a positional callable like a named formula.
-        const compiled = compileStatements(body, { eventParam: "e", statePrefix: "state" });
-        if (def.parameters && def.parameters.length > 0) {
-          initBlocks.push(
-            `state[${JSON.stringify(key)}] = ${emitFormulaFn(def, `(() => {\n${compiled}\n})()`)};`,
-          );
+        if (Array.isArray(def.parameters) && def.parameters.length > 0) {
+          // A callable has no event: it dispatches from the page's root element (spec.md §20.3).
+          const compiled = compileStatements(body, {
+            dispatchTarget: "document.body.firstElementChild",
+            eventParam: "e",
+            statePrefix: "state",
+          });
+          initBlocks.push(`state[${JSON.stringify(key)}] = ${emitStatementsFn(def, compiled)};`);
         } else {
+          const compiled = compileStatements(body, { eventParam: "e", statePrefix: "state" });
           onEntries.push([key, { args: ["state", "e"], body: compiled }]);
         }
       } else if (def.$src) {

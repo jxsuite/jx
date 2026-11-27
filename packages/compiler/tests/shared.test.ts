@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { compileStatements } from "@jxsuite/runtime/statements";
 import {
   buildAttrs,
+  emitStatementsFn,
   buildComponentCSS,
   takeDroppedReactiveStyles,
   buildInitialScope,
@@ -2461,5 +2463,54 @@ describe("external class predicates and config", () => {
       { binding: "_JxClass1", config: {}, key: "c", name: "Session" },
     ]);
     expect(collectClientClasses({ n: 1 })).toEqual({ entries: [], imports: [] });
+  });
+});
+
+describe("emitStatementsFn", () => {
+  type Body = Parameters<typeof compileStatements>[0];
+  type Def = Parameters<typeof emitStatementsFn>[0];
+  interface Target {
+    cart?: string[];
+    qty?: number;
+  }
+  const build = (def: Def, body: Body) => {
+    const compiled = compileStatements(body, {
+      dispatchTarget: "target",
+      eventParam: "e",
+      statePrefix: "state",
+    });
+    const src = emitStatementsFn(def, compiled);
+    // SAFETY: test-only evaluation of the emitted callable source, an arrow function of
+    // Positional arguments over the `state` and `target` closed over by the wrapper.
+    return new Function("state", "target", `return ${src}`) as (
+      state: Target,
+      target: EventTarget,
+    ) => (...a: number[] | string[]) => void;
+  };
+
+  test("maps positional arguments onto parameter names and applies defaults", () => {
+    const make = build({ parameters: ["item", { name: "qty", default: 2 }] }, [
+      { operator: "push", target: { $ref: "#/state/cart" }, value: { $ref: "$args/item" } },
+      { operator: "=", target: { $ref: "#/state/qty" }, value: { $ref: "$args/qty" } },
+    ]);
+    const state: Target = { cart: [], qty: 0 };
+    make(state, new EventTarget())("apple");
+    expect(state.cart).toEqual(["apple"]);
+    expect(state.qty).toBe(2);
+  });
+
+  test("runs without an event: the event verbs are no-ops and dispatch uses the given target", () => {
+    const make = build({ parameters: ["x"] }, [
+      { stopPropagation: true },
+      { preventDefault: true },
+      { dispatchEvent: "ping", detail: { $ref: "$args/x" } },
+    ]);
+    const target = new EventTarget();
+    const seen: unknown[] = [];
+    target.addEventListener("ping", (ev) => {
+      seen.push(ev instanceof CustomEvent ? ev.detail : undefined);
+    });
+    expect(() => make({}, target)(7)).not.toThrow();
+    expect(seen).toEqual([7]);
   });
 });

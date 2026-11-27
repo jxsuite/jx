@@ -129,8 +129,13 @@ export function emitFormulaFn(
   def: { parameters?: readonly FormulaParameter[] | undefined },
   compiledBody: string,
 ): string {
+  return `(..._a) => { const _args = ${formulaArgsSource(def.parameters)}; return ${compiledBody}; }`;
+}
+
+/** The `{ "name": _a[i] … }` literal a positional callable binds its `$args/` names from. */
+function formulaArgsSource(parameters: readonly FormulaParameter[] | undefined): string {
   const entries: string[] = [];
-  for (const [i, p] of (def.parameters ?? []).entries()) {
+  for (const [i, p] of (parameters ?? []).entries()) {
     const name = formulaParameterName(p);
     if (!name) {
       continue;
@@ -140,7 +145,35 @@ export function emitFormulaFn(
       : `_a[${i}]`;
     entries.push(`${JSON.stringify(name)}: ${arg}`);
   }
-  return `(..._a) => { const _args = { ${entries.join(", ")} }; return ${compiledBody}; }`;
+  return `{ ${entries.join(", ")} }`;
+}
+
+/**
+ * The positional callable a structured body with `parameters` lowers to (spec.md §20.3): arguments
+ * bind to `$args/` names, and the body runs without an event.
+ */
+export function emitStatementsFn(
+  def: { parameters?: readonly FormulaParameter[] | undefined },
+  compiledStatements: string,
+  eventParam = "e",
+): string {
+  return `(..._a) => {\nconst _args = ${formulaArgsSource(def.parameters)};\nconst ${eventParam} = null;\n${compiledStatements}\n}`;
+}
+
+/** Map positional call arguments onto declared parameter names, applying CEM defaults. */
+function positionalArgs(
+  params: readonly FormulaParameter[],
+  argValues: readonly JxScope[string][],
+): JxScope {
+  const args: JxScope = {};
+  for (const [i, p] of params.entries()) {
+    const name = formulaParameterName(p);
+    if (!name) {
+      continue;
+    }
+    args[name] = argValues[i] === undefined && hasParameterDefault(p) ? p.default : argValues[i];
+  }
+  return args;
 }
 
 /**
@@ -1194,15 +1227,7 @@ export function buildInitialScope(
         // Named formula: callable, positional args mapped onto its declared parameters.
         const params: readonly FormulaParameter[] = def.parameters;
         setOwnScopeValue(scope, key, (...argValues: JxScope[string][]) => {
-          const args: JxScope = {};
-          for (const [i, p] of params.entries()) {
-            const name = formulaParameterName(p);
-            if (!name) {
-              continue;
-            }
-            args[name] =
-              argValues[i] === undefined && hasParameterDefault(p) ? p.default : argValues[i];
-          }
+          const args = positionalArgs(params, argValues);
           return evaluateExpression(node, scope, null, { args });
         });
       } else if (isMutating(node.operator)) {
@@ -1221,9 +1246,18 @@ export function buildInitialScope(
         // Code may call it bare, so the scope it runs against falls back to this one.
         const { body } = def;
         entrySources.push([key, JSON.stringify(body)]);
-        setOwnScopeValue(scope, key, (s?: JxScope, event?: Event) => {
-          void runStatements(body, s ?? scope, event ?? null);
-        });
+        if (Array.isArray(def.parameters) && def.parameters.length > 0) {
+          // A non-empty `parameters` list makes a positional callable (spec.md §20.3). No dispatch
+          // Target: the build has no DOM.
+          const params: readonly FormulaParameter[] = def.parameters;
+          setOwnScopeValue(scope, key, (...argValues: JxScope[string][]) => {
+            void runStatements(body, scope, null, { args: positionalArgs(params, argValues) });
+          });
+        } else {
+          setOwnScopeValue(scope, key, (s?: JxScope, event?: Event) => {
+            void runStatements(body, s ?? scope, event ?? null);
+          });
+        }
       } else if (isString(def.body)) {
         const { body } = def;
         // One parameter list in every tier (spec.md §5.3 4d): `state` first, then the other declared
