@@ -5,6 +5,7 @@ spec:
   - extensions.md#5.2 # generated entry documents (jx schema)
   - extensions.md#5.4 # validation (jx validate)
   - compiler.md#2.3 # jx convert, jx format
+  - extensions.md#11.1 # section-owner push steps (jx db push)
 code:
   - packages/create/index.ts
   - packages/create/cli-args.ts
@@ -15,6 +16,7 @@ code:
   - packages/compiler/src/site/schema-command.ts
   - packages/compiler/src/site/validate-command.ts
   - packages/compiler/src/site/db-push.ts
+  - packages/compiler/src/site/section-push.ts
   - packages/compiler/src/site/convert-command.ts
   - packages/server/src/convert.ts
   - packages/compiler/src/site/server-command.ts
@@ -204,24 +206,20 @@ What it leaves alone:
 
 ## `jx db push`
 
-Additively sync the tables declared in the project file's `data` section to their `connections` databases, through each connection's connector. Credentials come from the environment merged with the project's `.dev.vars` file. After a real (non-dry-run) apply, each connector's binding fragments are merged into `wrangler.jsonc`, preserving your keys.
+Additively sync the tables declared in the project file's `data` section to their `connections` databases, through each connection's connector. Credentials come from the environment merged with the project's `.dev.vars` file. After a real (non-dry-run) apply, each connector's binding fragments are merged into `wrangler.jsonc`, preserving your keys. Every enabled extension that owns a section with push steps then runs its own additive migration on the same connections, which is how the auth extension's account tables arrive.
 
 ```bash
 jx db push [root] [--dry-run] [--connection <name>]
 ```
 
-| Flag                  | What it does                                     |
-| --------------------- | ------------------------------------------------ |
-| `--dry-run`           | Print the SQL statements without executing them. |
-| `--connection <name>` | Restrict the push to one `connections` entry.    |
+| Flag                  | What it does                                                                                              |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `--dry-run`           | Print the SQL statements without executing them.                                                          |
+| `--connection <name>` | Restrict the push to one `connections` entry. A section living on another connection contributes nothing. |
 
-The sync is additive-only: it creates missing tables and columns and never drops or rewrites existing ones. Per-connection output lists the tables, statements, and warnings; a missing `connections` section or an unknown connection name is an error.
+The sync is additive-only: it creates missing tables and columns and never drops or rewrites existing ones. Per-connection output lists the tables, statements, and warnings, and each section owner adds a line of its own (`auth (section) — 12 step(s) [applied]`) with its steps and warnings. A section failure prints the whole push first, then exits 1; a missing `connections` section or an unknown connection name is an error.
 
-The CLI talks to each connection exactly as declared: a `d1` connection reaches the real D1 database (through its binding, or the D1 HTTP API with `CLOUDFLARE_API_TOKEN` plus the account and database ids). Studio's **Push Schema** button runs through the dev server, which substitutes a local stand-in for any provider that declares one, so a D1 connection pushed from Studio lands in `.jx/data/<connection>.sqlite`, while the same connection pushed from a terminal lands in D1 itself.
-
-:::doc-warning
-`jx db push` covers the `data` section only. The auth extension's account tables (`user`, `session`, `account`, `verification`) come from a separate push step that Studio's **Push Schema** button and the dev server run, and the dev server also creates them on its first request to `/_jx/auth`. The CLI push does not include them today. A database whose schema only ever came from `jx db push` has no account tables, and sign-in fails against it at runtime.
-:::
+The CLI talks to each connection exactly as declared: a `d1` connection reaches the real D1 database (through its binding, or the D1 HTTP API with `CLOUDFLARE_API_TOKEN` plus the account and database ids). Studio's **Push Schema** button runs through the dev server, which substitutes a local stand-in for any provider that declares one, so a D1 connection pushed from Studio lands in `.jx/data/<connection>.sqlite`, while the same connection pushed from a terminal lands in D1 itself. The account tables land wherever the data tables did.
 
 ## What the scaffolded scripts run
 

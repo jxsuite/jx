@@ -178,6 +178,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.4",
+        "@jxsuite/auth": "workspace:^",
         "@jxsuite/connector": "workspace:^",
         "@jxsuite/parser": "workspace:^",
         "@jxsuite/test-support": "workspace:^",

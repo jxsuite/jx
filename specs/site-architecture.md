@@ -1824,7 +1824,7 @@ jx preview               # Serve an already-built dist/ (default port 4173)
 # Tooling
 jx schema                # Generate project.schema.json + document.schema.json from extensions
 jx validate              # Validate project.json against its generated schema
-jx db push               # Sync the data section's tables to their connections (additive-only)
+jx db push               # Sync data tables, then section owners' steps, to their connections (additive-only)
 ```
 
 `jx build`, `jx preview`, `jx schema`, `jx validate`, and `jx db push` run inside the `jx` CLI itself (`@jxsuite/compiler`). `jx dev` resolves the project's `@jxsuite/server/dev` entry and spawns it under **Bun** — the dev server builds the site up front, serves the built pages from `dist/` ahead of the static-source fallback, and rebuilds before each live-reload broadcast so the browser always reloads into fresh output. It requires `@jxsuite/server` in the project's dependencies and Bun on the PATH. `jx preview` is a plain static file server over `dist/`. Both accept `--port` (defaults: 3000 for dev, 4173 for preview).
@@ -2339,11 +2339,9 @@ Two scoping rules are easy to trip over. First, `@jxsuite/connector` also contri
 
 ### 15.2 Configuration Surface
 
-> **Status: Partial.** Schema composition, env-var-name-only configuration and the additive connector sync ship (`packages/compiler/src/site/db-push.ts`). `jx db push` never runs a section owner's `deploySchema` (extensions.md §11.1): only the studio push composes those steps (`pushDataSchema` in `packages/server/src/data-api.ts`), so the auth extension's Better Auth tables never arrive through the CLI.
-
 Extensions contribute their own `project.json` sections through schema composition (extensions.md §5), so `auth`, `connections`, and `data` appear in the generated project schema — and in Studio's project settings (extensions.md §9) — only when the extension is enabled. They sit alongside the sections in §3.1 and follow the same rule as the rest of the file: **committed config carries identifiers and env-var _names_ only**. `secretEnv: "BETTER_AUTH_SECRET"` and `urlEnv: "SUPABASE_DB_URL"` name a variable; the value lives in `.dev.vars` locally (git-ignored) and in the host's secret store in production. See extensions.md §13.
 
-Table schemas declared under `data` are synced to their connection by `jx db push` (§12.2), which is **additive-only** — it creates missing tables and columns and never drops or rewrites existing ones. Sections may contribute their own push steps (extensions.md §11.1); the auth extension's Better Auth system tables arrive that way.
+Table schemas declared under `data` are synced to their connection by `jx db push` (§12.2), which is **additive-only** — it creates missing tables and columns and never drops or rewrites existing ones. Sections may contribute their own push steps (extensions.md §11.1), which `jx db push` runs after the connector sync, on the same connections; the auth extension's Better Auth system tables arrive that way.
 
 ### 15.3 Prerendering Still Holds
 
