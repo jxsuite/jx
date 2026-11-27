@@ -13,11 +13,15 @@
  *   provider (e.g. D1 → sqlite at `<project>/.jx/data/<connection>.sqlite`);
  * - Mount options set `autoSync: true`, so table schemas sync additively on first touch.
  *
+ * Mounts are activated by the site build's section gate (specs/extensions.md §8.4), so `jx dev`
+ * serves the set the worker would.
+ *
  * The runtime is cached per project root and invalidated when project.json changes on disk.
  */
 
 import { readFileSync } from "node:fs";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
+import { sectionOwnerActive } from "@jxsuite/compiler/project-sections";
 import { resolveConnectorClasses } from "@jxsuite/compiler/section-push";
 import { projectDevEnv } from "./dev-vars.ts";
 import type { ProjectDevEnv } from "./dev-vars.ts";
@@ -114,7 +118,7 @@ async function buildRuntime(
      and any throw lands in getRuntime's catch, which disables the mounts with a warning. */
   const config = parseProjectSource(readFileSync(projectFile, "utf8"), projectFile);
   const registry = await buildProjectExtensionRegistry(projectRoot, config);
-  const mounts = registry.serverMounts();
+  const mounts = registry.serverMounts().filter((entry) => sectionOwnerActive(entry, config));
   if (mounts.length === 0) {
     return null;
   }

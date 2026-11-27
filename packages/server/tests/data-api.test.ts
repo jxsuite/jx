@@ -552,6 +552,17 @@ describe("push with the auth extension (section-owner deploySchema)", () => {
     expect(again.applied).toBe(true);
   });
 
+  test("an empty auth section contributes no push steps", async () => {
+    writeFixture("authproj-empty/project.json", {
+      auth: {},
+      connections: { main: { provider: "sqlite" } },
+      extensions: ["@jxsuite/connector", "@jxsuite/auth"],
+      name: "Empty Auth Push Fixture",
+    });
+    const result = await pushDataSchema(resolve(TMP, "authproj-empty"), { dryRun: true });
+    expect(result.plan.some((step) => step.kind === "auth")).toBe(false);
+  });
+
   test("a push filtered to a foreign connection skips the auth steps", async () => {
     writeFixture("authproj2/project.json", {
       auth: { connection: "main" },
@@ -616,7 +627,7 @@ describe("push with a non-auth section owner (warnings and failures)", () => {
   }
 
   test("the owner's steps and warnings join the plan", async () => {
-    writeLedgerProject("ledgerproj", {});
+    writeLedgerProject("ledgerproj", { enabled: true });
     const result = await pushDataSchema(resolve(TMP, "ledgerproj"), { dryRun: true });
     expect(result.errors).toBeUndefined();
     expect(result.warnings).toEqual(["ledger warning"]);

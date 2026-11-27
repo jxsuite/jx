@@ -203,6 +203,26 @@ describe("buildSite with the connector extension", () => {
     }
   });
 
+  test("a null or empty data section activates no mount, so a static build succeeds", async () => {
+    const dir = `${TMP}-empty-data`;
+    try {
+      for (const data of [null, {}]) {
+        rmSync(dir, { force: true, recursive: true });
+        mkdirSync(resolve(dir, "pages"), { recursive: true });
+        writeFileSync(
+          resolve(dir, "project.json"),
+          JSON.stringify({ ...PROJECT, build: { format: "directory", outDir: "./dist" }, data }),
+          "utf8",
+        );
+        writeFileSync(resolve(dir, "pages/index.json"), JSON.stringify({ tagName: "main" }));
+        await buildSite(dir, {});
+        expect(existsSync(resolve(dir, "dist/worker.js"))).toBe(false);
+      }
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   test("a server-mount class declaring no server.module is a clear build error", async () => {
     const dir = `${TMP}-no-server-module`;
     rmSync(dir, { force: true, recursive: true });

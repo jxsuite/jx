@@ -356,7 +356,7 @@ A lowered def may carry a `$bundle: string[]` key naming client modules it depen
 
 ### 8.4 `emit`
 
-> **Status: Partial.** Contribution, host-written files, error collection, ordering and the non-empty gate on `emit` itself ship (`packages/compiler/src/site/site-build.ts`). The gating bullet's comparison does not hold: section loading (`loadProjectSections`, `packages/compiler/src/site/project-sections.ts`, which the dev server also uses) runs whenever the key is present, and the dev server activates every mount whatever its section holds (`buildRuntime`, `packages/server/src/jx-mounts.ts`); only the site build's mount activation matches `emit`.
+> **Status: Implemented.**
 
 `emit` lets a section-owner class contribute derived build artifacts — search indexes, feeds, export manifests — to the compiled site:
 
@@ -367,7 +367,7 @@ emit(sectionValue, { projectConfig, root, sections, routes, buildTime })
 
 - **`buildTime`** is the build's timestamp as RFC 3339 in UTC at second precision, for a derived file with no date of its own to report (an empty feed's `<updated>`). It is `SOURCE_DATE_EPOCH` when that is set, so a reproducible build writes the same bytes, and the clock otherwise; the host resolves it once, so every emitter in a build agrees. A `SOURCE_DATE_EPOCH` that is not a non-negative integer number of seconds is a reported build error. A date the content carries is never replaced by it.
 - **Timing** is `["compiler"]`; the site build invokes it after routes, components, and the worker are generated, before redirects and the `public/` copy.
-- **Gating**: when the class owns a project section (`project.key`), `emit` runs only if the project declares a non-empty value for that key — the same gating as section loading and server mounts. Classes without a `project` block always run.
+- **Gating**: when the class owns a project section (`project.key`), `emit` runs only if the project declares a non-empty value for that key. A value is empty when the key is absent, when it is `null`, or when it is an object or array with no entries; any other value is declared. The same test decides every other contribution a section owner makes: its `assets` mounts (§8.5), its `head` entries (§8.6), its server mount in the site worker, the dev server and the desktop server (§11), and its `deploySchema` steps in a schema push (§11.1). An empty section therefore switches nothing on, and a section whose every key is optional, such as the auth extension's, is turned on by declaring at least one of them. Section loading is deliberately not gated this way: `projectData` runs whenever the key is present, so `_project[<key>]` holds the normalized value of any section the author wrote, and a mount's section manifest carries every present key. Classes without a `project` block always run.
 - **The host writes the files.** `path` is outDir-relative (a leading `/` is tolerated); the host creates directories, guards against path traversal (a path escaping the build output is a build error), and counts the files in the build summary. Extensions return data and never touch the filesystem, keeping `emit` pure and testable.
 - **Errors** from one emitter are collected like route errors — they fail the build report without aborting other emitters. Files earlier in a returned batch are already written when a later path is rejected.
 - **Ordering**: the `public/` copy runs after `emit`, so a same-named file in `public/` shadows an emitted file — the same semantics as `sitemap.xml`.
@@ -413,7 +413,7 @@ Statically referenced assets are the contract. A `src` a page computes at runtim
 
 ### 8.6 `head`
 
-> **Status: Partial.** Contribution, placement below the project's `$head` and warning on failure ship (`collectExtensionHead`, `packages/compiler/src/site/site-build.ts`). Gating does not match `emit` and `assets`: `collectExtensionHead` skips only an absent or `null` section, so an empty object still contributes where those two skip it.
+> **Status: Implemented.**
 
 `head` lets a section-owner class contribute `<head>` entries to every compiled page:
 
@@ -422,7 +422,7 @@ head(sectionValue, { projectConfig, root }) → JxHeadEntry[]
 ```
 
 - **Timing** is `["compiler"]`, and it runs **once, before the first page is built** — not per page.
-- **Gating** is the same as `emit` and `assets`: a class owning a project section contributes only when the project declares a non-empty value for its key.
+- **Gating** is the same as `emit` and `assets`: a class owning a project section contributes only when the project declares a non-empty value for its key (§8.4 defines empty).
 - **Placement.** Contributions sit below the project's own `$head`, so the ordinary dedup rule (§8.3 of `site-architecture.md`) lets an author override one by writing the same entry themselves.
 - **Failure** is a warning naming the class, not a build error. A missing discovery link is not worth failing a build over.
 
@@ -540,7 +540,7 @@ Additional generic hint: `$studio.stateDefaults` — an object merged into state
 
 > **Status: Partial.** The block ships as specified except `module`'s fallback: the site build throws when `server.module` is absent (`buildMountSpecs`, `packages/compiler/src/site/site-build.ts`) rather than falling back to `$implementation`, which only the dev server dispatches through.
 
-A class contributes routes to the deployed-site worker (and the dev server) iff it has a top-level `server` object plus a `mount` capability:
+A class contributes routes to the deployed-site worker (and the dev server) iff it has a top-level `server` object plus a `mount` capability, and, when it owns a project section, the project declares a non-empty value for it (§8.4):
 
 ```json
 "server": { "basePath": "/_jx/auth", "order": 10, "module": "@jxsuite/auth/worker" }

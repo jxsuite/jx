@@ -78,7 +78,7 @@ So `?path=`, `?dir=` and a rename's `from`/`to` all resolve against the server r
 
 ## Extension server mounts
 
-`jx-mounts.ts` dispatches `/_jx/*` to extension classes that declare a `server` block, the same fetch-style handlers the generated site worker mounts in production, so data-backed documents work identically in both environments. In development it adds conveniences: `env` is `process.env` merged under the project's `.dev.vars` plus `JX_PROJECT_ROOT`, connectors with a `local` provider get stood in locally (D1 becomes SQLite under `.jx/data/`), and table schemas sync additively on first touch. See [server mounts](/docs/extending/extensions/server) for the extension-author side.
+`jx-mounts.ts` dispatches `/_jx/*` to extension classes that declare a `server` block, the same fetch-style handlers the generated site worker mounts in production, so data-backed documents work identically in both environments. In development it adds conveniences: `env` is `process.env` merged under the project's `.dev.vars` plus `JX_PROJECT_ROOT`, connectors with a `local` provider get stood in locally (D1 becomes SQLite under `.jx/data/`), and table schemas sync additively on first touch. It mounts the same set, too: a class that owns a project section is mounted only when that section is non-empty, exactly as in the built worker. See [server mounts](/docs/extending/extensions/server) for the extension-author side.
 
 ## The security model
 

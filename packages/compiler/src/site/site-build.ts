@@ -80,7 +80,7 @@ import {
   writeNoJekyll,
 } from "./headers-emitter.ts";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
-import { loadProjectSections } from "./project-sections.ts";
+import { loadProjectSections, sectionOwnerActive } from "./project-sections.ts";
 import type { ProjectSections } from "./project-sections.ts";
 import { collectAssetRefs, copyMountedAssets, loadAssetMounts } from "./asset-mounts.ts";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
@@ -545,13 +545,10 @@ export async function buildSite(
   // A mount is active when its class owns no project section, or the project declares a
   // Non-empty value for its section key. Sites with active mounts always get a worker; a
   // Static site cannot serve dynamic sections, so that combination is a build error.
-  const activeMounts = registry.serverMounts().filter((entry) => {
-    if (!entry.project) {
-      return true;
-    }
-    const value = projectConfig[entry.project.key];
-    return isNonNullObject(value) && Object.keys(value).length > 0;
-  });
+  // (specs/extensions.md §8.4 defines empty.)
+  const activeMounts = registry
+    .serverMounts()
+    .filter((entry) => sectionOwnerActive(entry, projectConfig));
   if (activeMounts.length > 0 && !projectConfig.build.adapter) {
     const sections = activeMounts
       .map((entry) => (entry.project ? `"${entry.project.key}"` : `"${entry.server!.basePath}"`))
@@ -1566,12 +1563,8 @@ export async function buildSite(
   for (const entry of registry.emitters()) {
     const sectionKey = entry.project?.key;
     const sectionValue = sectionKey ? projectConfig[sectionKey] : undefined;
-    if (
-      sectionKey &&
-      (sectionValue == null ||
-        (isNonNullObject(sectionValue) && Object.keys(sectionValue).length === 0))
-    ) {
-      continue; // Section owner with nothing declared — same gating as sections/mounts
+    if (!sectionOwnerActive(entry, projectConfig)) {
+      continue; // The §8.4 gate, shared with assets, head and mount activation
     }
     try {
       /* The emit contract (extensions.md §8.4) answers outDir-relative files, or null for none; each
@@ -2391,7 +2384,7 @@ async function collectExtensionHead(
   for (const entry of registry.headProviders()) {
     const key = entry.project?.key;
     const sectionValue = key === undefined ? null : projectConfig[key];
-    if (key !== undefined && (sectionValue === undefined || sectionValue === null)) {
+    if (!sectionOwnerActive(entry, projectConfig)) {
       continue;
     }
     try {

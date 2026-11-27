@@ -297,6 +297,49 @@ describe("buildSite — an extension's head capability throws", () => {
   });
 });
 
+describe("buildSite — a head contributor with an empty section", () => {
+  const DIR = resolve(import.meta.dir, "__test-site-head-empty__");
+  const project = (section: JsonObject) => ({
+    extensions: ["./ext"],
+    myhead: section,
+    name: "Head Empty Test",
+  });
+
+  beforeAll(() => {
+    scaffold(DIR, project({}));
+    mkdirSync(resolve(DIR, "ext"), { recursive: true });
+    writeFileSync(
+      resolve(DIR, "ext/jx-extension.json"),
+      JSON.stringify({ classes: { HeadProvider: "./HeadProvider.class.json" }, name: "head-ext" }),
+    );
+    writeFileSync(
+      resolve(DIR, "ext/HeadProvider.class.json"),
+      JSON.stringify({
+        $defs: { methods: { head: { identifier: "head", role: "head", scope: "static" } } },
+        $implementation: "./headprovider.js",
+        project: { key: "myhead" },
+        title: "HeadProvider",
+      }),
+    );
+    writeFileSync(
+      resolve(DIR, "ext/headprovider.js"),
+      `export class HeadProvider {\n  static head() {\n    return [{ tagName: "link", attributes: { rel: "alternate", href: "/from-head.xml" } }];\n  }\n}\n`,
+    );
+  });
+  afterAll(() => rmSync(DIR, { force: true, recursive: true }));
+
+  it("an empty section contributes no head entries", async () => {
+    await buildSite(DIR);
+    expect(readFileSync(resolve(DIR, "dist/index.html"), "utf8")).not.toContain("/from-head.xml");
+  });
+
+  it("a non-empty section does", async () => {
+    writeFileSync(resolve(DIR, "project.json"), JSON.stringify(project({ on: true })));
+    await buildSite(DIR);
+    expect(readFileSync(resolve(DIR, "dist/index.html"), "utf8")).toContain("/from-head.xml");
+  });
+});
+
 describe("buildSite — a well-known file public/ already ships", () => {
   const DIR = resolve(import.meta.dir, "__test-site-well-known-shadow__");
 

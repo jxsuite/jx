@@ -7,6 +7,7 @@
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
+import { sectionOwnerActive } from "./project-sections.ts";
 import { isString } from "@jxsuite/schema/guards";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type {
@@ -96,7 +97,7 @@ export async function pushSectionOwners(
   for (const entry of owners) {
     const { key } = entry.project!;
     const section = config[key];
-    if (section === undefined || section === null) {
+    if (section === undefined || section === null || !sectionOwnerActive(entry, config)) {
       continue;
     }
     try {

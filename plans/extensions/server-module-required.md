@@ -3,8 +3,7 @@ status: drafted
 disposition: reconcile
 claims:
   - extensions.md#11
-requires:
-  - extensions/empty-section-gating
+requires: []
 workspaces:
   - packages/compiler
   - packages/schema
@@ -61,7 +60,7 @@ The row at line 539 reads "Bare specifier the generated worker imports (robust u
 - **Decided:** the site build checks at preflight. `buildMountSpecs` moves from step 6c to step 1c, directly after the static-adapter error, and step 6c reuses its result. This follows the step 1c precedent and leaves a previous `dist/` intact. `buildMountSpecs` is pure over the registry and `projectConfig`, and nothing between the two steps writes to `projectConfig`, so the specs are identical. The `connector.module` check in the same function moves with it. That changes when §12's error fires, not its contract.
 - **Decided:** the row and the error name the resolution base instead of requiring "bare", because the build resolves `module` from the project root and a local extension has no package name to give. The example stays a package export. §12's "Bare import specifier" wording and the connector error's text are left to that row's owner (`plan:extensions/connector-serve-key` leaves them as written).
 - **Decided:** rewrite the class schema's `module` description, because the schema is where an author meets the key while writing a descriptor. The regenerated artifacts are mechanical (`bun run schema:sync`), and `schemas.yml` would push the same bytes.
-- **Decided:** this plan requires `plan:extensions/empty-section-gating`. Flipping §11 to Implemented asserts its first sentence, "A class contributes routes to the deployed-site worker (and the dev server) iff it has a top-level `server` object plus a `mount` capability", and today the two hosts it names disagree about it: the site build activates a section owner's mount only for a non-empty section (step 1c), so the sentence is false for the worker, while the dev server activates every mount ungated. The prerequisite makes both hosts apply one gate and adds it to that sentence ("…and, when it owns a project section, the project declares a non-empty value for it (§8.4)"), and it owns that sentence; this plan owns the marker and the `module` row. The two touch neighbouring lines of step 1c, so the order also removes a rebase.
+- **Decided:** the section gate has landed. Flipping §11 to Implemented asserts its first sentence, "A class contributes routes to the deployed-site worker (and the dev server) iff it has a top-level `server` object plus a `mount` capability", and both hosts now activate a section owner's mount only for a non-empty section (`sectionOwnerActive`, §8.4), a clause the sentence already names. This plan owns the marker and the `module` row.
 
 ## Implementation
 
@@ -89,7 +88,7 @@ The row at line 539 reads "Bare specifier the generated worker imports (robust u
 
 - `buildSite` calls `buildMountSpecs` at step 1c. Any refusal added inside it fires before `dist/` is cleaned. That includes the `mount` timing check `plan:extensions/capability-timing-dispatch` inserts after the `server.module` check.
 - extensions.md §11's `module` row states the requirement, the resolution base and the dev server's `$implementation` path. A plan that changes how the worker imports a mount edits that row.
-- `plan:extensions/empty-section-gating` lands first (Decisions), so the new call sits directly below its `sectionOwnerActive` filter of `activeMounts`, and §11's first sentence already names the §8.4 gate when this plan flips the marker.
+- The new call sits directly below step 1c's `sectionOwnerActive` filter of `activeMounts`, and §11's first sentence already names the §8.4 gate when this plan flips the marker.
 - Merge adjacency only, with no ordering: the static-adapter error just above the new call is now built from the shared `ADAPTER_REMEDY` constant (compiler.md §6.3); `plan:relationships/cross-domain-references` attaches its reference views to the specs step 6c now reads from `workerImports` (its "after `buildMountSpecs` returns" becomes "after `workerImports` is destructured") and rewrites §11's `options` bullet, which is why the new step-1c comment says only "never a secret value" and not "identifiers only"; `plan:extensions/connector-serve-key` regenerates the same schema artifacts at a different pointer. Whichever lands second rebases.
 
 ## Tests

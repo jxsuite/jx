@@ -51,7 +51,7 @@ Reopen Settings and an **Authentication** section is waiting. Filling it in writ
 
 ### The Authentication settings section
 
-The section is a single form, and every field is optional. The defaults below are what applies when you leave one blank:
+The section is a single form, and every field is optional. Auth is on once at least one field is set, and storing the signing secret is enough. With every field blank the section turns nothing on, in `jx dev` and in the build alike. The defaults below are what applies when you leave one blank:
 
 - **connection**: which of your **[connections](/docs/studio/data/connections)** stores the account tables. Defaults to the first one you declared.
 - **secretEnv**: the _name_ of the environment variable holding the signing secret that protects sessions. Defaults to `BETTER_AUTH_SECRET`. It renders as a secret field: paste any long random string and it's stored as described above. Auth refuses to start without a value for it.
