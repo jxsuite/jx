@@ -222,3 +222,115 @@ describe("$switch — an unchanged key keeps its case", () => {
     mountHost.remove();
   });
 });
+
+describe("$switch — an external case is a component boundary", () => {
+  const BASE = "http://localhost/app/";
+  const hooks = { mount: 0, unmount: 0 };
+  const counts = () => ({ ...hooks });
+  const hookDoc = (extra: Partial<JxDocument> = {}): JxDocument => ({
+    tagName: "p",
+    textContent: "case",
+    state: {
+      onMount: {
+        $prototype: "Function",
+        body: "window.__caseHooks.mount += 1;",
+      },
+      onUnmount: {
+        $prototype: "Function",
+        body: "window.__caseHooks.unmount += 1;",
+      },
+    },
+    ...extra,
+  });
+
+  beforeEach(() => {
+    hooks.mount = 0;
+    hooks.unmount = 0;
+    Object.assign(window, { __caseHooks: hooks });
+  });
+
+  test("an external case registers its own $elements before it renders", async () => {
+    const tag = "sw-case-widget";
+    const state = reactive({ view: "remote" });
+    await mount(switchDoc({ remote: { $ref: "./remote.json" } }), host, {
+      scope: state,
+      base: BASE,
+      resolver: (url) => {
+        if (url === `${BASE}remote.json`) {
+          return {
+            tagName: "div",
+            $elements: [{ $ref: "./widget.json" }],
+            children: [{ tagName: tag }],
+          };
+        }
+        return url === `${BASE}widget.json`
+          ? { tagName: tag, textContent: "WIDGET-CONTENT" }
+          : undefined;
+      },
+    });
+    await tick();
+    await tick();
+    await tick();
+    expect(customElements.get(tag)).toBeDefined();
+    expect(host.querySelector("section")!.textContent).toBe("WIDGET-CONTENT");
+  });
+
+  test("an external case runs onMount once rendered and onUnmount when the key moves on", async () => {
+    const state = reactive({ view: "remote" });
+    await mount(
+      switchDoc({ remote: { $ref: "./remote.json" }, local: { tagName: "p", textContent: "L" } }),
+      host,
+      {
+        scope: state,
+        base: BASE,
+        resolver: (url) => (url === `${BASE}remote.json` ? hookDoc() : undefined),
+      },
+    );
+    await tick();
+    await tick();
+    expect(counts()).toEqual({ mount: 1, unmount: 0 });
+
+    state.view = "local";
+    await tick();
+    expect(counts()).toEqual({ mount: 1, unmount: 1 });
+  });
+
+  test("dispose runs the live case's onUnmount", async () => {
+    const state = reactive({ view: "remote" });
+    const handle = await mount(switchDoc({ remote: { $ref: "./remote.json" } }), host, {
+      scope: state,
+      base: BASE,
+      resolver: (url) => (url === `${BASE}remote.json` ? hookDoc() : undefined),
+    });
+    await tick();
+    await tick();
+    expect(counts()).toEqual({ mount: 1, unmount: 0 });
+
+    handle.dispose();
+    expect(counts()).toEqual({ mount: 1, unmount: 1 });
+  });
+
+  test("a stale external load registers nothing and runs no onMount", async () => {
+    const tag = "sw-case-stale";
+    let release: (doc: JxDocument) => void = () => null;
+    const pending = new Promise<JxDocument>((resolve) => {
+      release = resolve;
+    });
+    const state = reactive({ view: "remote" });
+    await mount(
+      switchDoc({ remote: { $ref: "./remote.json" }, local: { tagName: "p", textContent: "L" } }),
+      host,
+      { scope: state, base: BASE, resolver: () => pending },
+    );
+    state.view = "local";
+    await tick();
+
+    release(hookDoc({ $elements: [{ $ref: "./stale.json" }], children: [{ tagName: tag }] }));
+    await tick();
+    await tick();
+    await tick();
+    expect(customElements.get(tag)).toBeUndefined();
+    expect(counts()).toEqual({ mount: 0, unmount: 0 });
+    expect(host.querySelector("section")!.textContent).toBe("L");
+  });
+});
