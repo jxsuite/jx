@@ -25,6 +25,8 @@ import {
   ATTR_HELPER,
   refuseBodyWithSrc,
   attrHelperSource,
+  cookieHelperSource,
+  emitCookieBinding,
   collectClientClasses,
   emitExternalClassResolution,
   externalClassHelperSource,
@@ -222,6 +224,7 @@ export function compileClient(
   const bindEntries: [string, string][] = []; // [key, bodyExpr]   → bind = {...}
   const onEntries: [string, HandlerDef][] = []; // [key, { args, body }] → on = {...}
   const initBlocks: string[] = []; // Lines emitted after state for prototype init
+  let needsCookie = false; // A Cookie entry makes the module carry the cookie helper
   const serverCalls: string[] = []; // One block per `timing: "server"` entry, after the computed block
 
   const defs = raw.state ?? {};
@@ -325,7 +328,8 @@ export function compileClient(
       // $prototype: "Cookie"
       if (def.$prototype === "Cookie") {
         stateEntries.push([key, null]);
-        initBlocks.push(emitCookieInit(key, def.name ?? key, def.default ?? null));
+        initBlocks.push(emitCookieBinding(key, def));
+        needsCookie = true;
         continue;
       }
 
@@ -381,6 +385,7 @@ export function compileClient(
     opts.rewriteSrc,
     clientClasses,
     mappedArrayFeatures(raw),
+    { needsCookie },
   );
 
   // The page's import map: lit-html always, since compiled custom elements need it.
@@ -1125,6 +1130,7 @@ function emitClientModule(
   rewriteSrc: ((specifier: string) => string) | undefined,
   clientClasses: ClientClasses,
   lists: MappedArrayFeatures,
+  features: { needsCookie?: boolean } = {},
 ) {
   const lines: string[] = [];
   const { needsLit, textParts } = counter;
@@ -1159,6 +1165,9 @@ function emitClientModule(
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
   lines.push(...src.imports, ...clientClasses.imports, ...src.loaders, "", attrHelperSource());
+  if (features.needsCookie) {
+    lines.push(cookieHelperSource());
+  }
   /* The list rules (compiler.md §4.7), carried only by a module whose document filters, sorts or
      keys a list. */
   if (lists.arranged || lists.keyed) {
@@ -1318,8 +1327,8 @@ function emitClientModule(
 }
 
 // ─── Prototype init emitters ─────────────────────────────────────────────────
-// Request auto-fetch lives in shared.ts (`emitRequestFetch`) so the element target emits the same
-// Effect against `this.state`.
+// Request auto-fetch (`emitRequestFetch`) and the cookie binding (`emitCookieBinding`) live in
+// Shared.ts, so the element target can emit the same effects against `this.state`.
 
 /**
  * @param {string} key
@@ -1347,26 +1356,6 @@ function emitStorageInit(
     `    else ${storeName}.setItem(${JSON.stringify(storageKey)}, JSON.stringify(v));`,
     "  } catch {}",
     "});",
-  ];
-  return lines.join("\n");
-}
-
-/**
- * @param {string} key
- * @param {string} cookieName
- * @param {JsonValue} defaultVal
- * @returns {string}
- */
-function emitCookieInit(key: string, cookieName: string, defaultVal: JsonValue) {
-  const lines: string[] = [
-    `// ${key}: Cookie (name: "${cookieName}")`,
-    "{",
-    `  const _m = document.cookie.match(new RegExp("(?:^|; )${cookieName}=([^;]*)"));`,
-    `  try { state.${key} = _m ? JSON.parse(decodeURIComponent(_m[1])) : ${JSON.stringify(
-      defaultVal,
-    )}; }`,
-    `  catch { state.${key} = _m ? _m[1] : ${JSON.stringify(defaultVal)}; }`,
-    "}",
   ];
   return lines.join("\n");
 }

@@ -27,6 +27,8 @@ import {
   commentedRuleText,
   declaredDefaults,
   enumeratedAttrNames,
+  COOKIE_HOST_PREFIX,
+  COOKIE_SECURE_PREFIX,
   camelToKebab,
   isSingleExpression,
   mappedListItems,
@@ -2075,6 +2077,91 @@ export function attrHelperSource(): string {
     `  return v ? '' : null;\n` +
     `}`
   );
+}
+
+/** The cookie-reading helper the generated modules call; prefixed like {@link ATTR_HELPER}. */
+export const COOKIE_READ_HELPER = "__jxCookieRead";
+
+/** The cookie-serializing helper the generated modules call. */
+export const COOKIE_WRITE_HELPER = "__jxCookieText";
+
+/**
+ * The source of the two cookie helpers, to be emitted into a module that binds a `Cookie` entry
+ * (spec.md §11.2a).
+ *
+ * Inlined for the reason {@link attrHelperSource} gives: a built module loads without
+ * `@jxsuite/runtime`. The rule is `readCookieValue` and `serializeCookie` from the runtime, with
+ * the two prefixes serialized from the runtime's exports. `cookie-helper.test.ts` compares the
+ * copy's output with the runtime's over every prefix, attribute and value combination, so a changed
+ * branch goes red as well as a changed prefix.
+ *
+ * @returns {string} Two `function` declarations.
+ */
+export function cookieHelperSource(): string {
+  const host = JSON.stringify(COOKIE_HOST_PREFIX);
+  const secure = JSON.stringify(COOKIE_SECURE_PREFIX);
+  return (
+    `function ${COOKIE_READ_HELPER}(h, n) {\n` +
+    `  for (const p of h.split(";")) {\n` +
+    `    const i = p.indexOf("=");\n` +
+    `    if (i === -1 || p.slice(0, i).trim() !== n) continue;\n` +
+    `    const r = p.slice(i + 1);\n` +
+    `    try { return JSON.parse(decodeURIComponent(r)); } catch { return r; }\n` +
+    `  }\n` +
+    `  return null;\n` +
+    `}\n` +
+    `function ${COOKIE_WRITE_HELPER}(n, v, o) {\n` +
+    `  const host = n.startsWith(${host});\n` +
+    `  const parts = [n + "=" + encodeURIComponent(JSON.stringify(v))];\n` +
+    `  if (o.maxAge !== undefined) parts.push("Max-Age=" + o.maxAge);\n` +
+    `  const path = host ? "/" : o.path;\n` +
+    `  if (path) parts.push("Path=" + path);\n` +
+    `  if (o.domain && !host) parts.push("Domain=" + o.domain);\n` +
+    `  if (o.secure === true || host || n.startsWith(${secure}) || o.sameSite?.toLowerCase() === "none") parts.push("Secure");\n` +
+    `  if (o.sameSite) parts.push("SameSite=" + o.sameSite);\n` +
+    `  return parts.join("; ");\n` +
+    `}`
+  );
+}
+
+/**
+ * Emit the binding for one `Cookie` state entry: read the cookie into state on creation, then
+ * persist through an effect whose first run writes it, so a declared `default` reaches the server
+ * from the first load (spec.md §11.2a). The block is self-contained, so two entries in one module
+ * do not redeclare its constants. The name and key appear only as JSON string literals or through
+ * `refAccessor`, never in a comment.
+ *
+ * @param {string} key - State key
+ * @param {JxPrototypeDef} def - The Cookie definition
+ * @param {{ statePrefix?: string; indent?: string; collect?: string }} [opts] - As
+ *   {@link emitRequestFetch}.
+ * @returns {string}
+ */
+export function emitCookieBinding(
+  key: string,
+  def: JxPrototypeDef,
+  opts: { statePrefix?: string; indent?: string; collect?: string } = {},
+) {
+  const { statePrefix = "state", indent = "", collect } = opts;
+  const accessor = refAccessor(statePrefix, escapeToken(key));
+  const options: Record<string, JsonValue> = {};
+  for (const field of ["domain", "maxAge", "path", "sameSite", "secure"] as const) {
+    const declared = def[field];
+    if (declared !== undefined) {
+      options[field] = declared;
+    }
+  }
+  const write = `document.cookie = ${COOKIE_WRITE_HELPER}(_n, ${accessor}, _o);`;
+  const lines = [
+    "// Cookie entry",
+    "{",
+    `  const _n = ${JSON.stringify(def.name ?? key)};`,
+    `  const _o = ${JSON.stringify(options)};`,
+    `  ${accessor} = ${COOKIE_READ_HELPER}(document.cookie, _n) ?? ${JSON.stringify(def.default ?? null)};`,
+    collect ? `  ${collect}.push(effect(() => { ${write} }));` : `  effect(() => { ${write} });`,
+    "}",
+  ];
+  return lines.map((line) => `${indent}${line}`).join("\n");
 }
 
 /** What the mapped arrays of a document need from the module compiled for it. */

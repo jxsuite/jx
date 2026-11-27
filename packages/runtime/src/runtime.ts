@@ -101,7 +101,7 @@ import {
   scriptSpecifier,
 } from "@jxsuite/schema/document-scripts";
 
-import { readCookie, serializeCookie } from "./cookie.ts";
+import { readCookieValue, serializeCookie } from "./cookie.ts";
 import type {
   CemParameter,
   JsonObject,
@@ -4456,20 +4456,7 @@ export async function resolvePrototype(
 
     case "Cookie": {
       const name = def.name ?? key;
-      const read = (): JsonValue => {
-        const raw = readCookie(document.cookie, name);
-        if (raw === null) {
-          return null;
-        }
-        try {
-          /* SAFETY: `JSON.parse` answers the JSON value the cookie encodes, or throws, which the
-             catch below answers with the raw text. */
-          return JSON.parse(decodeURIComponent(raw)) as JsonValue;
-        } catch {
-          return raw;
-        }
-      };
-      const cookieState = scopeRef(read() ?? def.default ?? null);
+      const cookieState = scopeRef(readCookieValue(document.cookie, name) ?? def.default ?? null);
       // Persist on change
       effect(() => {
         /* SAFETY: the store is seeded with JSON (`read` parses it, `default` is JSON) and holds
@@ -5590,6 +5577,14 @@ export {
   transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
 } from "./css.ts";
+export {
+  COOKIE_HOST_PREFIX,
+  COOKIE_SECURE_PREFIX,
+  readCookie,
+  readCookieValue,
+  serializeCookie,
+} from "./cookie.ts";
+export type { CookieOptions } from "./cookie.ts";
 export { associateForm } from "./form-association.ts";
 export type {
   FormAssociation,
