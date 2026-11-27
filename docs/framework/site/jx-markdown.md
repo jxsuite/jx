@@ -163,7 +163,7 @@ A template that Markdown can only write inside a list or a table (a list item, a
 
 ## Heading anchors
 
-Every heading gets an `id` built from its own text, so `## Getting started` becomes `#getting-started` and repeats get `-2`, `-3` in document order. Two things about that are worth knowing outside English: letters in any script are kept, so a Japanese or Cyrillic heading gets a real anchor rather than an empty one, and an accented heading produces one anchor whichever way the accent was typed, since `é` can be a single character or an `e` plus a combining mark, which look identical and used to produce two different links. Plain-ASCII headings are unaffected, so existing links keep working.
+Every heading gets an `id` built from its own text, so `## Getting started` becomes `#getting-started` and repeats get `-2`, `-3` in document order. Two things about that are worth knowing outside English: letters in any script are kept, along with the vowel signs and points written on them, so a Japanese, Cyrillic, Hindi or pointed Hebrew heading gets an anchor that spells it rather than an empty or misspelled one, and an accented heading produces one anchor whichever way the accent was typed, since `é` can be a single character or an `e` plus a combining mark, which look identical and used to produce two different links. Plain-ASCII headings are unaffected, so existing links keep working. Anchors of Hindi, Thai, Arabic or Hebrew headings written with such marks changed when the marks started being kept, so update any link written against the older spelling.
 
 ## Standard Markdown
 

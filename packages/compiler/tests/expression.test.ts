@@ -490,7 +490,62 @@ describe("structured bodies — compileElement", () => {
   });
 });
 
+describe("structured bodies — parameterised compileElement", () => {
+  const addToCart = (extra: { parameters?: string[]; arguments?: string[] }) => ({
+    children: [],
+    state: {
+      cart: { default: [] },
+      addToCart: {
+        $prototype: "Function",
+        body: [
+          { operator: "push", target: { $ref: "#/state/cart" }, value: { $ref: "$args/item" } },
+          { dispatchEvent: "cart-changed" },
+        ],
+        ...extra,
+      },
+    },
+    tagName: "test-param-body",
+  });
+
+  test("a parameterised statement body compiles to a positional callable", async () => {
+    const result = await compileElement(addToCart({ parameters: ["item"] }));
+    const { content } = result.files[0]!;
+    expect(content).toContain("this.state.addToCart = (..._a) => {");
+    expect(content).toContain('const _args = { "item": _a[0] };');
+    expect(content).toContain("const e = null;");
+    expect(content).toContain("this.state.cart.push(_args.item);");
+    expect(content).toContain("this?.dispatchEvent(");
+    expect(content).not.toContain("this.state.addToCart = (s, e) =>");
+  });
+
+  test("an empty parameters list or arguments alone leaves a handler", async () => {
+    for (const extra of [{ parameters: [] }, { arguments: ["item"] }]) {
+      const result = await compileElement(addToCart(extra));
+      const { content } = result.files[0]!;
+      expect(content).toContain("this.state.addToCart = (s, e) => {");
+    }
+  });
+});
+
 describe("structured bodies — buildInitialScope", () => {
+  test("a parameterised statement body lowers to a positional callable", () => {
+    const scope = buildInitialScope({
+      cart: [],
+      addToCart: {
+        $prototype: "Function",
+        body: [
+          { operator: "push", target: { $ref: "#/state/cart" }, value: { $ref: "$args/item" } },
+          { operator: "push", target: { $ref: "#/state/cart" }, value: { $ref: "$args/qty" } },
+        ],
+        parameters: ["item", { name: "qty", default: 2 }],
+      },
+    });
+    const { addToCart } = scope;
+    assertNamedFormula(addToCart);
+    addToCart("apple");
+    expect(scope.cart).toEqual(["apple", 2]);
+  });
+
   test("statement-array body lowers to a handler that mutates the scope", () => {
     const scope = buildInitialScope({
       count: 0,

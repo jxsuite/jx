@@ -72,9 +72,9 @@ Any additional frontmatter keys are passed through to the document.
 
 ### 3.1 Detection
 
-> **Status: Partial.** Detection ships: `isJxMarkdown` (`extensions/parser/src/transpile.ts`) performs the check and does not gate `transpileJxMarkdown`, and Studio applies the same rule through the `$studio.documentMode.componentWhen` hint in `extensions/parser/src/Markdown.class.json`. The `{ tagName: "div", $id: "content" }` wrapper does not exist: `splitFormatDocument` (`packages/studio/src/format/format-host.ts`) gives a content document a tagName-less root holding `children` plus any `state` and `imports`, and moves every other frontmatter key into a separate frontmatter object.
+A `.md` file is a Jx component, rather than content markdown, when its frontmatter `tagName` is a string with at least one character on each side of a hyphen (the pattern `.+-.+`), the Markdown form of the hyphenated root that makes a document a custom element definition (`spec.md` §16.1). The rule reads the parsed frontmatter, so a quoted or block-scalar `tagName`, or one written in flow-mapping frontmatter, counts, and a hyphen in a YAML comment does not. The `Markdown` format class declares it as data, `$studio.documentMode: { "default": "content", "componentWhen": { "frontmatterKey": "tagName", "matches": ".+-.+" } }` (`parser.md` §3), and Studio classifies each file it opens by that hint (`studio.md` §8.1). `isJxMarkdown(source)` (§12.2) applies the same rule to a source string, for a caller outside the format registry.
 
-A `.md` file is recognized as a Jx component (vs content markdown) when its frontmatter contains a `tagName` key whose value includes a hyphen. The `isJxMarkdown(source)` utility performs this check. However, detection does **not** gate the pipeline — all markdown goes through `transpileJxMarkdown()`. Content documents (no `tagName`) produce a Jx element tree that is wrapped in a `{ tagName: "div", $id: "content" }` root by the studio. This enables gradual enhancement: any `.md` file can add Jx schema at any point without changing how it is processed.
+Detection does **not** gate the pipeline: every `.md` file goes through `transpileJxMarkdown()`, which returns the same shape either way, frontmatter keys at the top level and the body as `children`, so a content document's root carries a `tagName` only when its frontmatter writes one. Studio edits every content document as a root with no `tagName`: `children`, `state` and `imports` stay on the document, every other frontmatter key (a `tagName` without a hyphen included) is held apart as the document's frontmatter, and the two are merged back when the file is saved (`studio.md` §8.3). A body with no blocks is given one empty paragraph to type into, which serializes to nothing. This enables gradual enhancement: any `.md` file can add Jx schema at any point without changing how it is processed.
 
 ## 4. Directive Syntax
 
@@ -419,7 +419,7 @@ Converts a Jx Markdown string to a Jx JSON document. Available from both `@jxsui
 
 ### 12.2 `isJxMarkdown(source: string): boolean`
 
-Returns `true` if the markdown source is a Jx component (frontmatter has `tagName` with a hyphen).
+Returns `true` when the source is a Jx component by §3.1's rule, applied to the frontmatter `transpileJxMarkdown` parses, and `false` otherwise, including for a source that does not transpile.
 
 ### 12.3 `expandDotPaths(attrs: Record<string, string>): Record<string, any>`
 

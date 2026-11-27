@@ -5,12 +5,15 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  foreignKeyTarget,
   fromStorage,
   idDataType,
+  idKey,
   newRowId,
   parseRefPointer,
   planTable,
   toStorage,
+  typedId,
 } from "../src/columns";
 import type { TableDef } from "../src/types";
 
@@ -24,6 +27,7 @@ const TABLES = {
         author: { $ref: "#/data/users" },
         message: { type: "string" },
         post: { $ref: "#/content/posts" },
+        post_row: { $ref: "#/data/posts" },
         rating: { type: "number" },
         tags: { items: { $ref: "#/content/tags" }, type: "array" },
         views: { type: "integer" },
@@ -89,13 +93,61 @@ describe("planTable", () => {
     expect(pgByField.get("approved")!.dataType).toBe("boolean");
   });
 
-  test("to-one references become <field>_id text columns", () => {
+  test("a to-one reference is typed like a same-connection target's id and keyed to it", () => {
     const author = plan.columns.find((c) => c.field === "author")!;
     expect(author.column).toBe("author_id");
+    expect(author.dataType).toBe("text");
     expect(author.ref).toEqual({ name: "users", section: "data" });
+    expect(author.references).toEqual({ idType: "uuid", table: "users" });
+    const postRow = plan.columns.find((c) => c.field === "post_row")!;
+    expect(postRow.dataType).toBe("integer");
+    expect(postRow.references).toEqual({ idType: "integer", table: "posts" });
     const post = plan.columns.find((c) => c.field === "post")!;
     expect(post.column).toBe("post_id");
+    expect(post.dataType).toBe("text");
     expect(post.ref!.section).toBe("content");
+    expect(post.references).toBeNull();
+  });
+
+  test("a reference into another connection's table is neither keyed nor a junction", () => {
+    const tables = {
+      ...TABLES,
+      archive: { connection: "cold", schema: { properties: {}, type: "object" } },
+      notes: {
+        connection: "main",
+        schema: {
+          properties: {
+            old: { $ref: "#/data/archive" },
+            olds: { items: { $ref: "#/data/archive" }, type: "array" },
+          },
+          type: "object",
+        },
+      },
+    } satisfies Record<string, TableDef>;
+    const notes = planTable("notes", tables.notes, tables, "sqlite");
+    const old = notes.columns.find((c) => c.field === "old")!;
+    expect(old.dataType).toBe("text");
+    expect(old.references).toBeNull();
+    const olds = notes.columns.find((c) => c.field === "olds")!;
+    expect(olds.manyRef).toBe(true);
+    expect(notes.junctions).toEqual([]);
+  });
+
+  test("foreignKeyTarget, idKey and typedId", () => {
+    expect(foreignKeyTarget(null, TABLES.comments, TABLES)).toBeNull();
+    expect(foreignKeyTarget({ name: "nope", section: "data" }, TABLES.comments, TABLES)).toBeNull();
+    expect(
+      foreignKeyTarget({ name: "posts", section: "content" }, TABLES.comments, TABLES),
+    ).toBeNull();
+    expect(idKey(1)).toBe(idKey("1"));
+    expect(idKey(null)).toBeNull();
+    expect(typedId("integer", "7")).toBe(7);
+    expect(typedId("integer", 7)).toBe(7);
+    for (const bad of ["7.5", 7.5, "1e3", "9007199254740993", "", " ", "abc", null]) {
+      expect(typedId("integer", bad)).toBeUndefined();
+    }
+    expect(typedId("uuid", "a")).toBe("a");
+    expect(typedId("uuid", "")).toBeUndefined();
   });
 
   test("to-many refs to non-table sections become JSON id-list columns", () => {
@@ -164,6 +216,14 @@ describe("storage coercion", () => {
     expect(toStorage(approved, false, "sqlite")).toBe(0);
     expect(toStorage(approved, true, "postgres")).toBe(true);
     expect(toStorage(approved, null, "sqlite")).toBeNull();
+  });
+
+  test("an integer-target reference binds a number and reads back a string", () => {
+    const postRow = plan.columns.find((c) => c.field === "post_row")!;
+    expect(toStorage(postRow, "7", "sqlite")).toBe(7);
+    expect(toStorage(postRow, "x", "sqlite")).toBe("x");
+    expect(fromStorage(plan.columns, { post_row_id: 7 }).post_row_id).toBe("7");
+    expect(fromStorage(plan.columns, { post_row_id: "7" }).post_row_id).toBe("7");
   });
 
   test("json columns round-trip through serialized text", () => {
