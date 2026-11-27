@@ -18,6 +18,8 @@ import { createHash } from "node:crypto";
 import type { AppInfo } from "@jxsuite/protocol";
 import type { ImportApiOptions } from "@jxsuite/server/import-api";
 import { createProjectServer } from "@jxsuite/server/project-server";
+import { recordBootRequests } from "../boot-probe";
+import type { BootProbe } from "../boot-probe";
 import type {
   CreateProjectServerOptions,
   ProjectServerHandle,
@@ -42,6 +44,8 @@ import type { BackendMessage, DialogKind, ShellMessage } from "../shared/protoco
 
 /** What the hub is built from. */
 export interface WindowHubOptions {
+  /** Records the requests each window's adapter sends, when the launch is a boot probe. */
+  bootProbe?: BootProbe | null;
   /** Version, channel and commit for the About screen. */
   appInfo: () => AppInfo;
   /** Site import's options, or absent when there is no browser to drive it with. */
@@ -414,7 +418,10 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     }
     const session = createProjectSession(authorized, gate);
     const window: HubWindow = { id, pendingDocuments: files, session };
-    const handlers = buildWindowHandlers(window, control);
+    const handlers = recordBootRequests(
+      options.bootProbe ?? null,
+      buildWindowHandlers(window, control),
+    );
     const serverOptions: CreateProjectServerOptions = {
       resolveSession: () => ({
         get projectRoot(): string | null {

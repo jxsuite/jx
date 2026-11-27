@@ -1,6 +1,6 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importOptions, startBackend } from "../src/backend/backend";
@@ -61,6 +61,61 @@ describe("startBackend", () => {
     await hub.idle();
     expect(sent[1]).toMatchObject({ id: 1, title: "site — Jx Studio", type: "open-window" });
     expect(hub.windows()).toEqual([{ id: 1, projectRoot: root }]);
+  });
+
+  /** Open a welcome window and call `methods` over its real socket, in order. */
+  async function callOverSocket(
+    deliver: (message: ShellMessage) => void,
+    sent: BackendMessage[],
+    methods: string[],
+  ): Promise<void> {
+    deliver({ root: null, type: "open-project" });
+    await hub?.idle();
+    const opened = sent.find((message) => message.type === "open-window");
+    if (opened?.type !== "open-window") {
+      throw new Error("no window was opened");
+    }
+    const url = new URL(opened.url);
+    const socket = new WebSocket(`ws://${url.host}/?token=${url.searchParams.get("token") ?? ""}`);
+    await new Promise((resolve) => {
+      socket.addEventListener("open", resolve, { once: true });
+    });
+    let id = 0;
+    for (const method of methods) {
+      id += 1;
+      const answered = new Promise((resolve) => {
+        socket.addEventListener("message", resolve, { once: true });
+      });
+      socket.send(JSON.stringify({ id, method, params: {} }));
+      await answered;
+    }
+    socket.close();
+  }
+
+  test("a boot probe from the environment records each window's requests and quits through the protocol", async () => {
+    const report = join(scratch, "probe", "report.json");
+    const { deliver, io, sent } = channel({
+      JX_STUDIO_ASSETS: scratch,
+      JX_STUDIO_BOOT_PROBE: report,
+    });
+    hub = startBackend(io);
+    await callOverSocket(deliver, sent, ["githubToken"]);
+    expect(JSON.parse(readFileSync(report, "utf8"))).toMatchObject({
+      launcher: "electron",
+      requests: ["githubToken"],
+      settled: false,
+    });
+    expect(sent.some((message) => message.type === "quit")).toBe(false);
+    await callOverSocket(deliver, sent, ["getSettings"]);
+    expect(JSON.parse(readFileSync(report, "utf8"))).toMatchObject({ settled: true });
+    expect(sent.filter((message) => message.type === "quit")).toEqual([{ type: "quit" }]);
+  });
+
+  test("no probe when the environment has none", async () => {
+    const { deliver, io, sent } = channel();
+    hub = startBackend(io);
+    await callOverSocket(deliver, sent, ["getSettings"]);
+    expect(sent.some((message) => message.type === "quit")).toBe(false);
   });
 
   test("looks for a browser itself when none is injected, and starts either way", () => {
