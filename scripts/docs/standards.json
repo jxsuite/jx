@@ -166,7 +166,7 @@
     },
     {
       "id": "Gitignore",
-      "org": "Git",
+      "org": "Other",
       "title": "gitignore(5) — Specifies intentionally untracked files to ignore",
       "url": "https://git-scm.com/docs/gitignore"
     },
@@ -184,7 +184,7 @@
     },
     {
       "id": "IPTC Photo Metadata",
-      "org": "IPTC",
+      "org": "Other",
       "title": "IPTC Photo Metadata Standard",
       "url": "https://iptc.org/standards/photo-metadata/iptc-standard/"
     },

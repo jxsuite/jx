@@ -17,6 +17,11 @@
  * **`Expires` is not supported, and that is also deliberate.** `Max-Age` covers the same ground,
  * RFC 6265bis §5.5 makes `Max-Age` win wherever both appear, and `Expires` takes an HTTP-date whose
  * mis-spelling fails silently in the direction of a cookie that never expires.
+ *
+ * **The compiled targets carry a copy of this rule.** A built module loads without
+ * `@jxsuite/runtime`, so the compiler inlines `readCookieValue` and `serializeCookie`
+ * (`cookieHelperSource` in `@jxsuite/compiler`), and a compiler test holds that copy to these
+ * functions' output. An edit here that the copy does not follow goes red there.
  */
 
 import type { JsonValue } from "@jxsuite/schema/types";
@@ -31,8 +36,8 @@ export interface CookieOptions {
 }
 
 /** Cookie names carrying RFC 6265bis §4.1.3 prefixes, which constrain their own attributes. */
-const HOST_PREFIX = "__Host-";
-const SECURE_PREFIX = "__Secure-";
+export const COOKIE_HOST_PREFIX = "__Host-";
+export const COOKIE_SECURE_PREFIX = "__Secure-";
 
 /**
  * The raw (still percent-encoded) value of `name` in a `document.cookie` header, or null.
@@ -55,6 +60,29 @@ export function readCookie(header: string, name: string): string | null {
 }
 
 /**
+ * The decoded value of `name` in a `document.cookie` header: `null` when absent, else the
+ * percent-decoded JSON the cookie holds, or the raw text when either step throws. A stored JSON
+ * `null` reads as `null`, so a caller treats it as absent.
+ *
+ * @param {string} header
+ * @param {string} name
+ * @returns {JsonValue}
+ */
+export function readCookieValue(header: string, name: string): JsonValue {
+  const raw = readCookie(header, name);
+  if (raw === null) {
+    return null;
+  }
+  try {
+    /* SAFETY: `JSON.parse` answers the JSON value the cookie encodes, or throws, which the catch
+       answers with the raw text. */
+    return JSON.parse(decodeURIComponent(raw)) as JsonValue;
+  } catch {
+    return raw;
+  }
+}
+
+/**
  * Serialize one `document.cookie` assignment, applying the attribute rules a name's prefix and its
  * `SameSite` value already imply.
  *
@@ -74,7 +102,7 @@ export function readCookie(header: string, name: string): string | null {
  * @returns {string}
  */
 export function serializeCookie(name: string, value: JsonValue, options: CookieOptions): string {
-  const hostPrefixed = name.startsWith(HOST_PREFIX);
+  const hostPrefixed = name.startsWith(COOKIE_HOST_PREFIX);
   const parts = [`${name}=${encodeURIComponent(JSON.stringify(value))}`];
 
   if (options.maxAge !== undefined) {
@@ -93,7 +121,7 @@ export function serializeCookie(name: string, value: JsonValue, options: CookieO
   const secure =
     options.secure === true ||
     hostPrefixed ||
-    name.startsWith(SECURE_PREFIX) ||
+    name.startsWith(COOKIE_SECURE_PREFIX) ||
     sameSite?.toLowerCase() === "none";
   if (secure) {
     parts.push("Secure");

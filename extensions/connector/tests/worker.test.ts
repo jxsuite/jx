@@ -71,8 +71,10 @@ interface Harness {
 function makeHarness(
   ctx: JxServerContext = {},
   tables: Record<string, TableDef> = TABLES,
+  prepare?: (database: Database) => void,
 ): Harness {
   const database = new Database(":memory:");
+  prepare?.(database);
   const options: DataMountOptions = {
     autoSync: true,
     connectors: {
@@ -291,6 +293,89 @@ describe("wire contract", () => {
     expect(created.id).toBe(1);
     expect(await statusOf(call("GET", "/_jx/data/posts/1"))).toBe(200);
     expect(await statusOf(call("GET", "/_jx/data/posts/1.5"))).toBe(404);
+    expect(await statusOf(call("GET", "/_jx/data/posts/1e3"))).toBe(404);
+  });
+
+  describe("foreign keys", () => {
+    const keyed = {
+      comments: {
+        connection: "main",
+        permissions: { delete: "public", insert: "public", read: "public", update: "public" },
+        schema: {
+          properties: { author: { $ref: "#/data/users" }, message: { type: "string" } },
+          type: "object",
+        },
+      },
+      users: {
+        connection: "main",
+        id: "integer",
+        permissions: { delete: "public", insert: "public", read: "public" },
+        schema: { properties: { name: { type: "string" } }, type: "object" },
+      },
+    } satisfies Record<string, TableDef>;
+
+    test("a to-one include resolves onto an integer-id table", async () => {
+      const { call } = makeHarness({}, keyed);
+      await call("POST", "/_jx/data/users", { name: "kevin" });
+      const first = await json(call("POST", "/_jx/data/comments", { author: "1", message: "a" }));
+      expect(first.author_id).toBe("1");
+      await call("POST", "/_jx/data/comments", { author: "1", message: "b" });
+      const got = await json(call("GET", `/_jx/data/comments/${idOf(first)}?include=author`));
+      expect(got.author).toMatchObject({ id: 1, name: "kevin" });
+      const list = await rows(call("GET", "/_jx/data/comments?include=author"));
+      expect(list.map((r) => r.author)).toEqual([got.author, got.author]);
+    });
+
+    test("a legacy text reference column still resolves", async () => {
+      const { call } = makeHarness({}, keyed, (database) => {
+        database.run(
+          "create table users (id integer primary key autoincrement, name text, created_at text, updated_at text)",
+        );
+        database.run("insert into users (name) values ('kevin')");
+        database.run(
+          "create table comments (id text primary key, created_at text, updated_at text, message text, author_id text)",
+        );
+        database.run(
+          "insert into comments (id, author_id, message) values ('c1', '1', 'a'), ('c2', 'zzz', 'b'), ('c3', null, 'c')",
+        );
+      });
+      const list = await rows(call("GET", "/_jx/data/comments?include=author"));
+      const byId = new Map(list.map((r) => [r.id, r.author]));
+      expect(byId.get("c1")).toMatchObject({ name: "kevin" });
+      expect(byId.get("c2")).toBeNull();
+    });
+
+    test("a missing referenced row is a 400, and deleting the target clears the reference", async () => {
+      const { call } = makeHarness({}, keyed);
+      await call("POST", "/_jx/data/users", { name: "kevin" });
+      const spy = spyOn(console, "error").mockImplementation(() => {});
+      const missing = await call("POST", "/_jx/data/comments", { author: "99", message: "a" });
+      expect(missing.status).toBe(400);
+      const missingBody = await json(missing);
+      expect(missingBody.error).toBe("A reference names a row that does not exist");
+      spy.mockRestore();
+      const bad = await call("POST", "/_jx/data/comments", { author: "abc", message: "a" });
+      expect(bad.status).toBe(400);
+      const badBody = await json(bad);
+      expect(badBody.error).toBe("Validation failed");
+      const ok = await json(call("POST", "/_jx/data/comments", { author: "1", message: "a" }));
+      expect(await statusOf(call("DELETE", "/_jx/data/users/1"))).toBe(200);
+      const after = await json(call("GET", `/_jx/data/comments/${idOf(ok)}`));
+      expect(after.author_id).toBeNull();
+    });
+
+    test("a cross-connection reference is stored and not expanded", async () => {
+      const tables = {
+        ...keyed,
+        users: { ...keyed.users, connection: "cold" },
+      } satisfies Record<string, TableDef>;
+      const { call } = makeHarness({}, tables);
+      const made = await call("POST", "/_jx/data/comments", { author: "anything", message: "a" });
+      expect(made.status).toBe(201);
+      const list = await rows(call("GET", "/_jx/data/comments?include=author"));
+      expect(list[0]!.author_id).toBe("anything");
+      expect("author" in list[0]!).toBe(false);
+    });
   });
 
   test("junction writes replace link rows; include expands them and to-one refs", async () => {

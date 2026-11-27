@@ -16,7 +16,7 @@ import {
   isNumber,
   isServerFnDef,
   isString,
-  hasSchemaKeywords,
+  isPureTypeDef,
 } from "../guards";
 import { pointerInto, propertyName, schemaParts, written } from "./schema-types";
 import type { JsonObject, JsonValue, JxElement, ProjectConfig } from "../../types";
@@ -97,7 +97,7 @@ export function entryParts(
   if (isString(entry.$prototype) || isExpressionDef(entry) || isServerFnDef(entry)) {
     return ["any"];
   }
-  return "default" in entry || hasSchemaKeywords(entry)
+  return "default" in entry || isPureTypeDef(entry)
     ? declaredParts(entry, site)
     : [typeOfValue(entry, 0)];
 }

@@ -5,6 +5,7 @@ spec:
   - spec.md#1
   - spec.md#2
   - spec.md#3
+  - spec.md#16.7
 ---
 
 # Documents
@@ -86,7 +87,7 @@ The format also follows the **rule of least power**: prefer a `$ref` binding ove
 
 ## How it works
 
-JSON Schema is the authoritative definition of the format: any 2020-12-compatible validator can check a document against the Jx meta-schema identified by `$schema`. In development, the runtime loads the `.json` file, builds a reactive scope from `state`, and renders the tree with real DOM calls. In production, the [build](/docs/framework/build) compiles the JSON away, emitting plain JavaScript classes, static HTML, and extracted CSS.
+JSON Schema is the authoritative definition of the format: any 2020-12-compatible validator can check a document against the Jx meta-schema identified by `$schema`. Where the runtime interprets a document (Studio's canvas and live preview, or a page that loads `@jxsuite/runtime` itself), it loads the `.json` file, builds a reactive scope from `state`, and renders the tree with real DOM calls. Everywhere else the [build](/docs/framework/build) compiles the JSON away, emitting static HTML, extracted CSS and, only for what changes at runtime, JavaScript modules. That includes `jx dev` on a site project, which builds before it serves, so the page you open from it is the page that ships.
 
 ## Rules
 
