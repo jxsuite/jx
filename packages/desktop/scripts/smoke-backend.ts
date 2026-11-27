@@ -289,6 +289,30 @@ const checks: Check[] = [
     rpc: "listFormats",
     verify: isNonEmptyArray("format list"),
   },
+  /* The code tools load from the staged layout: the formatter's binding beside the bundle, and
+     oxlint's CLI run by the backend's own runtime. The backend answers null by design when it
+     cannot format, so only this check turns a missing binding into a failed build. */
+  {
+    name: "codeService (format)",
+    params: { action: "format", payload: { code: "const  a  =  1" } },
+    rpc: "codeService",
+    verify: (result) =>
+      typeof result === "object" &&
+      result !== null &&
+      "code" in result &&
+      result.code === "const a = 1;"
+        ? null
+        : `the formatter did not format: ${JSON.stringify(result).slice(0, 120)}`,
+  },
+  {
+    name: "codeService (lint)",
+    params: { action: "lint", payload: { code: "debugger;" } },
+    rpc: "codeService",
+    verify: (result) =>
+      JSON.stringify(result).includes("no-debugger")
+        ? null
+        : `the linter reported nothing for \`debugger;\`: ${JSON.stringify(result).slice(0, 120)}`,
+  },
   {
     name: "listDirectory",
     params: { dir: "." },
