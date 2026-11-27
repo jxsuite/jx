@@ -62,6 +62,7 @@ import {
 } from "./bundler.ts";
 import type { BundleRequest } from "./bundler.ts";
 import { negotiatesRoot } from "./locale-negotiation.ts";
+import { pageRelativePath, routePatternProblem } from "@jxsuite/site/routes";
 import { loadProjectConfig } from "./site-loader.ts";
 import type { ResolvedProjectConfig } from "./site-loader.ts";
 import {
@@ -570,6 +571,17 @@ export async function buildSite(
   log("Discovering pages...");
   const staticRoutes = await discoverPages(pagesDir, formatRegistry);
   log(`  Found ${staticRoutes.length} page(s)`);
+
+  /* A page file whose name would derive a pattern outside the forms routes use is an error naming
+     the file (site-architecture.md §4.2). The route stays in the table so the rest builds. */
+  for (const route of staticRoutes) {
+    const problem = routePatternProblem(route.relativePath);
+    if (problem) {
+      const message = `pages/${pageRelativePath(route.relativePath)}: ${problem}. Rename the file.`;
+      errors.push(message);
+      console.error(message);
+    }
+  }
 
   // ── 3b. Load extension-contributed project sections ────────────────────
   log("Loading project sections...");
