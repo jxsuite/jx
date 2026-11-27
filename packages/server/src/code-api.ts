@@ -216,7 +216,10 @@ async function lintCode({ code, args }: CodeApiBody): Promise<CodeServiceResult>
     /* SAFETY: `oxlint --format=json` prints `{ diagnostics: [...] }` whose labels each carry a
        numeric `span.line`/`span.offset`; output that is not JSON throws into the catch below. */
     const parsed = JSON.parse(text) as { diagnostics?: OxcDiagnostic[] };
-    return { diagnostics: adjustDiagnostics(parsed.diagnostics ?? [], headerLen) };
+    const adjusted = adjustDiagnostics(parsed.diagnostics ?? [], headerLen);
+    /* SAFETY: every member was just parsed from JSON, so each diagnostic is a JSON value; the
+       interface leaves its optional `labels` open to `undefined`, which a parse never produces. */
+    return { diagnostics: adjusted as JsonValue[] };
   } catch (error) {
     return { diagnostics: [], error: errorMessage(error) };
   } finally {
