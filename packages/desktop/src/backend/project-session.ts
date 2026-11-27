@@ -9,6 +9,7 @@ import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "no
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { handleResolve, handleServerFunction } from "@jxsuite/server/resolve";
+import { runCodeService } from "@jxsuite/server/code-api";
 import {
   deleteDataRow,
   insertDataRow,
@@ -1486,14 +1487,15 @@ export function createProjectSession(
   }
 
   /**
-   * No code services on desktop: format-on-open/save is skipped. The request is accepted and not
-   * read, which is why none of its members is required here.
+   * Format and lint a function body, in this backend's own process, from the one implementation the
+   * dev server serves over HTTP. It needs no project root, so it answers in a welcome window too.
+   * Null for an unknown action and where the formatter's native binding cannot load.
    */
-  async function codeService(_request?: {
+  async function codeService(request?: {
     action?: string;
     payload?: JsonValue;
   }): Promise<CodeServiceResult | null> {
-    return null;
+    return runCodeService(request?.action ?? "", request?.payload);
   }
 
   /**

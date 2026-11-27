@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JsonObject } from "@jxsuite/schema/types";
-import { handleCodeApi, resolveOxlintBin } from "../src/code-api";
+import {
+  CODE_SERVICE_ACTIONS,
+  handleCodeApi,
+  resolveOxlintCommand,
+  runCodeService,
+} from "../src/code-api";
 
 /** The code API answers every `/__studio/code/<action>` POST it knows; `null` means it declined. */
 function handled(res: Response | null): Response {
@@ -187,31 +193,94 @@ describe("code-api", () => {
     });
   });
 
-  describe("resolveOxlintBin", () => {
+  describe("resolveOxlintCommand", () => {
     test("an explicit JX_OXLINT_BIN override wins", () => {
       process.env.JX_OXLINT_BIN = "/custom/bin/oxlint";
       try {
-        expect(resolveOxlintBin()).toBe("/custom/bin/oxlint");
+        expect(resolveOxlintCommand()).toEqual(["/custom/bin/oxlint"]);
       } finally {
         delete process.env.JX_OXLINT_BIN;
       }
     });
 
-    test("walks up to the workspace-root node_modules/.bin", () => {
-      const bin = resolveOxlintBin();
-      expect(bin).toEndWith(join("node_modules", ".bin", "oxlint"));
-      expect(existsSync(bin!)).toBe(true);
+    test("walks up to the workspace-root node_modules/oxlint, run by the host's own runtime", () => {
+      const command = resolveOxlintCommand();
+      expect(command?.[0]).toBe(process.execPath);
+      expect(command?.[1]).toEndWith(join("node_modules", "oxlint", "bin", "oxlint"));
+      expect(existsSync(command![1]!)).toBe(true);
     });
 
-    test("returns null when no bin dir and no PATH candidate exist", () => {
+    test("a staged copy beside the module wins", () => {
+      const dir = mkdtempSync(join(tmpdir(), "jx-oxlint-staged-"));
+      try {
+        mkdirSync(join(dir, "oxlint", "bin"), { recursive: true });
+        writeFileSync(join(dir, "oxlint", "bin", "oxlint"), "");
+        expect(resolveOxlintCommand(dir)).toEqual([
+          process.execPath,
+          join(dir, "oxlint", "bin", "oxlint"),
+        ]);
+      } finally {
+        rmSync(dir, { force: true, recursive: true });
+      }
+    });
+
+    test("finds oxlint on PATH when nothing is staged or installed above", () => {
+      const dir = mkdtempSync(join(tmpdir(), "jx-oxlint-path-"));
+      const path = process.env.PATH;
+      try {
+        const name = process.platform === "win32" ? "oxlint.exe" : "oxlint";
+        writeFileSync(join(dir, name), "");
+        process.env.PATH = dir;
+        expect(resolveOxlintCommand("/")).toEqual([join(dir, name)]);
+      } finally {
+        process.env.PATH = path;
+        rmSync(dir, { force: true, recursive: true });
+      }
+    });
+
+    test("returns null when no copy and no PATH candidate exist", () => {
       const path = process.env.PATH;
       process.env.PATH = "";
       try {
         // Starting at the filesystem root skips every node_modules probe.
-        expect(resolveOxlintBin("/")).toBeNull();
+        expect(resolveOxlintCommand("/")).toBeNull();
       } finally {
         process.env.PATH = path;
       }
+    });
+  });
+
+  describe("runCodeService", () => {
+    test("names the two actions it answers", () => {
+      expect([...CODE_SERVICE_ACTIONS]).toEqual(["format", "lint"]);
+    });
+
+    test("format returns what the HTTP route returns for the same body", async () => {
+      const body = { code: "const x=1;const y=2;" };
+      const { req, url } = codeRequest("format", body);
+      const http = await handled(await handleCodeApi(req, url)).json();
+      expect(await runCodeService("format", body)).toEqual(http);
+    });
+
+    test("lint of debugger returns a diagnostic on line 1, unwrapped", async () => {
+      const result = await runCodeService("lint", { code: "debugger;" });
+      const diagnostics = result?.diagnostics ?? [];
+      const text = JSON.stringify(diagnostics);
+      expect([text.includes("no-debugger"), text.includes('"line":1')]).toEqual([true, true]);
+    });
+
+    test("an unknown action returns null", async () => {
+      expect(await runCodeService("minify", { code: "x" })).toBeNull();
+    });
+
+    test("a payload that is not an object behaves as an empty body", async () => {
+      expect(await runCodeService("format", "nope")).toEqual({ code: "", errors: [] });
+      expect(await runCodeService("lint", null)).toEqual({ diagnostics: [] });
+    });
+
+    test("a non-array args is ignored, so the default wrapper applies", async () => {
+      const result = await runCodeService("format", { args: 123, code: "return 1;" });
+      expect(result).toEqual({ code: "return 1;", errors: [] });
     });
   });
 });

@@ -92,7 +92,7 @@ Attributes use the HTML-like `{key="value"}` syntax. Three characters can't star
 | `--title`, `--description`                                     | `$title`, `$description` (element annotations, dropped from HTML output) |
 | `style.hover.color` (see below)                                | `style[":hover"].color`                                                  |
 
-DOM properties like `src`, `id`, and `export` are not mapped; they pass through as-is. Attributes matching `aria-*`, `data-*`, or `slot` route into the element's `attributes` object; everything else becomes a top-level DOM property.
+Every other key keeps its name. A few land on the element itself, the same way on every element, HTML or custom: `style`, `children`, a `switch`'s `cases`, `textContent`, `innerText`, `innerHTML`, the `$` keywords, event handlers (any key starting with `on`, such as `onclick.ref="#/state/open"`), and `id`, `className`, `hidden`, `tabIndex`, `lang` and `dir`. A bare `hidden` hides the element, as it does in HTML. Everything else is an HTML attribute and goes into the element's `attributes` object: `href`, `src`, `alt`, `title`, `aria-*`, `data-*`, `slot`, and any attribute a custom element reads. Write each name the way HTML spells it (`for`, `colspan`). On a form control, `value`, `checked` and `selected` set the starting value, as they do in HTML, so a binding stops updating a text field once someone types in it. Keep a live form field in a JSON component.
 
 Nested objects are written as dot-separated keys. Props on a component instance use `props.*`:
 

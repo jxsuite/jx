@@ -249,9 +249,14 @@ This is the canonical, round-trippable encoding. The older dot-path form (`child
 
 ### 6.6 HTML Attributes
 
-> **Status: Partial.** `aria-*`, `data-*` and `slot` reach `attributes`, and the example below is what ships, but the rest of the routing diverges from the text. `directiveToJx` (`extensions/parser/src/transpile.ts`) keeps only `style`, `children`, `textContent`, `innerHTML`, `id`, `className`, `hidden`, `tabIndex`, `lang`, `dir`, `$`-keys and `on*` keys at element level on a standard element, and only `style`, `children`, `textContent`, `innerHTML` and `$`-keys on a custom element; every other key (`type`, `placeholder`, `src`, `href`, and so on) becomes an HTML attribute. On a custom element this sends `className` and `on*` keys to `attributes` as well, where neither the runtime's `applyAttributes` nor the compiler's `buildAttrs` maps them back: the class is written as a literal `className` attribute and the handler is never bound.
+A directive attribute is an HTML attribute unless Jx gives its name a meaning of its own. After the key mapping and dot-path expansion of §6.2–§6.4, `routeAttributes` (`extensions/parser/src/transpile.ts`) sends each key to one of two places, by the same rule on every element, standard or custom:
 
-Attributes matching `aria-*`, `data-*`, or `slot` are routed to the `attributes` sub-object. All other attributes become top-level DOM properties.
+- **The element definition** (spec.md §8.1): the structural keys `style`, `children`, `cases` (the companion of `switch`, spec.md §14.1), `textContent`, `innerText` and `innerHTML`; every `$`-key (§6.2, §6.3); every key beginning `on`, which both renderers bind as an event handler (spec.md §4.3); and the element properties `id`, `className`, `hidden`, `tabIndex`, `lang` and `dir`.
+- **The `attributes` object** (spec.md §8.3): every other key. That includes `aria-*`, `data-*` and `slot`, the attributes a property reflects (`href`, `src`, `alt`, `title`, `type`, `name`, `placeholder`, `disabled`), and any attribute a custom element reads (`variant`). A value meant for a component's state is written `props.*` instead (§6.4).
+
+A name is written as HTML spells it (`for`, `colspan`, `readonly`) and reaches the page as written: the runtime sets it with `setAttribute`, and the static emitter writes it into the tag. remark-directive's shorthands follow the same rule, so `#main` gives the element-level `id` and `.card` gives `attributes.class`. A bare `hidden`, written without a value, is `true`, as the attribute is in HTML; every other value is the string written (§6.1).
+
+`value`, `checked` and `selected` are attributes too, so on a form control they set its default, as they do in HTML. A bound `value` stops updating a text field once the user has typed in it, and a `select` has no `value` attribute at all (§10).
 
 ```markdown
 ::div{className="card" data-testid="main" aria-label="Main card"}
@@ -269,6 +274,26 @@ Produces:
   }
 }
 ```
+
+A custom element routes the same way:
+
+```markdown
+::my-card{#featured className="card" onclick.ref="#/state/open" variant="compact"}
+```
+
+Produces:
+
+```json
+{
+  "tagName": "my-card",
+  "id": "featured",
+  "className": "card",
+  "onclick": { "$ref": "#/state/open" },
+  "attributes": { "variant": "compact" }
+}
+```
+
+The flat attribute list does not record which of the two places a key came from. An element definition that sets a reflected property at element level (`"href": "/about"`) therefore comes back from a markdown round trip under `attributes`, where it renders the same, except for `value`, `checked` and `selected` (above; §12.8).
 
 ## 7. Style Attributes
 
@@ -401,6 +426,7 @@ Fenced code with a known language tag is syntax-highlighted at compile time in t
 2. **Attribute key restrictions** — `:`, `@`, and `$` cannot start directive attribute keys (use the conventions above)
 3. **Complex state logic** — components with intricate `$prototype: Function` bodies or deeply nested state may be clearer in JSON
 4. **No inline JavaScript** — event handler bodies and computed expressions live in YAML frontmatter `state` definitions, not in the directive body
+5. **Form-control state** — a directive's `value`, `checked` and `selected` are the control's default (§6.6); a field that must keep following a binding after the user edits it belongs in a JSON component (§11)
 
 ## 11. When to Use JSON vs Markdown
 
@@ -443,7 +469,7 @@ Inverse of `expandStylePaths` — strips `:` and `@` prefixes before flattening.
 
 ### 12.8 `serializeJxMarkdown(doc: object, options?): string`
 
-> **Status: Partial.** Both modes ship (`serializeRoundtrip` and `serializeExport` in `extensions/parser/src/serialize.ts`; Studio saves through roundtrip mode in `packages/studio/src/files/serialize-document.ts`), and a `tagName` chosen at render time throws as stated. Roundtrip mode is not the inverse of `transpileJxMarkdown` for several ordinary shapes, and no test feeds its output back through `transpileJxMarkdown`. `textContent` or inline children of a directive outside the transpiler's phrasing set (`div`, `section`, any custom element) are written as bare block content and come back wrapped in `p`, one paragraph per inline child, with edge whitespace lost. A custom element's `className` and `on*`, and a standard element's `href`, `title` or `value`, come back under `attributes` (§6.6). In a leaf directive's label (§4.2), a hard break is written as a space and a code span holding `]` ends the label early, and a bound `textContent` on a `pre`'s `code` child is written as an empty fence. The `popover-open`, `open`, `modal` and `backdrop` style keys are written with their colons (`style.:popover-open.opacity`), because the serializer keeps its own pseudo-class set instead of using `collapseStylePaths` (§12.7); they re-parse, but not in the §7.3 spelling.
+> **Status: Partial.** Both modes ship (`serializeRoundtrip` and `serializeExport` in `extensions/parser/src/serialize.ts`; Studio saves through roundtrip mode in `packages/studio/src/files/serialize-document.ts`), and a `tagName` chosen at render time throws as stated. Roundtrip mode is not the inverse of `transpileJxMarkdown` for several ordinary shapes, and no test feeds its output back through `transpileJxMarkdown`. `textContent` or inline children of a directive outside the transpiler's phrasing set (`div`, `section`, any custom element) are written as bare block content and come back wrapped in `p`, one paragraph per inline child, with edge whitespace lost. An element-level `href`, `title` or `value` comes back under `attributes` (§6.6). The first two render the same, but a bound `value`, `checked` or `selected` becomes the control's default. In a leaf directive's label (§4.2), a hard break is written as a space and a code span holding `]` ends the label early, and a bound `textContent` on a `pre`'s `code` child is written as an empty fence. The `popover-open`, `open`, `modal` and `backdrop` style keys are written with their colons (`style.:popover-open.opacity`), because the serializer keeps its own pseudo-class set instead of using `collapseStylePaths` (§12.7); they re-parse, but not in the §7.3 spelling.
 
 Converts a Jx JSON document back to markdown source (`@jxsuite/parser/serialize`). Two modes:
 

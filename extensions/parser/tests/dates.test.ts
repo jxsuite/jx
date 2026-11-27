@@ -12,6 +12,7 @@ import {
   isDateFormat,
   parseComparable,
   parseDateValue,
+  toInstant,
 } from "../src/dates.ts";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import type { ContentLoaderEntry } from "../src/types.ts";
@@ -171,6 +172,10 @@ describe("predicates", () => {
     expect(isCoercedDate("2025-03-04")).toBe(true);
     expect(isCoercedDate("2025-03-04T16:00:00Z")).toBe(true);
     expect(isCoercedDate("March 4")).toBe(false);
+  });
+
+  test("toInstant drops fractional seconds and reads in UTC", () => {
+    expect(toInstant(new Date("2024-03-04T05:06:07.890Z"))).toBe("2024-03-04T05:06:07Z");
   });
 });
 

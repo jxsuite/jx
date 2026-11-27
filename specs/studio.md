@@ -874,14 +874,16 @@ Add, remove, rename, and edit `state` entries. All four shapes supported:
 
 ### 6.4 Code Editor
 
-> **Status: Partial.** The editor and its Format and Lint calls ship (`codeService` in `packages/studio/src/services/code-services.ts`, called from `panels/editors.ts`), and the dev server serves them (`/__studio/code/*` in `packages/server/src/code-api.ts`). The desktop app, the end-user path, does not: its `codeService` returns `null` (`packages/desktop/src/backend/project-session.ts`), as does the cloud host's (`packages/studio/src/platforms/cloud.ts`), so format and lint silently do nothing there.
+> **Status: Implemented.** `packages/studio/src/panels/editors.ts`, through `codeService` in `packages/studio/src/services/code-services.ts`. The dev server and the desktop backend answer it from one implementation, `runCodeService` in `packages/server/src/code-api.ts` (`desktop.md` §5.3).
 
-Monaco-powered editor for function `body` strings, opened as TypeScript (`spec.md` §23.1) and type-checked as §16.7 says. Integrated with server code services:
+Monaco-powered editor for function `body` strings, opened as TypeScript (`spec.md` §23.1) and type-checked as §16.7 says. Its code services come from the host (`desktop.md` §5.3):
 
 - **Format** — via `oxfmt`, as TypeScript, indented with two spaces; the formatter is the one `jx format` runs (`server.md` §5), so a body formatted here is one that command leaves alone
 - **Lint** — via `oxlint` with diagnostic display, as TypeScript
 
 **Close** writes the buffer back exactly as written. It used to minify the body first, which deletes types; compiled output is still minified.
+
+A host without server-side code tooling resolves `codeService` to `null`, and the editor degrades silently: it opens the body as stored and shows no lint markers. The cloud host (`packages/studio/src/platforms/cloud.ts`) is that host today.
 
 **A document's script opens on the same surface.** The editor has a third target beside a state entry's body and an inline handler's: one side of the document's `$script` (`{ type: "script"; side }`, `spec.md` §23.2). **Edit Script** (`formula.editScript`, in the command palette, taking `side`) opens it, as does the **Open in code editor** button of the Data panel's **Script** field (**Server script** on a server entry), which a Function entry shows beside **Source** and **Export**, where one written inline has its body, when its `$src` names the document's own script. A side the document does not have opens empty, and the first character typed creates it; a side emptied is removed, and a document left with neither has no `$script`. Each write is one value of the root and one undo step. A script is a module rather than the inside of a function, so it is neither formatted on open nor linted: both wrap what they are given in a function, where an `import` or an `export` is a syntax error.
 

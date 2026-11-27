@@ -113,21 +113,9 @@ export class Markdown {
     options: MarkdownLoadOptions = {},
   ): Promise<ContentLoaderEntry[]> {
     const { processMarkdown, readFrontmatter } = await import("./md.ts");
-    const { readFileSync, statSync } = await import("node:fs");
+    const { readFileSync } = await import("node:fs");
     const source = readFileSync(path, "utf8");
     const _meta: ContentLoaderEntry["_meta"] = {};
-    /*
-     * The modification time is the only date a file always has. A feed falls back to it when the
-     * frontmatter carries none, and it is what would let the sitemap stop giving every page
-     * generated from one template that template's `<lastmod>`.
-     */
-    try {
-      _meta.mtime = statSync(path)
-        .mtime.toISOString()
-        .replace(/\.\d{3}Z$/, "Z");
-    } catch {
-      // A format class may be handed content that is not on disk; an absent mtime is not an error.
-    }
     if (options.deferBody) {
       const { frontmatter, slug } = readFrontmatter(source, path, options.sourceRoot);
       return [{ _meta, body: source, data: frontmatter, id: slug }];

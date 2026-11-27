@@ -1,8 +1,11 @@
 ---
 title: "Code editing"
 description: "Drop down to real code when you need it: Monaco for function bodies and document scripts, and the Code editor for a document's raw source."
+spec:
+  - studio.md#6.4 # the code editor
 code:
   - packages/studio/src/panels/editors.ts
+  - packages/server/src/code-api.ts
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/canvas/canvas-render.ts
   - packages/studio/src/services/code-services.ts
