@@ -100,18 +100,40 @@ export const LANGUAGE_TAG_PATTERN = "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$";
  * becomes `en-US`, which matters because a tag is compared as a string in a route table and in a
  * `hreflang` attribute.
  *
+ * No trimming: whitespace is outside the RFC 5646 grammar and `LANGUAGE_TAG_PATTERN`, and a tag
+ * trimmed here would build and then fail `jx validate` (schema.md §3.2). An input that takes typed
+ * text trims before calling.
+ *
  * @param {JsonValue | undefined} tag - Any configured value; non-strings are not tags
  * @returns {string | null}
  */
 export function canonicalizeLocale(tag: JsonValue | undefined): string | null {
-  if (!isString(tag) || tag.trim() === "") {
+  if (!isString(tag)) {
     return null;
   }
   try {
-    return new Intl.Locale(tag.trim()).toString();
+    return new Intl.Locale(tag).toString();
   } catch {
     return null;
   }
+}
+
+/**
+ * The build error for a tag {@link canonicalizeLocale} refused, naming the config key.
+ *
+ * A tag whose only defect is surrounding whitespace gets its own sentence, because the defect is
+ * invisible in a quoted value and "is not a well-formed BCP 47 language tag" reads as wrong about
+ * `"en "`.
+ *
+ * @param {string} key - The config key the tag came from
+ * @param {JsonValue | undefined} tag - The refused value
+ * @returns {string}
+ */
+export function malformedLocaleError(key: string, tag: JsonValue | undefined): string {
+  if (isString(tag) && tag.trim() !== tag && canonicalizeLocale(tag.trim()) !== null) {
+    return `${key}: ${JSON.stringify(tag)} has whitespace around it, which is not part of a language tag. Write ${JSON.stringify(tag.trim())}.`;
+  }
+  return `${key}: "${String(tag)}" is not a well-formed BCP 47 language tag.`;
 }
 
 /** True when the tag is a well-formed BCP 47 language tag. */
@@ -214,7 +236,7 @@ export function resolveI18n(projectConfig: ProjectConfig): I18nResolution {
   for (const tag of declared) {
     const canonical = canonicalizeLocale(tag);
     if (canonical === null) {
-      errors.push(`i18n.locales: "${String(tag)}" is not a well-formed BCP 47 language tag.`);
+      errors.push(malformedLocaleError("i18n.locales", tag));
       continue;
     }
     if (!locales.includes(canonical)) {
@@ -224,9 +246,7 @@ export function resolveI18n(projectConfig: ProjectConfig): I18nResolution {
 
   const defaultLocale = canonicalizeLocale(raw.defaultLocale) ?? locales[0] ?? null;
   if (raw.defaultLocale !== undefined && canonicalizeLocale(raw.defaultLocale) === null) {
-    errors.push(
-      `i18n.defaultLocale: "${String(raw.defaultLocale)}" is not a well-formed BCP 47 language tag.`,
-    );
+    errors.push(malformedLocaleError("i18n.defaultLocale", raw.defaultLocale));
   }
   if (defaultLocale === null) {
     errors.push("i18n is declared with no usable locale — set `defaultLocale` or `locales`.");

@@ -5,6 +5,7 @@ spec:
   - extensions.md#11
   - extensions.md#11.1
 code:
+  - packages/compiler/src/site/section-push.ts
   - extensions/auth/src/Auth.class.json
   - extensions/auth/src/worker.ts
   - extensions/connector/src/Data.class.json
@@ -115,8 +116,9 @@ deploySchema(sectionValue, projectConfig, { env, dryRun?, connection?, connector
 ```
 
 - `steps` are ready push-plan entries (`{ kind, table?, summary, sql?, connection? }`). Hosts append them **after** the connector plan and default each step's `kind` to the contributing section key. The auth extension's Better Auth system-table migration lands as `kind: "auth"` steps this way.
-- `connectors` carries the same provider stand-ins the mounts receive, so dev pushes hit the `local:` stand-in databases.
-- When a push is filtered to a `connection` the section does not live on, return empty steps.
+- `connectors` maps each provider id to the class the push reaches. A dev host (the dev server, and the desktop app behind the studio push button) hands the `local:` stand-ins its mounts receive, so a studio push lands in the stand-in databases; `jx db push` hands each provider's own class, as the generated worker does, so a section's steps land on the connection as declared, the database the connector plan has just written.
+- When a push is filtered to a `connection` the section does not live on, return empty steps before opening its database.
+- A section owner that throws does not stop the push: the host reports its error beside the plan.
 
 Hosts stay extension-agnostic throughout: registry dispatch only, no extension imports, no hardcoded section names. `Auth.deploySchema` in `extensions/auth/src/worker.ts` is the working reference.
 

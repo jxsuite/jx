@@ -224,7 +224,7 @@ This is the addressing rule the new marker states ("addressed by `part` or by th
 
 If the Open decision goes the strict way, the example becomes "such as Tabulator's own", and the grid's state classes become attributes too.
 
-**§3's marker (line 33)** keeps its "(§3.1, §3.2, §3.3)". `plan:ui/behaviour-list-text` removes that parenthetical whole, so this plan does not touch it.
+**§3's marker (line 33)** keeps its "(§3.1, §3.2, §3.3)". that parenthetical has been removed whole, so this plan does not touch it.
 
 **studio-ui-guidelines.md §9.4 (line 646), ride-along.** Replace "`surfaceClasses` holds a class a document names to the same orphan rule, which is how the rule that a document styles through `part` rather than through a class (`ui.md` §3.1) stays enforced rather than remembered." with:
 

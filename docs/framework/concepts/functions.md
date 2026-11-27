@@ -235,7 +235,7 @@ The plugin reads `.jxn` documents. The `?server` spelling exists for tests only:
 
 ## Structured bodies
 
-A `body` may also be a JSON array of statements instead of a source string, which is multi-step logic that stays inspectable and visually editable. That form has its own page: [Statements](/docs/framework/concepts/statements).
+A `body` may also be a JSON array of statements instead of a source string, which is multi-step logic that stays inspectable and visually editable. That form has its own page: [Statements](/docs/framework/concepts/statements). With `parameters`, a structured body is a callable invoked positionally, its arguments bound to `$args/` names, rather than a handler whose parameters bind by name.
 
 ## State access from JavaScript
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { compileClient } from "../src/targets/compile-client";
+import { cookieHelperSource } from "../src/shared";
 import type {
   JsonObject,
   JsonValue,
@@ -389,19 +390,43 @@ describe("compileClient — prototypes", () => {
     }
   });
 
-  test("Cookie generates document.cookie read and parse", () => {
+  test("Cookie reads through the inlined helper and persists through an effect", () => {
     const doc = {
       children: [],
       state: {
-        session: { $prototype: "Cookie", default: "anon", name: "sid" },
+        session: { $prototype: "Cookie", default: "anon", name: "sid", sameSite: "lax" },
       },
       tagName: "div",
     };
     const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
-    expect(js).toContain("document.cookie");
-    expect(js).toContain("sid");
-    expect(js).toContain("decodeURIComponent");
+    const helper = cookieHelperSource();
+    expect(js.split(helper)).toHaveLength(2);
+    expect(js).toContain("__jxCookieRead(document.cookie, _n)");
+    expect(js).toContain("document.cookie = __jxCookieText(");
+    expect(js).toContain('"sameSite":"lax"');
+    expect(js).not.toContain("new RegExp");
+  });
+
+  test("two Cookie entries compile to a module that parses", () => {
+    const doc = {
+      children: [],
+      state: {
+        a: { $prototype: "Cookie", name: "a" },
+        b: { $prototype: "Cookie", name: "__Host-b", default: 1 },
+      },
+      tagName: "div",
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    expect(() =>
+      new Bun.Transpiler({ loader: "js" }).transformSync(files[0]!.content),
+    ).not.toThrow();
+  });
+
+  test("a page without a Cookie entry carries no cookie helper", () => {
+    const doc = { children: [], state: { n: 1 }, tagName: "div" };
+    const { files } = compileClient(doc, { title: "Test" });
+    expect(files[0]!.content).not.toContain("__jxCookieRead");
   });
 
   test("manual Request emits only a comment", () => {

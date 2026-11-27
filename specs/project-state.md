@@ -2,9 +2,9 @@
 
 ## One Backend-Owned Model of a Project, Served by Every Studio Host
 
-**Version:** 0.1.18-draft\
-**Status:** Partial\
-**Updated:** 2026-11-23\
+**Version:** 0.1.19\
+**Status:** Implemented\
+**Updated:** 2026-11-27\
 **License:** MIT
 
 ---
@@ -369,9 +369,9 @@ CREATE TABLE IF NOT EXISTS events (
 
 ### 13.2 Native core
 
-> **Status: Pending.** The contract's host logic is TypeScript only, and no measurement has been taken.
+> **Status: Implemented.** The host logic (index, hashing, graph, log) is TypeScript: `packages/protocol/src/project-state.ts` and `packages/server/src/project-state/`, which the desktop session and the dev server both run (§10.1, §10.2). `bench/project-state/run.ts` measures it, indexing a 10,000-file project and replaying a 1,000-event burst under Node (the desktop backend's runtime) and Bun (the dev server's).
 
-The host logic (index, hashing, graph, log) may later move into one Rust core, compiled natively for the desktop backend and to WebAssembly for the Durable Object, with storage behind a trait so the same core runs on either persistence. That is deferred until the TypeScript hosts are measured on large projects; the contract does not change if it happens.
+> **Status: Future.** The host logic may later move into one Rust core, compiled natively for the desktop backend and to WebAssembly for the Durable Object, with storage behind a trait so the same core runs on either persistence. That waits on a measurement of the TypeScript hosts that shows them too slow on a large project; the contract does not change if it happens.
 
 ## 14. Standards Alignment
 
@@ -387,6 +387,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.19** (2026-11-27) — A native core is deferred until measured; the spec graduates.
 - **0.1.18-draft** (2026-11-23) — Every adapter subscribes, and the resync reasons are retired: a reconnect is a subscribe with sinceRev, every cache is keyed by the store (a new epoch's snapshot of the same bytes re-keys rather than drops, and a `docChanged` of bytes already accounted for is no other writer's change), and a host that does not serve the subscription leaves Studio with no live account of other writers.
 - **0.1.17-draft** (2026-11-23) — §11.3 is Implemented: the cloud session's collaboration rooms are keyed by document, save through its project state host with a base and a write id of their own, report a refused save or an outside change under unsaved edits as doc-conflict, and follow renames and removals; §10.3 says its rooms save through it.
 - **0.1.16-draft** (2026-11-23) — The reference walk moves to @jxsuite/protocol/refs, re-exported by the server, so Studio and the cloud host walk with it without depending on a backend.
@@ -409,4 +410,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Project State Specification v0.1.18-draft_
+_Jx Project State Specification v0.1.19_

@@ -125,11 +125,13 @@ Built-in prototypes for common web APIs:
 
 ## Timing
 
-| Value        | When                                            |
-| ------------ | ----------------------------------------------- |
-| `"client"`   | Resolved at runtime in the browser (default)    |
-| `"server"`   | Resolved at runtime on the server via RPC       |
-| `"compiler"` | Resolved at build time, baked into emitted HTML |
+| Value        | When                                                                     |
+| ------------ | ------------------------------------------------------------------------ |
+| `"client"`   | Resolved at runtime in the browser (the default for a Web-API prototype) |
+| `"server"`   | Resolved at runtime on the server via RPC                                |
+| `"compiler"` | Resolved at build time, baked into emitted HTML                          |
+
+What an entry without `timing` does is on [Timing](/docs/framework/concepts/timing#leaving-timing-out).
 
 ## Related
 

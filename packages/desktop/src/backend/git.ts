@@ -110,8 +110,41 @@ function runGit(args: string[], cwd: string): Promise<GitRun> {
   });
 }
 
-/** Build git operations bound to one project session (its projectRoot is the git cwd). */
-export function createGitOps(session: { readonly projectRoot: string | null }) {
+/** Whether a remote URL is an HTTPS one, the only kind the sandboxed build can reach. */
+export function isHttpsRemote(url: string): boolean {
+  return /^https:\/\//i.test(url.trim());
+}
+
+/** What `createGitOps` may be told about the build it runs in. */
+export interface GitOptions {
+  /**
+   * The Mac App Store build: the system `git` there is Apple's shim and cannot read the user's SSH
+   * keys, configuration or credential helpers, so only HTTPS remotes are kept (§7.7).
+   */
+  httpsOnly?: boolean;
+}
+
+/** The refusal a sandboxed build gives a remote it cannot reach, naming the URL. */
+function httpsOnlyMessage(url: string): string {
+  return (
+    `The Mac App Store build of Jx Studio reaches Git remotes over HTTPS only, and "${url}" is ` +
+    `not one. The sandbox hides your SSH keys and Git configuration; use an https:// URL, or ` +
+    `the downloadable build for SSH remotes.`
+  );
+}
+
+/**
+ * Build git operations bound to one project session (its projectRoot is the git cwd).
+ *
+ * @param session The project session whose root is the git cwd.
+ * @param options What the build allows; `httpsOnly` defaults to the sandboxed build's flag.
+ */
+export function createGitOps(
+  session: { readonly projectRoot: string | null },
+  options?: GitOptions,
+) {
+  const httpsOnly = options ? options.httpsOnly === true : process.env.JX_STUDIO_SANDBOX === "1";
+
   async function git(...args: string[]): Promise<string> {
     const root = session.projectRoot;
     if (!root) {
@@ -260,21 +293,49 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
     await git(...(await projectCommitArgs((args) => git(...args), params.message)));
   }
 
+  /** Refuse, in the sandboxed build, a remote that is not HTTPS: `remote` or the branch's own. */
+  async function requireHttpsRemote(remote?: string): Promise<void> {
+    if (!httpsOnly) {
+      return;
+    }
+    let name = remote;
+    if (!name) {
+      const current = await repoGit("branch", "--show-current");
+      const branch = current.trim();
+      name = await git("config", "--get", `branch.${branch}.remote`).then(
+        (out) => out.trim() || "origin",
+        () => "origin",
+      );
+    }
+    const url = await git("remote", "get-url", name).then(
+      (out) => out.trim(),
+      () => "",
+    );
+    // No such remote: git's own message is the better one.
+    if (url && !isHttpsRemote(url)) {
+      throw new Error(httpsOnlyMessage(url));
+    }
+  }
+
   async function gitPush(params?: { setUpstream?: boolean }): Promise<void> {
     if (params?.setUpstream) {
       const branchRaw = await repoGit("rev-parse", "--abbrev-ref", "HEAD");
       const branch = branchRaw.trim();
+      await requireHttpsRemote("origin");
       await repoGit("push", "-u", "origin", branch);
     } else {
+      await requireHttpsRemote();
       await repoGit("push");
     }
   }
 
   async function gitPull(): Promise<void> {
+    await requireHttpsRemote();
     await repoGit("pull");
   }
 
   async function gitFetch(): Promise<void> {
+    await requireHttpsRemote();
     await repoGit("fetch");
   }
 
@@ -309,6 +370,9 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
   }
 
   async function gitAddRemote(params: { name: string; url: string }): Promise<void> {
+    if (httpsOnly && !isHttpsRemote(params.url)) {
+      throw new Error(httpsOnlyMessage(params.url));
+    }
     await repoGit("remote", "add", params.name, params.url);
   }
 

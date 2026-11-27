@@ -18,7 +18,7 @@
 
 import { readFileSync } from "node:fs";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
-import { isString } from "@jxsuite/schema/guards";
+import { resolveConnectorClasses } from "@jxsuite/compiler/section-push";
 import { projectDevEnv } from "./dev-vars.ts";
 import type { ProjectDevEnv } from "./dev-vars.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
@@ -148,30 +148,15 @@ async function buildRuntime(
 
 /**
  * Resolve connector implementation classes keyed by provider id, applying the dev-server `local`
- * stand-in rule: a connector declaring `local: "<provider>"` is served by the registry's class for
- * that provider instead of its own (specs/extensions.md §12). Shared with the data-api push seam so
- * section-owner deploySchema contributions (e.g. auth) see the same stand-ins as the mounts.
- *
- * Each provider is its implementation module's export (specs/extensions.md §6.1): this host only
- * routes it, and the mounts and deploy steps that receive it are the ones that call it. A module
- * exporting no such export yields a nullish entry, which the receiving mount reports as an
- * unavailable provider.
+ * stand-in rule (specs/extensions.md §12). The mounts and the studio push (section-owner
+ * deploySchema, e.g. auth) receive the same stand-ins; the one resolver lives in the compiler's
+ * section-push module so every host picks the implementation export identically.
  *
  * @param {ExtensionRegistry} registry
  * @returns {Promise<Record<string, ImplementationExport | null | undefined>>}
  */
-export async function resolveConnectorStandins(
+export function resolveConnectorStandins(
   registry: ExtensionRegistry,
 ): Promise<Record<string, ImplementationExport | null | undefined>> {
-  const entries = registry.connectors();
-  const out: Record<string, ImplementationExport | null | undefined> = {};
-  for (const entry of entries) {
-    const provider = String(entry.connector!.provider);
-    const { local } = entry.connector!;
-    const target = isString(local)
-      ? (entries.find((e) => e.connector!.provider === local) ?? entry)
-      : entry;
-    out[provider] = await target.implementationExport();
-  }
-  return out;
+  return resolveConnectorClasses(registry, { standins: true });
 }
