@@ -106,7 +106,7 @@ Jx borrows the **shape** of these standards. Where the semantics diverge — `$r
 
 ### 3.1 Root Structure
 
-> **Status: Partial.** Every field matches the code except `tagName`, which the table marks Required at the root. Neither the generated root schema (`packages/schema/schema.json`) nor any per-project `document.schema.json` requires it, the runtime's `resolveTagName` renders a missing tag as `div`, and page documents omit it (`sites/test-blank/pages/contact.json`); only an element node requires `tagName` (`packages/schema/defs/element-def.schema.ts`).
+> **Status: Implemented.** The root schema requires no field (`generateSchema` in `packages/schema/src/schema.ts`), and `ElementDef` requires `tagName`. A missing root tag renders as `div` in the interpreter (`resolveTagName` in `packages/runtime/src/runtime.ts`) and in the static and client targets (`resolveStaticTagName` in `packages/compiler/src/shared.ts`, `compile-client.ts`). `defineElement` and `compileElement` refuse a definition whose `tagName` has no hyphen. The build, the live preview and the Studio canvas all compose a wrapped page without reading its root `tagName` (`resolveLayout` in `packages/site/src/layout.ts`, `distributePageIntoLayout` in `packages/studio/src/site-context.ts`).
 
 Every Jx document is a JSON object with the following top-level fields:
 
@@ -128,8 +128,10 @@ Every Jx document is a JSON object with the following top-level fields:
 | `$defs`    | Optional    | Pure JSON Schema type definitions — tooling only, no runtime artifacts                                                                                                                                          |
 | `state`    | Optional    | Reactive state: signals, computed values, functions, and data sources                                                                                                                                           |
 | `$script`  | Optional    | The document's own client and server modules, as TypeScript text (§23.2)                                                                                                                                        |
-| `tagName`  | Required    | HTML tag name for the root element                                                                                                                                                                              |
+| `tagName`  | Optional    | Tag name of the root element, a literal name (§19.6); `div` when absent. See below.                                                                                                                             |
 | `children` | Optional    | Array of child element definitions, text nodes (strings/numbers), and/or Array namespaces (repeaters) mixed freely. A bare Array namespace (the whole children slot is one repeater) is also accepted. See §10. |
+
+**The root `tagName` is optional.** A document without one renders its root as a `div`, in the interpreter and in every compiled target. A root `tagName` containing a hyphen makes the document a custom element definition (§16.1), registered under that name. A document whose root `tagName` has no hyphen is not a definition: an `$elements` entry naming it registers nothing, and `defineElement` and `compileElement` refuse it. A page wrapped by a layout (site-architecture.md §5.2) has no root element of its own. Its `children` fill the layout's slots, its `state`, `$media`, `style` and `attributes` extend the layout root's, and a `tagName` at its top is not used, which is why page documents leave it out. Below the root, the schema's `ElementDef` still requires `tagName` on every element definition.
 
 ### 3.2 Schema-Backed Documents
 
@@ -762,8 +764,6 @@ Every renderer applies this identically — the static compiler writing HTML sou
 
 ### 8.4 Child Arrays
 
-> **Status: Partial.** Element and text-node children, and computed children resolved at build time and by the interpreter, ship. Content a computed-children template splices in is not kept literal: the template pass (`resolveDocTemplates` in `packages/compiler/src/site/site-build.ts`) recurses into the resolved nodes and evaluates every `${…}` in their text and attributes, so a content entry's prose or inline code that contains `${` renders its evaluation (`Clicked ${state.count} times` in `docs/start/first-component.md` renders as "Clicked undefined times"), and one left for the client can make the page's module a syntax error.
-
 Children are expressed as a JSON array of element definitions and/or bare text nodes:
 
 ```json
@@ -813,7 +813,7 @@ Inside a repeater the template reads the row, which is how a card draws its own 
 { "tagName": "div", "children": "${item.$children ?? []}" }
 ```
 
-The compiler's template pass replaces `children` with the resolved array and recurses into it. Scope of the feature: for a built page the template must resolve to an array during the site build (e.g. from `$paths`-bound state or a compiler-timing prototype). The compiled targets do not evaluate one left unresolved, so runtime-reactive content swapping is not available to a built page through this form. The interpreter (`renderNode` in `packages/runtime/src/runtime.ts`), which renders the source document rather than the build's output, does evaluate it, and redraws the children when the value changes: that is what Studio's editing canvas draws (`studio.md` §4.5). A result that is not an array draws nothing, and a plain non-template string is not a valid `children` value at all (text children must be array items, per above).
+The compiler's template pass replaces `children` with the resolved array. What it splices in is content, not a template: a `${` in its text, attributes or styles is written as it stands, in every output, so a parsed Markdown entry that quotes a template shows it rather than evaluating it. Scope of the feature: for a built page the template must resolve to an array during the site build (e.g. from `$paths`-bound state or a compiler-timing prototype). The compiled targets do not evaluate one left unresolved, so runtime-reactive content swapping is not available to a built page through this form. The interpreter (`renderNode` in `packages/runtime/src/runtime.ts`), which renders the source document rather than the build's output, does evaluate it, and redraws the children when the value changes: that is what Studio's editing canvas draws (`studio.md` §4.5). A result that is not an array draws nothing, and a plain non-template string is not a valid `children` value at all (text children must be array items, per above).
 
 A format with no way to spell this as its body keeps it as an attribute: Markdown writes `::div{children="${item.$children ?? []}"}` (`parser.md` §3).
 
@@ -1253,22 +1253,24 @@ Web APIs are accessed via `$prototype` in a `state` entry:
 
 ### 11.2 Supported Prototypes
 
-> **Status: Partial.** The interpreter's `resolvePrototype` handles every Web API row but `ReadableStream`, whose case returns `null`; the `Array` row is the §10 children node, not a state prototype. The client target (`compile-client.ts`) lowers `LocalStorage`, `SessionStorage`, `Request` and `Cookie`; the element target (`compile-element.ts`), which compiles every site component, lowers only `Request` and turns a storage or cookie entry into a plain initial value (its `default`), with no read and no persistence. `URLSearchParams`, `FormData`, `IndexedDB`, `Set`, `Map` and `Blob` reach a built page as the literal definition object in both targets, and the compiled `Request` (`emitRequestFetch` in `packages/compiler/src/shared.ts`) has no debounce or abort. Each cell below that reads Partial names its compiled gap.
+> **Status: Partial.** The interpreter's `resolvePrototype` handles every Web API row but `ReadableStream`, whose case returns `null`; the `Array` row is the §10 children node, not a state prototype. The client target (`compile-client.ts`) lowers `LocalStorage`, `SessionStorage`, `Request` and `Cookie`; the element target (`compile-element.ts`), which compiles every site component, lowers only `Request` and turns a storage or cookie entry into a plain initial value (its `default`), with no read and no persistence. `URLSearchParams`, `FormData`, `IndexedDB`, `Set`, `Map` and `Blob` reach a built page as the literal definition object in both targets. Each cell below that reads Partial names its compiled gap.
 
-| `$prototype`      | Web API      | Status                                                                                              |
-| ----------------- | ------------ | --------------------------------------------------------------------------------------------------- |
-| `Request`         | Fetch API    | **Partial** — reactive URL, debounce, manual mode, abort controller; compiled: no debounce or abort |
-| `URLSearchParams` | URL API      | **Partial** — computed `.toString()`; compiled: not lowered                                         |
-| `FormData`        | FormData API | **Partial** — basic field population; compiled: not lowered                                         |
-| `LocalStorage`    | Storage API  | **Partial** — reactive read/write with persistence; element target: `default` only                  |
-| `SessionStorage`  | Storage API  | **Partial** — session-scoped reactive storage; element target: `default` only                       |
-| `Cookie`          | Cookie API   | **Partial** — maxAge, path, domain, secure, sameSite (see §11.2a); element target: `default` only   |
-| `IndexedDB`       | IDB API      | **Partial** — store creation, indexes, CRUD helper; compiled: not lowered                           |
-| `Array`           | —            | **Implemented** — dynamic mapped list (see §10)                                                     |
-| `Set`             | —            | **Partial** — `new Set(default)`; compiled: not lowered                                             |
-| `Map`             | —            | **Partial** — `new Map(Object.entries(default))`; compiled: not lowered                             |
-| `Blob`            | Blob API     | **Partial** — parts and type; compiled: not lowered                                                 |
-| `ReadableStream`  | Streams API  | **Pending** — stub returns `null`                                                                   |
+| `$prototype`      | Web API      | Status                                                                                            |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------- |
+| `Request`         | Fetch API    | **Implemented** — reactive URL, debounce, manual mode, abort controller                           |
+| `URLSearchParams` | URL API      | **Partial** — computed `.toString()`; compiled: not lowered                                       |
+| `FormData`        | FormData API | **Partial** — basic field population; compiled: not lowered                                       |
+| `LocalStorage`    | Storage API  | **Partial** — reactive read/write with persistence; element target: `default` only                |
+| `SessionStorage`  | Storage API  | **Partial** — session-scoped reactive storage; element target: `default` only                     |
+| `Cookie`          | Cookie API   | **Partial** — maxAge, path, domain, secure, sameSite (see §11.2a); element target: `default` only |
+| `IndexedDB`       | IDB API      | **Partial** — store creation, indexes, CRUD helper; compiled: not lowered                         |
+| `Array`           | —            | **Implemented** — dynamic mapped list (see §10)                                                   |
+| `Set`             | —            | **Partial** — `new Set(default)`; compiled: not lowered                                           |
+| `Map`             | —            | **Partial** — `new Map(Object.entries(default))`; compiled: not lowered                           |
+| `Blob`            | Blob API     | **Partial** — parts and type; compiled: not lowered                                               |
+| `ReadableStream`  | Streams API  | **Pending** — stub returns `null`                                                                 |
+
+A `Request` entry that is not `manual` fetches inside an effect, so a `${…}` template in its `url` re-fetches when the state it reads changes, and a `url` that still interpolates to `undefined` is not fetched. `debounce` (milliseconds, default `0`) delays every fetch, the first included, and a change inside the delay restarts it. A change also aborts the fetch the previous value started, whether it is still waiting out its delay or in flight; an aborted fetch leaves the entry as it was, and any other failure sets the entry to an object whose `error` is the failure's reason as a string.
 
 #### 11.2a The `Cookie` prototype's attribute rules
 

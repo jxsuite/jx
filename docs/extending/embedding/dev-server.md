@@ -12,6 +12,7 @@ spec:
   - project-state.md#11.3 # collaboration rooms keyed by document
 code:
   - packages/server/src/server.ts
+  - packages/server/src/code-api.ts
   - packages/server/src/studio-api.ts
   - packages/server/src/resolve.ts
   - packages/server/src/jx-mounts.ts
@@ -73,7 +74,7 @@ So `?path=`, `?dir=` and a rename's `from`/`to` all resolve against the server r
 
 `resolve.ts` implements the two endpoints the runtime uses to run server-side code during development. `handleResolve` takes a `$prototype`/`$src` entry, imports the module server-side (`.js` directly; `.class.json` via its `$implementation`, or a class constructed from the schema), instantiates it with the config, and returns the resolved value. `handleServerFunction` imports a module and invokes a named export with an arguments object. Both do dynamic `import()` of project code. They are remote-code-execution surfaces by design, which is why the security model below exists.
 
-`code-api.ts` adds the code services behind the `codeService` platform member: `oxfmt` formatting (through `code-format.ts`, which `jx format` shares) and `oxlint` diagnostics for the function-body editor.
+`code-api.ts` adds the code services behind the `codeService` platform member: `oxfmt` formatting (through `code-format.ts`, which `jx format` shares) and `oxlint` diagnostics for the function-body editor. The same dispatch, `runCodeService`, answers the desktop backend's `codeService` request in its own process. oxlint runs under the host's own runtime with an explicit empty configuration, so every host lints with oxlint's default rules rather than whichever `.oxlintrc.json` sits above its working directory.
 
 ## Extension server mounts
 

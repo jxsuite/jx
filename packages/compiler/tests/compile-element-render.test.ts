@@ -1149,3 +1149,101 @@ describe("compiled element — a built site's server call", () => {
     expect(win.document.querySelector("#out")?.textContent).toBe("42");
   });
 });
+
+describe("compiled element: Request fetch", () => {
+  /** One fetch the page made, held open until the stub aborts it. */
+  interface Seen {
+    url: string;
+    signal: AbortSignal;
+  }
+
+  /** The element's reactive state, as its `state` property exposes it. */
+  interface ReqElement extends Element {
+    state: { q: string; d: JsonValue };
+  }
+
+  function isReqElement(element: Element): element is ReqElement {
+    return (
+      "state" in element &&
+      isNonNullObject(element.state) &&
+      "q" in element.state &&
+      "d" in element.state
+    );
+  }
+
+  const realFetch = globalThis.fetch;
+  let seen: Seen[] = [];
+
+  const tick = () =>
+    new Promise((r) => {
+      setTimeout(r, 15);
+    });
+
+  async function mount(): Promise<ReqElement> {
+    win.document.body.innerHTML = "<ls-req></ls-req>";
+    await tick();
+    const el = rendered(win.document.querySelector("ls-req"), "ls-req");
+    if (!isReqElement(el)) {
+      throw new Error("Expected <ls-req> to expose its state");
+    }
+    return el;
+  }
+
+  beforeAll(async () => {
+    const { files } = await compileElement({
+      children: [],
+      state: { d: { $prototype: "Request", url: "/api/${state.q}" }, q: "a" },
+      tagName: "ls-req",
+    });
+    writeFileSync(resolve(TMP, "req.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "req.js"));
+  });
+
+  beforeEach(() => {
+    seen = [];
+    // A fetch that stays open until it is aborted, and then rejects with the signal's reason.
+    const stub = (input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          throw new Error("fetch was called without a signal");
+        }
+        seen.push({ signal, url: String(input) });
+        signal.addEventListener("abort", () => {
+          reject(signal.reason);
+        });
+      });
+    globalThis.fetch = Object.assign(stub, { preconnect: realFetch.preconnect });
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  test("the module links its onEffectCleanup import and fetches on connect", async () => {
+    await mount();
+
+    expect(seen.map((s) => s.url)).toEqual(["/api/a"]);
+  });
+
+  test("a state change aborts the fetch it replaces", async () => {
+    const el = await mount();
+    el.state.q = "b";
+    await tick();
+
+    expect(seen.map((s) => [s.url, s.signal.aborted])).toEqual([
+      ["/api/a", true],
+      ["/api/b", false],
+    ]);
+    expect(el.state.d).toBeNull();
+  });
+
+  test("disconnect aborts a fetch still in flight and writes no error", async () => {
+    const el = await mount();
+    el.remove();
+    await tick();
+
+    expect(seen[0]!.signal.aborted).toBe(true);
+    expect(el.state.d).toBeNull();
+  });
+});

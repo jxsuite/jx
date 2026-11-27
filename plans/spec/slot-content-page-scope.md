@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - spec.md#15.2
-requires:
-  - spec/one-way-prop-forwarding-page-bindings
+requires: []
 workspaces:
   - packages/compiler
   - specs
@@ -20,7 +19,7 @@ size: M
 
 > **Status: Partial.** The interpreter renders the children written inside a component instance in the scope of the document that wrote them, before the instance distributes them. Built output does not for an instance written on a page or a layout: `expandComponents` (`packages/compiler/src/site/site-build.ts`) serialises those children before the page compiles, so a binding among them is not hydrated: one the build can resolve shows its value, the initial value of an entry a handler writes included, and never changes, and one it cannot resolve renders empty. A bound `$props` on an instance among them is lost the same way.
 
-The rule it qualifies: "All `state` entries are available to all descendant elements within that component without explicit passing." Children written inside an instance are descendants of the document that wrote them. The marker was added in the closing pass of the detailing program, from `plan:spec/one-way-prop-forwarding-page-bindings`' "Outside this plan" finding.
+The rule it qualifies: "All `state` entries are available to all descendant elements within that component without explicit passing." Children written inside an instance are descendants of the document that wrote them. The marker was added in the closing pass of the detailing program, from the landed page-level prop delivery's "Outside this plan" finding.
 
 **What the code does** (verified against the working tree on 2026-09-27):
 
@@ -29,7 +28,7 @@ The rule it qualifies: "All `state` entries are available to all descendant elem
 - **Evidence** (the page-bindings plan's scratch build, 2026-09-27): `<my-box><span id="s">${state.n}</span></my-box>` on a page with a handler emitted `<span id="s"></span>` with no `data-bind`: the initial value is lost as well as the updates.
 - **Since then, the initial value is baked.** The change that made a live component prerender its initial state (compiler.md §8.1) renders these children against a page scope that does not hold handler-written entries (`slotScope` in `compilePage`, passed to `expandComponents` as an option), so the probe above now emits `<span id="s">1</span>`: the first paint is right and the updates are still lost. The callback is `renderStaticNode(c, childScope(), null)`. This plan replaces it with the placeholder, and `slotScope` goes with it.
 - **Instances inside a definition are right.** `renderComponentInstance` (`packages/compiler/src/shared.ts`) renders an instance's children with the definition's `scope`, and the definition's own module (compile-element's lit template) binds them. Only a page-level instance is affected.
-- **What has landed, and what the prerequisite gives.** The prerender is built from a `SlotFill` whose groups are rendered by one callback, which `expandComponents` passes as `renderStaticNode(c, childScope(), null)` (its `renderSlotted`), and each placed group of a live instance is bracketed so an upgrading element captures the same nodes it was given (`captureSlotted`; spec.md §8.5). `plan:spec/one-way-prop-forwarding-page-bindings` leaves a page-level instance's live `$props` on the node and binds them in `buildClientNode` (`:prop.` directives, `liveInstanceTags`).
+- **What has landed, and what the prerequisite gives.** The prerender is built from a `SlotFill` whose groups are rendered by one callback, which `expandComponents` passes as `renderStaticNode(c, childScope(), null)` (its `renderSlotted`), and each placed group of a live instance is bracketed so an upgrading element captures the same nodes it was given (`captureSlotted`; spec.md §8.5). the landed page-level prop delivery (compiler.md §8.1, §9.1) leaves a page-level instance's live `$props` on the node and binds them in `buildClientNode` (`:prop.` directives, `liveInstanceTags`).
 
 ## Outcome
 
@@ -68,7 +67,7 @@ Run `bun test --isolate --coverage` from `packages/compiler`, then `bun scripts/
   - "a binding in slot content prerenders the page value and is bound": `<my-box><span id="s">${state.n}</span></my-box>` builds to a `span` holding `1` with `data-bind` and a `:text-content` directive whose key the module binds.
   - "a static definition's slot content is bound too": the same with a fully static `my-box` (`data-jx-static`).
   - "a shadow component's light children are bound": `my-box` with `$shadow: "open"`.
-  - "an instance in slot content receives its live prop": a `my-count` child with `$props: { count: { $ref: "#/state/n" } }` emits the `:prop.` directive from `plan:spec/one-way-prop-forwarding-page-bindings` on `my-count`.
+  - "an instance in slot content receives its live prop": a `my-count` child with `$props: { count: { $ref: "#/state/n" } }` emits the `:prop.` directive from the landed page-level prop delivery (compiler.md §8.1, §9.1) on `my-count`.
   - "state read only in slot content is retained": an array read only by a slotted child's template survives the state-stripping pass.
   - "the upgrade keeps the bound node": under `GlobalRegistrator`, load the built page and the element module, click the handler's button, and read `#s`'s text as `2` after the element has upgraded.
 - **`packages/compiler/tests/compile-static.test.ts`**: "a slotted child is rendered in the page's scope".

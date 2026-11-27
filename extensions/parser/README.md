@@ -140,7 +140,7 @@ One class carries every format capability:
 
 ### Directives
 
-`:::name{attrs}` container syntax converts directly to Jx element nodes. `:::my-card{title="Hello"}` becomes a `my-card` element with its attributes routed to the right Jx locations (props, `$`-annotations, styles). Capitalized directives (e.g. `:::Array`) become tagName-less `$prototype` nodes. A content type's `$elements` list declares which components its entries may use.
+`:::name{attrs}` container syntax converts directly to Jx element nodes. `:::my-card{title="Hello"}` becomes a `my-card` element with its attributes routed as jx-markdown.md §6.6 describes: element properties and handlers on the element, HTML attributes in `attributes`, `props.*` into `$props`, annotations and styles. Capitalized directives (e.g. `:::Array`) become tagName-less `$prototype` nodes. A content type's `$elements` list declares which components its entries may use.
 
 ## `Csv`
 

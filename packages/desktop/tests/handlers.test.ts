@@ -665,9 +665,22 @@ describe("discoverComponents", () => {
 // ─── codeService ───────────────────────────────────────────────────────────
 
 describe("codeService", () => {
-  test("returns null (not yet implemented)", async () => {
-    const result = await codeService({});
-    expect(result).toBeNull();
+  test("format answers from the backend's own process", async () => {
+    setProjectRoot(null);
+    const result = await codeService({ action: "format", payload: { code: "const  a  =  1" } });
+    expect(result).toEqual({ code: "const a = 1;", errors: [] });
+  });
+
+  test("lint reports a debugger statement", async () => {
+    setProjectRoot(null);
+    const result = await codeService({ action: "lint", payload: { code: "debugger;" } });
+    expect(JSON.stringify(result)).toContain("no-debugger");
+  });
+
+  test("an unknown action, and no request at all, resolve null", async () => {
+    setProjectRoot(null);
+    expect(await codeService({ action: "minify", payload: { code: "x" } })).toBeNull();
+    expect(await codeService({})).toBeNull();
   });
 });
 

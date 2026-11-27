@@ -71,6 +71,7 @@ import {
   expandDynamicRoutes,
   readPageDocument,
   readTranslationKeys,
+  resolveRouteCollisions,
 } from "./pages-discovery.ts";
 import {
   buildHeaderRules,
@@ -116,6 +117,7 @@ import {
   buildInitialScope,
   collectSrcImports,
   buildInstanceScope,
+  cloneValue,
   collectStyles,
   colorSchemePrePaintScript,
   computeLiveTags,
@@ -124,7 +126,9 @@ import {
   escapeStyleText,
   evaluateStaticTemplate,
   inheritProjectFormulas,
+  isLiteralNode,
   isLiveComponent,
+  markLiteral,
   isPureNamedFormula,
   isRuntimeOnlyStateKey,
   listSettled,
@@ -134,6 +138,9 @@ import {
   nextSlotId,
   orderComponentTags,
   preRenderComponentHtml,
+  refReadsRuntimeOnlyState,
+  resolveRefValue,
+  resolveStaticValue,
   pureSchemeOf,
   referencesStateKey,
   renderStaticNode,
@@ -615,15 +622,19 @@ export async function buildSite(
   // ── 4. Expand dynamic routes ────────────────────────────────────────────
   const extensionHead = await collectExtensionHead(registry, projectConfig, projectRoot);
 
-  const expandedRoutes = await expandDynamicRoutes(
-    staticRoutes,
-    projectRoot,
-    sections,
-    registry,
-    projectConfig,
-    i18n,
-    { errors },
+  const { collisions, routes: expandedRoutes } = resolveRouteCollisions(
+    await expandDynamicRoutes(staticRoutes, projectRoot, sections, registry, projectConfig, i18n, {
+      errors,
+    }),
   );
+  for (const collision of collisions) {
+    if (collision.kind === "tie") {
+      errors.push(collision.message);
+      console.error(collision.message);
+    } else {
+      console.warn(collision.message);
+    }
+  }
   /*
    * Every route carries the locale it serves, resolved once here rather than re-derived by each
    * reader. It is what scopes a `ContentEntry` lookup on a localized collection: two translations
@@ -1141,7 +1152,11 @@ export async function buildSite(
           result.html,
           compiledComponentTags,
           componentCSS,
-          new Set(compiledComponentTags.filter((tag) => !result.liveTags.has(tag))),
+          new Set(
+            compiledComponentTags.filter(
+              (tag) => !result.liveTags.has(tag) && !result.liveInstanceTags.includes(tag),
+            ),
+          ),
           result.files.map((f: { content: string }) => f.content).join("\n"),
           runtimeImports,
           scriptOrder,
@@ -2007,9 +2022,12 @@ async function compilePage(
    * before the expansion, which replaces each instance's children with its prerender.
    */
   const liveTags = computeLiveTags(componentDefs, layoutDoc);
+  const liveInstanceTags = new Set<string>();
   expandComponents(layoutDoc, componentDefs, {
     defaults: projectConfig.defaults,
+    liveInstanceTags,
     liveTags,
+    scope,
     slotCss,
     slotIds,
     slotScope,
@@ -2245,6 +2263,7 @@ async function compilePage(
     excludeFromSitemap: pageDoc.$sitemap === false,
     files: result.files,
     html: result.html,
+    liveInstanceTags: [...liveInstanceTags],
     liveTags,
     /*
      * Reported rather than warned about here: a mistyped `rel` almost always lives in the site or
@@ -2558,8 +2577,9 @@ function textChildValue(value: JxScope[string]): string | null {
  * @returns {JxElement}
  */
 function expandMapTemplate(template: JxElement, scope: JxScope): JxElement {
-  // A map template is authored JSON, so a child reached by recursion may not be an object.
-  if (!isNonNullObject(template)) {
+  // A map template is authored JSON, so a child reached by recursion may not be an object. Spliced
+  // Content is data (spec.md §8.4) and is kept as it stands.
+  if (!isNonNullObject(template) || isLiteralNode(template)) {
     return template;
   }
   const node: JxElement = {};
@@ -2601,7 +2621,11 @@ function expandMapTemplate(template: JxElement, scope: JxScope): JxElement {
     } else if (k === "$props" && isNonNullObject(template.$props)) {
       const props = { ...template.$props };
       for (const [pk, pv] of Object.entries(props)) {
-        if (isTemplateString(pv)) {
+        if (isRef(pv) && pv.$ref.startsWith("$map/")) {
+          // The row exists only at build time, so its pointer resolves here like its templates.
+          /* SAFETY: as below, a prop leaves the build only as JSON, so the row value is one. */
+          props[pk] = (cloneValue(resolveRefValue(pv.$ref, scope)) ?? null) as JsonValue;
+        } else if (isTemplateString(pv)) {
           /* SAFETY: props leave the build only as JSON (`expandComponents` writes them into
              `data-jx-props` with JSON.stringify), so a result is serialized exactly as a value
              authored at that prop would be. */
@@ -2668,7 +2692,8 @@ function resolveDocTemplates(
   buildResolved: ReadonlySet<string>,
 ) {
   // Children are authored JSON, so a member reached by recursion may be neither node nor string.
-  if (!isNonNullObject(node)) {
+  // Spliced content is data, never a template (spec.md §8.4).
+  if (!isNonNullObject(node) || isLiteralNode(node)) {
     return;
   }
 
@@ -2750,13 +2775,9 @@ function resolveDocTemplates(
   if (isTemplateString(rawChildren)) {
     const resolved = evaluateStaticTemplate(rawChildren, scope);
     if (Array.isArray(resolved)) {
-      /* SAFETY: a children template that yields an array stands for the child list itself, and
-         every member is walked by `resolveDocTemplates` below, which skips non-objects. */
-      const resolvedNodes = resolved as (JxElement | string)[];
-      node.children = resolvedNodes;
-      for (const child of resolvedNodes) {
-        resolveDocTemplates(child, scope, buildResolved);
-      }
+      /* SAFETY: a children template that yields an array stands for the child list itself, which
+         is content: `markLiteral` keeps every template in it text. */
+      node.children = markLiteral(resolved as (JxElement | string)[]);
     }
   } else if (Array.isArray(node.children)) {
     let i = 0;
@@ -2766,12 +2787,9 @@ function resolveDocTemplates(
         const resolved = evaluateStaticTemplate(child, scope);
         if (Array.isArray(resolved)) {
           /* SAFETY: a child template that yields an array stands for the children it splices in,
-             and every member is walked by `resolveDocTemplates` below, which skips non-objects. */
-          const resolvedNodes = resolved as (JxElement | string)[];
+             which are content: `markLiteral` keeps every template in them text. */
+          const resolvedNodes = markLiteral(resolved as (JxElement | string)[]);
           node.children.splice(i, 1, ...resolvedNodes);
-          for (const spliced of resolvedNodes) {
-            resolveDocTemplates(spliced, scope, buildResolved);
-          }
           i += resolvedNodes.length;
           continue;
         }
@@ -2934,6 +2952,10 @@ interface ExpandOptions {
   liveTags?: ReadonlySet<string>;
   /** The scope the children written inside an instance resolve in: the page's, not holding. */
   slotScope?: () => JxScope;
+  /** The page's build-time scope, which a `$ref` prop of an instance resolves against. */
+  scope?: JxScope;
+  /** Collects the tags of instances left with a prop the page's module delivers (compiler.md §8.1). */
+  liveInstanceTags?: Set<string>;
 }
 
 /**
@@ -2951,7 +2973,7 @@ function expandComponents(
   componentDefs: Map<string, JxElement>,
   options: ExpandOptions = {},
 ) {
-  const { defaults, liveTags, slotCss, slotIds, slotScope } = options;
+  const { defaults, liveTags, slotCss, slotIds, slotScope, scope, liveInstanceTags } = options;
   if (!isNonNullObject(node)) {
     return;
   }
@@ -3013,7 +3035,31 @@ function expandComponents(
        element's module reads the attribute itself. The page walk has resolved the templates, so
        the attribute values resolve against nothing. */
     const observedProps = observedAttributeProps(def, node.attributes, {});
-    const props = observedProps ? { ...observedProps, ...node.$props } : node.$props || null;
+    /* A prop is live when the build cannot settle it (compiler.md §8.1): the page's module
+       delivers it. Every other prop is settled here, so the prerender and the payload carry it. */
+    const live: Record<string, JsonValue> = {};
+    const settled: Record<string, JsonValue> = {};
+    for (const [key, value] of Object.entries(node.$props ?? {})) {
+      if (key.startsWith("#")) {
+        continue;
+      }
+      if (
+        isTemplateString(value) ||
+        (isRef(value) && refReadsRuntimeOnlyState(value.$ref, scope ?? null))
+      ) {
+        live[key] = value;
+      } else if (isRef(value)) {
+        const resolved = cloneValue(resolveStaticValue(value, scope ?? null));
+        if (resolved !== undefined) {
+          /* SAFETY: a prop leaves the build only as JSON, so a resolved value is one. */
+          settled[key] = resolved as JsonValue;
+        }
+      } else {
+        settled[key] = value;
+      }
+    }
+    const hasLive = Object.keys(live).length > 0;
+    const props = observedProps || node.$props ? { ...observedProps, ...settled } : null;
     // This instance is the first frame of the path, so a definition that names itself is reported
     // At the first nesting rather than after the stack overflows.
     const context: ComponentPrerenderContext = {
@@ -3023,7 +3069,7 @@ function expandComponents(
       path: [{ key: JSON.stringify(props ?? {}), tag: tagName }],
       slotIds,
     };
-    const isStatic = !isLiveComponent(tagName, def, liveTags);
+    const isStatic = !hasLive && !isLiveComponent(tagName, def, liveTags);
     const { children } = node;
     /* Light mode places the children by slot name (spec.md §8.5). A live instance whose definition
        has a slot is stamped and its groups bracketed, so its element recovers them on upgrade. */
@@ -3098,13 +3144,19 @@ function expandComponents(
      * or an array would arrive stringified, and a key that is not lowercase would be dropped by
      * attribute-name folding.
      */
-    if (!isStatic && node.$props && Object.keys(node.$props).length > 0) {
+    if (!isStatic && Object.keys(settled).length > 0) {
+      // `${` is written `\u0024{`: still JSON, but no emitter reads it as a template.
       node.attributes = {
         ...node.attributes,
-        "data-jx-props": JSON.stringify(node.$props),
+        "data-jx-props": JSON.stringify(settled).replaceAll("${", String.raw`\u0024{`),
       };
     }
-    delete node.$props;
+    if (hasLive) {
+      node.$props = live;
+      liveInstanceTags?.add(tagName);
+    } else {
+      delete node.$props;
+    }
 
     if (isStatic) {
       node.$static = true;

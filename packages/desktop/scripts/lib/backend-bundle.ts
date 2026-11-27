@@ -30,6 +30,15 @@
  *
  * `scripts/smoke-backend.ts` starts the staged result under Node and proves each of these paths
  * works, because a source tree that passes its tests says nothing about a bundle.
+ *
+ * A fifth kind of thing is staged for the code services (specs/desktop.md §5.3): native addons. The
+ * formatter's binding is loaded in-process by `oxfmt`, whose loader tries `./oxfmt.<triple>.node`
+ * beside its own module first, which in a bundle is the directory of `index.js`. The linter is a
+ * CLI script run as a child of the backend's own runtime, over a binding it finds in its own
+ * `dist/`. They are per platform and architecture ({@link BACKEND_CODE_TOOLS} is a function of the
+ * target), they are neither data nor {@link BACKEND_MODULES}, and they sit beside the bundle and
+ * not under a `node_modules`, so no resolver can mistake them for a dependency and fetch another
+ * copy.
  */
 import {
   cpSync,
@@ -52,8 +61,38 @@ export const BACKEND_EXTERNALS = [
   "prettier-plugin-marko",
   "@zackad/prettier-plugin-twig",
   "@shopify/prettier-plugin-liquid",
-  "@astrojs/compiler-rs",
 ] as const;
+
+/**
+ * Optional formatter dependencies the bundle cannot leave external, because the bundler hoists
+ * their `import` to the top of `index.js` where Node would resolve it at start-up and fail. They
+ * are replaced by a module that exports each named function and throws when called, which is what
+ * an uninstalled optional plugin does to the one language that would use it (here `.astro`, which
+ * the code services never format).
+ */
+export const BACKEND_STUBS: ReadonlyMap<string, readonly string[]> = new Map([
+  ["@astrojs/compiler-rs", ["parse"]],
+]);
+
+/** The bundler plugin that serves {@link BACKEND_STUBS}. */
+export const stubPlugin: Bun.BunPlugin = {
+  name: "backend-stubs",
+  setup(build) {
+    build.onResolve({ filter: /^@astrojs\/compiler-rs$/ }, (args) => ({
+      namespace: "backend-stub",
+      path: args.path,
+    }));
+    build.onLoad({ filter: /.*/, namespace: "backend-stub" }, (args) => ({
+      contents: (BACKEND_STUBS.get(args.path) ?? [])
+        .map(
+          (name) =>
+            `export function ${name}() { throw new Error("${args.path} is not part of the backend"); }`,
+        )
+        .join("\n"),
+      loader: "js",
+    }));
+  },
+};
 
 /**
  * Packages left out of the bundle because they load files of their own by path, staged as real
@@ -114,7 +153,75 @@ export const BACKEND_DATA: readonly { from: string; to: string }[] = [
 /** Packages staged as `node_modules/<name>` beside the bundle, for the by-name resolution above. */
 export const BACKEND_MODULES = ["@vue/reactivity", "@vue/shared", "lit-html"] as const;
 
+/**
+ * The napi-rs name of a platform and architecture: `linux-x64-gnu`, `darwin-arm64`,
+ * `win32-x64-msvc`.
+ */
+export function napiTriple(platform: string, arch: string): string {
+  switch (platform) {
+    case "darwin": {
+      return `darwin-${arch}`;
+    }
+    case "linux": {
+      return `linux-${arch}-gnu`;
+    }
+    case "win32": {
+      return `win32-${arch}-msvc`;
+    }
+    default: {
+      return `${platform}-${arch}`;
+    }
+  }
+}
+
+/**
+ * What the code services need beside the bundle for one target: the formatter's native binding, and
+ * the linter's CLI with its own. `from` is relative to `packages/desktop` and `to` to the directory
+ * `index.js` is in. This is the one list: `stageCodeTools` copies it and the smoke test proves what
+ * was copied loads.
+ *
+ * @param triple The target's {@link napiTriple}, this host's unless a test says so.
+ */
+export function BACKEND_CODE_TOOLS(
+  triple = napiTriple(process.platform, process.arch),
+): readonly { from: string; to: string }[] {
+  return [
+    {
+      from: `../../node_modules/@oxfmt/binding-${triple}/oxfmt.${triple}.node`,
+      to: `oxfmt.${triple}.node`,
+    },
+    { from: "../../node_modules/oxlint/package.json", to: "oxlint/package.json" },
+    { from: "../../node_modules/oxlint/bin/oxlint", to: "oxlint/bin/oxlint" },
+    { from: "../../node_modules/oxlint/dist", to: "oxlint/dist" },
+    {
+      from: `../../node_modules/@oxlint/binding-${triple}/oxlint.${triple}.node`,
+      to: `oxlint/dist/oxlint.${triple}.node`,
+    },
+  ];
+}
+
 const desktopDir = resolve(import.meta.dirname, "../..");
+
+/**
+ * Copy the code services' tools beside the bundle.
+ *
+ * @param outdir The directory the bundle is in.
+ * @param tools The rows to copy, this host's by default.
+ * @throws {Error} Naming the source that is not installed, because a backend staged without one
+ *   starts and then formats and lints nothing.
+ */
+export function stageCodeTools(outdir: string, tools = BACKEND_CODE_TOOLS()): void {
+  for (const { from, to } of tools) {
+    const source = resolve(desktopDir, from);
+    if (!existsSync(source)) {
+      throw new Error(
+        `${from} is not installed; run \`bun install\` on the platform being staged (it holds this host's binding only).`,
+      );
+    }
+    mkdirSync(dirname(join(outdir, to)), { recursive: true });
+    cpSync(source, join(outdir, to), { recursive: true });
+  }
+}
 /** The workspace install every package is hoisted into. */
 export const WORKSPACE_MODULES = resolve(desktopDir, "../../node_modules");
 
@@ -223,9 +330,9 @@ export function stageModuleClosure(outdir: string, names: readonly string[]): vo
 /**
  * Bundle the backend into `outdir`: `index.js`, the `package.json` that makes Node read it as ESM,
  * the data its inlined modules read, and the compiler's native addon. With `stageModules`, also the
- * `node_modules` of {@link BACKEND_NATIVES} and {@link BACKEND_MODULES} with their closure, which
- * is what an installer ships; a caller whose bundle sits inside an install that already resolves
- * them (the Nix package) passes false.
+ * `node_modules` of {@link BACKEND_NATIVES} and {@link BACKEND_MODULES} with their closure, and the
+ * {@link BACKEND_CODE_TOOLS}, which is what an installer ships; a caller whose bundle sits inside
+ * an install that already resolves them (the Nix package) passes false.
  *
  * @throws {AggregateError} With the bundler's diagnostics when bundling fails.
  */
@@ -240,6 +347,7 @@ export async function bundleBackend(
     metafile: true,
     naming: "index.js",
     outdir,
+    plugins: [stubPlugin],
     target: "node",
   });
   const output = result.outputs.at(0);
@@ -252,6 +360,7 @@ export async function bundleBackend(
   }
   stageAddon(outdir);
   if (options.stageModules) {
+    stageCodeTools(outdir);
     stageModuleClosure(outdir, [...BACKEND_NATIVES, ...BACKEND_MODULES]);
   }
   const inputs = Object.keys(result.metafile?.inputs ?? {}).map((input) => resolve(input));

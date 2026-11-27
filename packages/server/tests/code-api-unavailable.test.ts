@@ -1,10 +1,10 @@
 /**
- * Lint graceful degradation — the packaged desktop app ships no node_modules and no oxlint on PATH,
- * so the lint endpoint must return empty diagnostics cleanly instead of erroring. An empty
- * JX_OXLINT_BIN is the explicit disable switch and drives the same null-resolution branch.
+ * Lint graceful degradation — a host with no oxlint to run must return empty diagnostics cleanly
+ * instead of erroring. An empty JX_OXLINT_BIN is the explicit disable switch and drives the same
+ * null-resolution branch.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { handleCodeApi, resolveOxlintBin } from "../src/code-api";
+import { handleCodeApi, resolveOxlintCommand } from "../src/code-api";
 
 /** The code API answers every `/__studio/code/<action>` POST it knows; `null` means it declined. */
 function handled(res: Response | null): Response {
@@ -21,7 +21,7 @@ afterEach(() => {
 describe("code-api — oxlint unavailable", () => {
   test("lint returns empty diagnostics without an error", async () => {
     process.env.JX_OXLINT_BIN = "";
-    expect(resolveOxlintBin()).toBeNull();
+    expect(resolveOxlintCommand()).toBeNull();
 
     const url = new URL("http://localhost/__studio/code/lint");
     const req = new Request(url, {

@@ -18,6 +18,8 @@ import {
   pureSchemeOf,
   resolveStaticTagName,
   isExpandedInstance,
+  isLiteralNode,
+  renderStaticNode,
   resolveStaticValue,
   SELF_CLOSING,
 } from "../shared.ts";
@@ -113,6 +115,11 @@ function compileNode(
   }
   if (!isNonNullObject(def)) {
     return "";
+  }
+
+  // Spliced content is data (spec.md §8.4): rendered as written, with no template evaluated.
+  if (isLiteralNode(def)) {
+    return renderStaticNode(def, context.scope, null, null, context.preformatted === true);
   }
 
   const nextContext = createCompileContext(

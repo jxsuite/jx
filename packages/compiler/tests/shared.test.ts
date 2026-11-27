@@ -30,11 +30,14 @@ import {
   isClassJsonSrc,
   isComponentFullyStatic,
   isDynamic,
+  isLiteralNode,
+  markLiteral,
   isRefObject,
   isPureTypeDef,
   isTemplateString,
   preRenderComponentHtml,
   propertyAttrText,
+  refReadsRuntimeOnlyState,
   renderStaticNode,
   resolveRefValue,
   resolveStaticValue,
@@ -113,6 +116,15 @@ describe("isDynamic", () => {
         tagName: "div",
       }),
     ).toBe(true);
+  });
+
+  test("a $ref or template in $props makes a node dynamic, a literal does not", () => {
+    expect(isDynamic({ $props: { w: { $ref: "window#/innerWidth" } }, tagName: "my-card" })).toBe(
+      true,
+    );
+    expect(isDynamic({ $props: { label: "${state.n}" }, tagName: "my-card" })).toBe(true);
+    expect(isDynamic({ $props: { size: 3 }, tagName: "my-card" })).toBe(false);
+    expect(isDynamic({ $props: { "#x": { $ref: "#/state/n" } }, tagName: "my-card" })).toBe(false);
   });
 
   test("a plain text child and a whole-children template stay static", () => {
@@ -240,6 +252,40 @@ describe("isDynamic", () => {
 });
 
 // ─── Scope / value resolution ───────────────────────────────────────────────
+
+describe("refReadsRuntimeOnlyState", () => {
+  const state = {
+    inc: { $prototype: "Function" as const, body: "state.n++" },
+    k: 5,
+    n: 1,
+  };
+  const scope = buildInitialScope(state, null, { document: { state }, holdMutable: true });
+
+  test("a written entry is runtime-only and a constant is not", () => {
+    expect(refReadsRuntimeOnlyState("#/state/n", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("n", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("parent#/n", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("#/state/k", scope)).toBe(false);
+    expect(refReadsRuntimeOnlyState("#/state/k", null)).toBe(false);
+  });
+
+  test("a nested pointer is judged by its head", () => {
+    expect(refReadsRuntimeOnlyState("#/state/n/x", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("#/state/k/x", scope)).toBe(false);
+  });
+
+  test("window and document pointers are runtime-only, a row pointer is not", () => {
+    expect(refReadsRuntimeOnlyState("window#/innerWidth", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("document#/title", scope)).toBe(true);
+    expect(refReadsRuntimeOnlyState("$map/item/v", scope)).toBe(false);
+    expect(refReadsRuntimeOnlyState("other.json#/x", scope)).toBe(false);
+  });
+
+  test("a template read of runtime-only state is still left alone", () => {
+    expect(evaluateStaticTemplate("${state.n}", scope)).toBeNull();
+    expect(evaluateStaticTemplate("${state.k}", scope)).toBe(5);
+  });
+});
 
 describe("buildInitialScope", () => {
   test("binds a second declared name by position, not by name", () => {
@@ -2468,6 +2514,50 @@ describe("external class predicates and config", () => {
       { binding: "_JxClass1", config: {}, key: "c", name: "Session" },
     ]);
     expect(collectClientClasses({ n: 1 })).toEqual({ entries: [], imports: [] });
+  });
+});
+
+describe("markLiteral (spec.md §8.4)", () => {
+  test("an element is marked and a copy is returned", () => {
+    const source: JxElement = { children: [{ tagName: "b", textContent: "x" }], tagName: "p" };
+    const marked = markLiteral([source]);
+    expect(isLiteralNode(marked[0])).toBe(true);
+    expect(JSON.stringify(marked)).toBe(
+      '[{"children":[{"tagName":"b","textContent":"x","$literal":true}],"tagName":"p","$literal":true}]',
+    );
+    expect(marked[0]).not.toBe(source);
+    expect(isLiteralNode(source)).toBe(false);
+    expect(isLiteralNode("p")).toBe(false);
+  });
+
+  test("a string with a template is split so no part holds one", () => {
+    const parts = markLiteral(["a ${b} ${c}"]);
+    expect(parts).toEqual(["a $", "{b} $", "{c}"]);
+    expect(parts.join("")).toBe("a ${b} ${c}");
+    expect(parts.some((p) => isTemplateString(p))).toBe(false);
+  });
+
+  test("a string without one is unchanged", () => {
+    expect(markLiteral(["plain", "$ {"])).toEqual(["plain", "$ {"]);
+  });
+
+  test("a literal node is never dynamic", () => {
+    expect(isDynamic({ $literal: true, textContent: "${state.x}" })).toBe(false);
+  });
+
+  test("renderStaticNode renders a literal node's template text as written", () => {
+    const node: JxElement = {
+      $literal: true,
+      attributes: { title: "${state.x}" },
+      style: { color: "${state.x}" },
+      tagName: "p",
+      textContent: "a ${state.x}",
+    };
+    expect(renderStaticNode(node, { x: "v" })).toBe(
+      '<p style="color: ${state.x}" title="${state.x}">a ${state.x}</p>',
+    );
+    const inner: JxElement = { $literal: true, innerHTML: "<i>${state.x}</i>", tagName: "p" };
+    expect(renderStaticNode(inner, { x: "v" })).toBe("<p><i>${state.x}</i></p>");
   });
 });
 

@@ -40,6 +40,16 @@ function metaNamed(name: string): JxHeadEntry {
 }
 
 describe("resolveLayout", () => {
+  test("a wrapped page's own root tagName is not used: the page renders inside the layout's root", async () => {
+    const { load } = loaderFor({
+      "./l.json": { children: [{ tagName: "slot" }], tagName: "body" },
+    });
+    const page: JxDocument = { $layout: "./l.json", children: [{ tagName: "p" }], tagName: "main" };
+    const result = await resolveLayout(page, {}, load);
+    expect(result.tagName).toBe("body");
+    expect(result.children).toEqual([{ tagName: "p" }]);
+  });
+
   test("a page with no layout is returned as it was", async () => {
     const page: JxDocument = { children: [{ tagName: "p" }], tagName: "div" };
     const { asked, load } = loaderFor({});
