@@ -9,7 +9,12 @@
 
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import type { SpecStandards, StandardsRegistry, StandardsRow } from "./lib/standards.ts";
+import type {
+  CatalogEntry,
+  SpecStandards,
+  StandardsRegistry,
+  StandardsRow,
+} from "./lib/standards.ts";
 import {
   BACKLOG_HEADER_CELLS,
   BIND_ENTRY,
@@ -22,11 +27,17 @@ import {
   GAP_SLUG,
   HEADER_CELLS,
   isConformance,
+  isOrg,
+  numberedIdForm,
+  ORGS,
   orgOfId,
+  orgOfUrl,
   sectionAnchors,
   STANDARD_CELL,
   STANDARD_ID,
   statusOfAnchor,
+  urlKey,
+  urlNumberProblem,
 } from "./lib/standards.ts";
 import type { GateViolation } from "./lib/violation.ts";
 
@@ -55,6 +66,10 @@ export const VIOLATION_CODES = [
   "url-mismatch",
   "catalog-url-noncanonical",
   "catalog-org-mismatch",
+  "catalog-org-unknown",
+  "catalog-id-unnumbered",
+  "catalog-url-number-mismatch",
+  "catalog-duplicate-url",
   "catalog-stale",
   "catalog-unsorted",
   "catalog-duplicate-id",
@@ -315,6 +330,49 @@ function checkBacklog(reg: StandardsRegistry, out: Violation[]): void {
   }
 }
 
+function checkEntryBody(id: string, entry: CatalogEntry, out: Violation[]): void {
+  const inferred = orgOfId(id);
+  if (inferred !== null && inferred !== entry.org) {
+    out.push(
+      v(
+        "catalog-org-mismatch",
+        "standards.json",
+        `"${id}" is a ${inferred} identifier but the catalog says ${entry.org}`,
+      ),
+    );
+  }
+  const byUrlOrg = orgOfUrl(entry.url);
+  if (byUrlOrg !== null && byUrlOrg !== entry.org) {
+    out.push(
+      v(
+        "catalog-org-mismatch",
+        "standards.json",
+        `"${id}" is on a ${byUrlOrg} domain but the catalog says ${entry.org}`,
+      ),
+    );
+  }
+  const form = numberedIdForm(entry.org);
+  if (form !== null && inferred === null) {
+    out.push(
+      v(
+        "catalog-id-unnumbered",
+        "standards.json",
+        `"${id}" is filed under ${entry.org}, which numbers its documents (${form})`,
+      ),
+    );
+  }
+  const numberProblem = urlNumberProblem(entry.org, id, entry.url);
+  if (numberProblem) {
+    out.push(v("catalog-url-number-mismatch", "standards.json", numberProblem));
+  }
+  const problem = canonicalUrlProblem(entry.org, entry.url);
+  if (problem) {
+    out.push(
+      v("catalog-url-noncanonical", "standards.json", `"${id}" URL is not canonical: ${problem}`),
+    );
+  }
+}
+
 function checkCatalog(reg: StandardsRegistry, out: Violation[]): void {
   const cited = new Set([...reg.rows.map((r) => r.id), ...reg.backlog.map((b) => b.id)]);
   const seen = new Set<string>();
@@ -337,21 +395,30 @@ function checkCatalog(reg: StandardsRegistry, out: Violation[]): void {
       break;
     }
   }
+  const byUrl = new Map<string, string>();
   for (const [id, entry] of reg.catalog) {
-    const inferred = orgOfId(id);
-    if (inferred !== null && inferred !== entry.org) {
+    if (isOrg(entry.org)) {
+      checkEntryBody(id, entry, out);
+    } else {
       out.push(
         v(
-          "catalog-org-mismatch",
+          "catalog-org-unknown",
           "standards.json",
-          `"${id}" is a ${inferred} identifier but the catalog says ${entry.org}`,
+          `"${id}" is filed under "${entry.org}", which is not an issuing body standards.md §5.2 lists (${ORGS.join(", ")})`,
         ),
       );
     }
-    const problem = canonicalUrlProblem(entry.org, entry.url);
-    if (problem) {
+    const key = urlKey(entry.url);
+    const first = byUrl.get(key);
+    if (first === undefined) {
+      byUrl.set(key, id);
+    } else {
       out.push(
-        v("catalog-url-noncanonical", "standards.json", `"${id}" URL is not canonical: ${problem}`),
+        v(
+          "catalog-duplicate-url",
+          "standards.json",
+          `"${first}" and "${id}" share the URL ${entry.url}; one document has one identifier`,
+        ),
       );
     }
     if (!cited.has(id)) {

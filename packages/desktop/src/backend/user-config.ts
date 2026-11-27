@@ -5,7 +5,7 @@
  */
 
 import envPaths from "env-paths";
-import { existsSync } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { chmod, copyFile, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -24,6 +24,9 @@ export function configFile(name: string): string {
  * new-location file is absent and a legacy one exists, copy it across (the legacy file is left in
  * place so a downgrade still works). Returns the new-location path either way.
  *
+ * The copy refuses to overwrite (`COPYFILE_EXCL`): the existence check and the copy are two steps,
+ * and a copy landing after another launcher's first patch would overwrite it.
+ *
  * The copy is chmod'd owner-only afterwards. `copyFile` carries the SOURCE file's mode, so a legacy
  * store that was world-readable arrived here still world-readable — and these stores hold API
  * tokens. Every writer sets `0600`, but a store that is only ever read after migrating would never
@@ -35,7 +38,7 @@ export async function migrateLegacyStore(name: string): Promise<string> {
   if (!existsSync(file) && existsSync(legacy)) {
     try {
       await mkdir(dirname(file), { recursive: true });
-      await copyFile(legacy, file);
+      await copyFile(legacy, file, constants.COPYFILE_EXCL);
       if (process.platform !== "win32") {
         await chmod(file, 0o600);
       }

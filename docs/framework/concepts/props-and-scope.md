@@ -31,14 +31,11 @@ Scope is where a name can be seen. Within one document, every `state` entry is v
 
 ## Component instances
 
-A component instance is created in two steps: **register** the component document under a custom-element tag in the top-level `$elements` map, then place an element node with that tag. `$props` is optional, and an instance without it renders the component with its own defaults:
+A component instance is created in two steps: list the component document in the top-level `$elements` array, then place an element node with the tag that document declares as its `tagName`. `$props` is optional, and an instance without it renders the component with its own defaults:
 
 ```json
 {
-  "$elements": {
-    "my-counter": { "$ref": "./components/my-counter.json" },
-    "my-card": { "$ref": "./components/card.json" }
-  },
+  "$elements": [{ "$ref": "./components/my-counter.json" }, { "$ref": "./components/card.json" }],
   "children": [
     { "tagName": "my-counter" },
     {
@@ -51,6 +48,8 @@ A component instance is created in two steps: **register** the component documen
   ]
 }
 ```
+
+Here `my-counter.json` declares the tag `my-counter` and `card.json` declares `my-card`.
 
 :::doc-note
 A bare `{ "$ref": "./card.json" }` placed directly in `children` is **not** a component instance; it renders an empty `<div>`. Register the document in `$elements` and instantiate it by its tag, as above. See spec §13.
