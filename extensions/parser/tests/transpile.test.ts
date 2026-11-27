@@ -224,6 +224,30 @@ describe("isJxMarkdown", () => {
   test("false when tagName has no hyphen", () => {
     expect(isJxMarkdown("---\ntagName: div\n---\n\nBody")).toBe(false);
   });
+
+  test("false when the hyphen sits only in a YAML comment", () => {
+    expect(isJxMarkdown("---\ntagName: div # my-note\n---\n")).toBe(false);
+  });
+
+  test("false when nothing precedes the hyphen", () => {
+    expect(isJxMarkdown('---\ntagName: "-card"\n---\n')).toBe(false);
+  });
+
+  test("false for a non-string tagName", () => {
+    expect(isJxMarkdown("---\ntagName:\n  - my-card\n---\n")).toBe(false);
+  });
+
+  test("false, without throwing, when the frontmatter does not parse", () => {
+    expect(isJxMarkdown("---\ntagName: [my-card\n---\n")).toBe(false);
+  });
+
+  test("true for a block-scalar tagName", () => {
+    expect(isJxMarkdown("---\ntagName: >-\n  my-card\n---\n")).toBe(true);
+  });
+
+  test("true for flow-mapping frontmatter", () => {
+    expect(isJxMarkdown("---\n{tagName: my-card}\n---\n")).toBe(true);
+  });
 });
 
 // ─── mdastNodeToJx: null / edge paths ───────────────────────────────────────
